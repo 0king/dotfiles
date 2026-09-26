@@ -1,0 +1,14 @@
+# Antidote plugins file
+# Note on order:
+# 1. fzf-tab must be loaded before syntax-highlighting/autosuggestions wrap widgets
+aloxaf/fzf-tab
+
+# 2. Autosuggestions
+zsh-users/zsh-autosuggestions
+
+# 3. Syntax highlighting MUST ALWAYS be the last plugin loaded
+zsh-users/zsh-syntax-highlighting
+
+# Additional optional plugins:
+# zsh-users/zsh-history-substring-search
+# marlonrichert/zsh-autocomplete

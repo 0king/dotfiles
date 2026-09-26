@@ -1,0 +1,141 @@
+# =========================================================
+# Path & Environment Setup
+# =========================================================
+# Deduplicate PATH and fpath to prevent duplicate entries across re-sources
+typeset -U path PATH fpath FPATH
+
+# Setup user directories and package manager paths early
+export BUN_INSTALL="$HOME/.bun"
+path=(
+{{- if eq .chezmoi.os "darwin" }}
+  "/opt/homebrew/bin"
+  "/opt/homebrew/sbin"
+  "/usr/local/bin"
+{{- else }}
+  "/snap/bin"
+{{- end }}
+  "$BUN_INSTALL/bin"
+  "$HOME/.opencode/bin"
+  "$HOME/.local/bin"
+  $path
+)
+
+# Source local bin environment setup if available
+# [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
+
+# Add bun completions to fpath so Zsh's compinit can lazy-load them on demand
+[[ -d "$BUN_INSTALL" ]] && fpath=("$BUN_INSTALL" $fpath)
+
+# Ensure cache directory exists for fast startup caches
+ZSH_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+[[ -d "$ZSH_CACHE" ]] || mkdir -p "$ZSH_CACHE"
+
+# =========================================================
+# History
+# =========================================================
+HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
+HISTSIZE=20000
+SAVEHIST=20000
+
+# Ensure history directory exists
+[[ -d "${HISTFILE:h}" ]] || mkdir -p "${HISTFILE:h}"
+
+setopt SHARE_HISTORY          # Share history between all active sessions
+setopt HIST_IGNORE_ALL_DUPS   # Remove older duplicate entries from history
+setopt HIST_IGNORE_SPACE      # Don't save commands starting with a space
+setopt HIST_REDUCE_BLANKS     # Remove unnecessary blanks from history commands
+
+# =========================================================
+# Shell Behaviour & Keybindings
+# =========================================================
+setopt AUTOCD                 # Type directory name to cd into it
+setopt NOBEEP                 # Disable bell sounds
+setopt NUMERIC_GLOB_SORT      # Sort file10 after file9 naturally
+
+# =========================================================
+# Environment Variables & Tools
+# =========================================================
+# Use built-in $TTY instead of $(tty) to avoid spawning an unnecessary subshell
+export GPG_TTY="${TTY:-$(tty 2>/dev/null)}"
+export EDITOR=nvim
+
+# Format less output (render raw ANSI colors)
+export LESS="-R"
+
+# Use bat/batcat as the input preprocessor for less
+if (( $+commands[bat] )); then
+  export LESSOPEN="| bat --color=always --style=plain %s"
+elif (( $+commands[batcat] )); then
+  export LESSOPEN="| batcat --color=always --style=plain %s"
+fi
+
+
+# =========================================================
+# Completion & FZF Integrations
+# =========================================================
+if (( $+commands[fzf] )); then
+  local fzf_cache="$ZSH_CACHE/fzf.zsh"
+  if [[ ! -s "$fzf_cache" || "$commands[fzf]" -nt "$fzf_cache" ]]; then
+    fzf --zsh >| "$fzf_cache" 2>/dev/null
+    zcompile "$fzf_cache" 2>/dev/null
+  fi
+  source "$fzf_cache"
+fi
+
+autoload -Uz compinit
+setopt LOCAL_OPTIONS EXTENDED_GLOB
+local zcompdump="$ZSH_CACHE/zcompdump"
+if [[ -n "$zcompdump"(#qN.mh+24) || ! -s "$zcompdump" ]]; then
+  compinit -d "$zcompdump"
+  touch "$zcompdump"
+  zcompile "$zcompdump" 2>/dev/null
+else
+  compinit -C -d "$zcompdump"
+fi
+
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
+
+# =========================================================
+# Plugin Manager (Antidote)
+# =========================================================
+local plugins_txt="$ZDOTDIR/.zsh_plugins.txt"
+local plugins_zsh="$ZDOTDIR/.zsh_plugins.zsh"
+if [[ ! -s "$plugins_zsh" || "$plugins_txt" -nt "$plugins_zsh" ]]; then
+  [[ -f "$ZDOTDIR/.antidote/antidote.zsh" ]] && source "$ZDOTDIR/.antidote/antidote.zsh"
+  (( $+functions[antidote] )) && antidote bundle < "$plugins_txt" >| "$plugins_zsh"
+fi
+[[ -s "$plugins_zsh" ]] && source "$plugins_zsh"
+
+# =========================================================
+# Modular Config Files
+# =========================================================
+source "$ZDOTDIR/aliases.zsh"
+source "$ZDOTDIR/functions.zsh"
+
+# =========================================================
+# CLI Integrations (Cached for Fast Startup)
+# =========================================================
+# Zoxide: Fast directory jumping
+if (( $+commands[zoxide] )); then
+  local zoxide_cache="$ZSH_CACHE/zoxide.zsh"
+  if [[ ! -s "$zoxide_cache" || "$commands[zoxide]" -nt "$zoxide_cache" ]]; then
+    zoxide init zsh >| "$zoxide_cache" 2>/dev/null
+    zcompile "$zoxide_cache" 2>/dev/null
+  fi
+  source "$zoxide_cache"
+fi
+
+# Starship prompt (explicitly point to starship.toml)
+export STARSHIP_CONFIG="${ZDOTDIR:-$HOME/.config/zsh}/starship.toml"
+if (( $+commands[starship] )); then
+  local starship_cache="$ZSH_CACHE/starship.zsh"
+  if [[ ! -s "$starship_cache" || "$commands[starship]" -nt "$starship_cache" ]]; then
+    starship init zsh >| "$starship_cache" 2>/dev/null
+    zcompile "$starship_cache" 2>/dev/null
+  fi
+  source "$starship_cache"
+fi
+
+# Mise runtime manager
+(( $+commands[mise] )) && eval "$(mise activate zsh)"

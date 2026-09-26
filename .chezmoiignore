@@ -1,0 +1,49 @@
+# Documentation & repo metadata (do not copy to $HOME)
+README.md
+LICENSE
+.git/
+.githooks/
+scripts/
+
+# Universal Git repository exclusion
+**/.git/**
+
+# Secrets & private keys (never track)
+.ssh/id_*
+.ssh/*.pem
+.ssh/*.key
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.secret
+**/.env
+**/.env.*
+!**/.env.example
+
+# Universal binary filtering (ignore compiled binaries & libraries anywhere)
+*.exe
+*.bin
+*.so
+*.so.*
+*.dylib
+*.dll
+*.o
+*.a
+*.pyc
+**/__pycache__/**
+
+# Runtime caches & volatile dumps
+.config/zsh/.zcompdump*
+.config/zsh/.zsh_plugins.zsh
+.config/zsh/.antidote/**
+.config/zsh/*.bak
+.config/nvim/.nvimlog
+**/node_modules/**
+**/.DS_Store
+**/Thumbs.db
+**/*.bak
+**/*.old
+**/*.swp
+**/*.swo
+**/.nvimlog

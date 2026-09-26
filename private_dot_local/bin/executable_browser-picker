@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+URL="${1:-}"
+
+# Ordered list of "label|command|arg1|arg2|..." — order is preserved for the menu.
+profiles=(
+  "brave p1|brave-origin|--profile-directory=Default"
+  "brave secure|brave-origin|--profile-directory=Profile 2"
+  "brave shop|brave-origin|--profile-directory=Profile 1"
+  "brave tmp|brave-origin|--profile-directory=Profile 3"
+  "ff p1|firefox|-P|default"
+  "ff tmp|firefox|-P|tmp"
+  "epiphany|epiphany"
+)
+
+labels=()
+for entry in "${profiles[@]}"; do
+  labels+=("${entry%%|*}")
+done
+
+# --- GUI Selection: prefer whichever picker is actually installed ---
+if command -v kdialog >/dev/null 2>&1; then
+  args=()
+  for l in "${labels[@]}"; do args+=("$l" "$l"); done
+  choice=$(kdialog --title "Select Profile" --menu "Opening:\n${URL:-New Window}" "${args[@]}")
+elif command -v zenity >/dev/null 2>&1; then
+  choice=$(zenity --list --title="Select Profile" --text="Opening:\n${URL:-New Window}" \
+    --column="Profile" "${labels[@]}" --width=450 --height=700)
+else
+  echo "Neither kdialog nor zenity found." >&2
+  exit 1
+fi
+
+[ -z "${choice:-}" ] && exit 0   # user cancelled
+
+# Find the matching entry and split into an argv array
+for entry in "${profiles[@]}"; do
+  IFS='|' read -r label cmd_and_args <<< "$entry"
+  if [ "$label" = "$choice" ]; then
+    IFS='|' read -r -a argv <<< "$cmd_and_args"
+    bin="${argv[0]}"
+    if ! command -v "$bin" >/dev/null 2>&1; then
+      echo "Command not found: $bin" >&2
+      exit 1
+    fi
+    if [ -n "$URL" ]; then
+      argv+=("$URL")
+    fi
+    "${argv[@]}" >/dev/null 2>&1 &
+    disown
+    exit 0
+  fi
+done

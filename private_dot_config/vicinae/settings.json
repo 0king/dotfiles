@@ -1,0 +1,196 @@
+// This configuration is merged with the default vicinae configuration file, which you can obtain by running the `vicinae config default` command.
+// Every item defined in this file takes precedence over the values defined in the default config or any other imported file.
+//
+// You can make manual edits to this file, however you should keep in mind that this file may be written to by vicinae when a configuration change is made through the GUI.
+// When that happens, any custom comments or formatting will be lost.
+//
+// If you want to maintain a configuration file with your own comments and formatting, you should create a separate file and add it to the 'imports' array.
+//
+// Learn more about configuration at https://docs.vicinae.com/config
+
+{
+   "$schema": "https://vicinae.com/schemas/config.json",
+   "close_on_focus_loss": true,
+   "pop_to_root_on_close": true,
+   "wrap_navigation": true,
+   "escape_key_behavior": "",
+   "tray": {
+      "enabled": true
+   },
+   "theme": {
+      "dark": {
+         "name": "dracula"
+      }
+   },
+   "launcher_window": {
+      "opacity": 1,
+      "client_side_decorations": {
+         "border_width": 0
+      },
+      "compact_mode": {
+         "enabled": false
+      },
+      "floating_status_bar": false
+   },
+   "favorites": [
+      "clipboard:history",
+      "core:search-emojis"
+   ],
+   "fallbacks": [
+      "shortcuts:sct-f62d4d74a866",
+      "shortcuts:sct-83c217228015",
+      "shortcuts:sct-7172c1aaf393",
+      "files:search"
+   ],
+   "providers": {
+      "@Gelei/store.vicinae.bluetooth": {
+         "preferences": {
+            "connectionToggleable": true
+         }
+      },
+      "@dagimg-dot/store.vicinae.gnome-settings": {
+         "entrypoints": {
+            "online-accounts": {
+               "enabled": false
+            },
+            "printers": {
+               "enabled": false
+            },
+            "privacy": {
+               "enabled": false
+            },
+            "wacom": {
+               "enabled": false
+            }
+         }
+      },
+      "clipboard": {
+         "preferences": {
+            "eraseOnStartup": false,
+            "ignorePasswords": false,
+            "monitoring": true
+         },
+         "entrypoints": {
+            "history": {
+               "alias": "c"
+            }
+         }
+      },
+      "core": {
+         "entrypoints": {
+            "forget-telemetry": {
+               "enabled": true
+            },
+            "inspect-local-storage": {
+               "enabled": true
+            },
+            "oauth-token-store": {
+               "enabled": true
+            },
+            "search-builtin-icons": {
+               "enabled": true
+            },
+            "sponsor": {
+               "enabled": false
+            }
+         }
+      },
+      "files": {
+         "preferences": {
+            "autoIndexing": true,
+            "excludedIndexingPaths": [
+               "/home/dj/Desktop/fj/dev"
+            ],
+            "indexingPaths": [
+               "/home/dj/Downloads",
+               "/home/dj/Desktop"
+            ]
+         },
+         "entrypoints": {
+            "search": {
+               "alias": "f"
+            }
+         }
+      },
+      "media": {
+         "entrypoints": {
+            "next-track": {
+               "enabled": false
+            },
+            "now-playing": {
+               "enabled": false
+            },
+            "previous-track": {
+               "enabled": false
+            }
+         }
+      },
+      "power": {
+         "entrypoints": {
+            "power-off": {
+               "alias": "shut"
+            },
+            "reboot": {
+               "alias": "restart system"
+            }
+         }
+      },
+      "scripts": {
+         "preferences": {
+            "customDirs": []
+         }
+      },
+      "shortcuts": {
+         "entrypoints": {
+            "sct-7172c1aaf393": {
+               "alias": "g"
+            },
+            "sct-83c217228015": {
+               "alias": "gi"
+            },
+            "sct-f62d4d74a866": {
+               "alias": "y"
+            }
+         }
+      },
+      "snippets": {
+         "preferences": {
+            "enabled": true,
+            "keyDelay": "2",
+            "layout": "",
+            "prePasteDelay": "0",
+            "undo": true
+         }
+      },
+      "system": {
+         "entrypoints": {
+            "browse-apps": {
+               "enabled": true,
+               "preferences": {
+                  "showHidden": true,
+                  "sortAlphabetically": true
+               }
+            },
+            "run": {
+               "alias": "x"
+            },
+            "set-default-browser": {
+               "enabled": false
+            },
+            "set-default-terminal": {
+               "enabled": false
+            }
+         }
+      },
+      "theme": {
+         "enabled": true
+      },
+      "wm": {
+         "entrypoints": {
+            "switch-windows": {
+               "alias": "w"
+            }
+         }
+      }
+   }
+}

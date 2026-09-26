@@ -1,0 +1,189 @@
+#|
+kanata v1.12.0, ubuntu 26
+Universal kanata config for all keyboards.
+
+# LAYERS:
+- base (with HRMs)
+- alt (hold space)
+- mouse (hold ESC or capslock)
+- no-hrm (disable HRMs when holding physical mods)
+- media (meta + ESC)
+- bypass (meta + control + ESC)
+
+|#
+
+(defcfg
+  process-unmapped-keys yes
+  linux-device-detect-mode keyboard-only
+)
+
+(defvirtualkeys 
+  relf24 (release-key f24) 
+)
+
+(defsrc
+  esc  f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12
+  grv  1    2    3    4    5    6    7    8    9    0    -    =    bspc
+  tab  q    w    e    r    t    y    u    i    o    p    [    ]    \
+  caps a    s    d    f    g    h    j    k    l    ;    '    ret
+  lsft z    x    c    v    b    n    m    ,    .    /    rsft
+  lctl lmet lalt           spc            ralt rmet rctl
+)
+
+(defalias
+  ;; Layer toggles (with Linux tap-hold workaround (#422)) 
+  cl (multi f24 (tap-hold 0 200 esc (layer-while-held lyr-mouse)) (macro 5 (on-press tap-vkey relf24))) ;; cl = capslock 
+  sp (multi f24 (tap-hold 0 200 spc (layer-while-held lyr-alt)) (macro 5 (on-press tap-vkey relf24))) ;; sp = space 
+
+  
+  ;; --- LAYER SWITCH ACTIONS ---
+  switch-base (layer-switch lyr-base)
+  switch-bypass (layer-switch lyr-bypass)
+  switch-media (layer-switch lyr-media)
+
+  ;; --- FORK LOGIC ---
+  ;; BASE: Meta+Ctrl+Esc -> Bypass | Meta+Esc -> Media | Esc -> @cl
+  fork-bypass-media (fork @switch-media @switch-bypass (lctl rctl))
+  fork-esc-bypass-media (fork @cl @fork-bypass-media (lmet rmet))
+
+  ;; MEDIA: Meta+Ctrl+Esc -> Bypass | Meta+Esc -> Base | Esc -> @cl
+  fork-base-bypass (fork @switch-base @switch-bypass (lctl rctl))
+  fork-esc-base-bypass (fork @cl @fork-base-bypass (lmet rmet))
+
+  ;; BYPASS: Meta+Ctrl+Esc -> Base | Meta+Esc -> Normal Esc | Esc -> Normal Esc
+  fork-esc-base (fork @switch-media @switch-base (lctl rctl))
+  fork-esc-base-media (fork esc @fork-esc-base (lmet rmet))
+
+  ;; --- HOME ROW MODS ---
+  j (multi f24 (tap-hold 200 200 j rsft) (macro 5 (on-press tap-vkey relf24))) 
+  k (multi f24 (tap-hold 200 200 k rctl) (macro 5 (on-press tap-vkey relf24)))
+  l (multi f24 (tap-hold 200 200 l ralt) (macro 5 (on-press tap-vkey relf24)))
+  ; (multi f24 (tap-hold 200 200 ; rmet) (macro 5 (on-press tap-vkey relf24)))
+
+  a (multi f24 (tap-hold 200 200 a lmet) (macro 5 (on-press tap-vkey relf24)))
+  s (multi f24 (tap-hold 200 200 s lalt) (macro 5 (on-press tap-vkey relf24)))
+  d (multi f24 (tap-hold 200 200 d lctl) (macro 5 (on-press tap-vkey relf24)))
+  f (multi f24 (tap-hold 200 200 f lsft) (macro 5 (on-press tap-vkey relf24)))
+
+  ;; --- PHYSICAL MODIFIER OVERRIDES ---
+  ;; These hold the physical mod AND instantly trigger the no-hrm layer
+  ls (multi lsft (layer-while-held lyr-no-hrm))
+  rs (multi rsft (layer-while-held lyr-no-hrm))
+  lc (multi lctl (layer-while-held lyr-no-hrm))
+  lm (multi lmet (layer-while-held lyr-no-hrm))
+  la (multi lalt (layer-while-held lyr-no-hrm))
+  rc (multi rctl (layer-while-held lyr-no-hrm))
+  rm (multi rmet (layer-while-held lyr-no-hrm))
+  ra (multi ralt (layer-while-held lyr-no-hrm))
+
+  ;; --- MOUSE SPEEDS ---
+  fst (movemouse-speed 500) 
+  slw (movemouse-speed 20)  
+
+  ;; Normal Mouse Cursor Movement
+  mmu (movemouse-up 10 5)
+  mmd (movemouse-down 10 5)
+  mml (movemouse-left 10 5)
+  mmr (movemouse-right 10 5)
+
+  ;; Scrolling
+  mwl (mwheel-left 100 30)
+  mwd (mwheel-down 100 50)
+  mwu (mwheel-up 100 50)
+  mwr (mwheel-right 100 30)
+
+  ;; Mouse clicks & Macros
+  ml mlft
+  mr mrgt
+  cpy C-c
+  pst C-v
+)
+
+;; Base layer with HRMs
+;; hold space for alt layer
+;; hold esc/capslock for mouse layer
+(deflayer lyr-base
+  @fork-esc-bypass-media  _    _    _    _    _    _    _    _    _    _    _    _  ;; function row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _                ;; number row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  @fork-esc-bypass-media  @a   @s   @d   @f   _    _    @j   @k   @l   @;   _    _
+  @ls  _    _    _    _    _    _    _    _    _    _    @rs
+  @lc  @lm  @la            @sp            @ra  @rm  @rc
+)
+
+;; ----- Alt layer (trigger = hold space) -----
+;; key c becomes space
+;; home, end = h, g
+;; tab = t
+;; pageup, pagedown = r, v
+;;
+;; esdf become Arrow keys
+;; q = backtick
+;; w = tilde
+;; a = enter
+;; x = backspace
+;; z = delete
+;; F3 = Print Scr
+;; f11/f12 = volume up and down
+;; f1/f2 = brightness up and down
+;;
+;; Problems: 
+;; -- cannot reach right function keys while pressing HRMs
+;; -- HRMs in right side only
+;; -- since we do not have HRMs in left side, do not place keys in right side
+
+(deflayer lyr-alt
+  _    brdn brup  prnt  _    _     _     _     _     _     _     vold  volu     ;; function row 
+  _    f1   f2    f3    f4   f5    f6    f7    f8    f9    f10   f11   f12  _   ;; number row
+  _    grv  S-grv up    pgup tab   _     _     _     _     _     _     _    _
+  _    ret  left  down  rght end   home  _     _     _     _     _     _
+  _    del  bspc  spc   pgdn _     _     _     _     _     _     _
+  _    _    _     _     _    _     _
+)
+
+;; hold c/v to change cursor speed
+;; keys m/n also scroll
+;; ijkl = cursor
+;; esdf = scroll
+;; space = left click
+;; r = right click
+(deflayer lyr-mouse
+  _    _    _    _    _    _    _    _    _    _    _    _    _         ;; function row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _    ;; number row
+  _    _    _    @mwu @mr  _  @cpy @pst @mmu    _    _    _    _    _
+  _    _    @mwl @mwd @mwr _  _    @mml @mmd @mmr  _    _    _
+  _    _    _    @fst @slw _  @mwu @mwd  _  _  _    _
+  _    _    _              @ml            _    _    _
+)
+
+;; MEDIA LAYER (Meta + ESC)
+(deflayer lyr-media
+  @fork-esc-base-bypass  _     _     _     _     _    _    _     _     _      _    _     _  ;; function row
+  _       brdn  brup  _     _     _    _    _     _     _      _    vold  volu  _           ;; number row
+  _                       _     _     up    _     _    _    _     up    _      _    _     _     _
+  @fork-esc-base-bypass   _     left  down  rght  _    _    left  down  rght  _    _     _
+  _       _     _     _     _     _    _    _     _     _      _    _
+  _       _     _           @sp             _     _     _
+)
+
+;; When a physical mod is held, the home row instantly drops HRM logic
+(deflayer lyr-no-hrm
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    a    s    d    f    _    _    j    k    l    ;    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _              @sp              _    _    _
+)
+
+;; BYPASS LAYER (meta + ctrl + esc)
+;; All keys revert to raw physical output except the exit forks. 
+(deflayer lyr-bypass
+  @fork-esc-base-media _ _ _ _ _ _ _ _ _ _ _ _
+  _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  @fork-esc-base-media _ _ _ _ _ _ _ _ _ _ _ _
+  _ _ _ _ _ _ _ _ _ _ _ _
+  _ _ _ spc _ _ _
+)
+

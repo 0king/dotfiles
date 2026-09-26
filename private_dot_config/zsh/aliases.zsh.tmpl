@@ -1,0 +1,66 @@
+alias h='z ~'
+alias dl='z ~/Downloads'
+alias dj='z ~/Desktop/fj'
+alias db='z ~/Desktop/fj/Dropbox'
+alias dd='z /media/d_drive'
+alias cl='clear'
+
+# git
+alias gs='git status'
+
+# Better ls
+alias ls='eza -ah --group-directories-first --icons'
+# alias lg='eza -ah --group-directories-first --icons --git'
+
+# Tree view
+alias tree='eza --tree --icons'
+
+# Better cat
+if command -v bat >/dev/null 2>&1; then
+ alias cat='bat'
+elif command -v batcat >/dev/null 2>&1; then
+ alias bat='batcat'
+ alias cat='batcat'
+fi
+
+# better find
+alias fd='fdfind'
+
+alias f='fzf --preview="batcat --color=always {}"'
+
+alias grep='rg --color=auto'
+alias diff='diff --color=auto'
+
+# easier to read disk
+alias df='df -h'
+alias free='free -g'
+
+# =========================================================
+# Editor
+# =========================================================
+alias vim='nvim'
+alias iv='nvim $(fzf -m --preview="batcat --color=always {}")'
+alias e='nvim'
+
+# confirm before overwriting something
+alias cp="cp -i"
+alias rm="rm -i"
+alias mv="mv -i"
+
+# =========================================================
+# Cross-Platform Package Management & Utilities
+# =========================================================
+{{- if eq .chezmoi.os "darwin" }}
+alias update="brew update && brew upgrade"
+alias o="open"
+{{- else }}
+alias o="xdg-open"
+{{-   if eq .chezmoi.osRelease.id "ubuntu" "debian" }}
+alias update="sudo apt update && sudo apt upgrade -y"
+{{-   else if eq .chezmoi.osRelease.id "fedora" }}
+alias update="sudo dnf upgrade"
+{{-   else if eq .chezmoi.osRelease.id "arch" }}
+alias update="sudo pacman -Syu"
+{{-   end }}
+{{- end }}
+

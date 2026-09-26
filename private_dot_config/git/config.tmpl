@@ -1,0 +1,19 @@
+[init]
+	defaultBranch = main
+
+[user]
+	name = {{ .name }}
+	email = {{ .email }}
+
+[core]
+	excludesfile = ~/.config/git/ignore
+	autocrlf = input
+
+[pull]
+	rebase = true
+
+[push]
+	autoSetupRemote = true
+
+[diff]
+	colorMoved = default

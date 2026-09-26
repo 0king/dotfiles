@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# =========================================================
+# Local Git Pre-Commit Hook: Dotfiles Secret Leak Protection
+# Location: .githooks/pre-commit (Activated via core.hooksPath = .githooks)
+# =========================================================
+
+if command -v gitleaks >/dev/null 2>&1; then
+    gitleaks protect --staged --verbose --redact
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -ne 0 ]; then
+        echo ""
+        echo "❌ [gitleaks] Commit aborted: Leaked secret detected in dotfiles staged changes!"
+        echo "   Please remove the sensitive information before committing."
+        echo "   If this is a false positive, add the fingerprint to .gitleaksignore or bypass with:"
+        echo "     git commit --no-verify"
+        exit $EXIT_CODE
+    fi
+else
+    echo "⚠️ [gitleaks hook] 'gitleaks' binary not found in PATH."
+    echo "   Staged dotfiles were NOT scanned for sensitive secrets."
+    echo "   To enable automated protection, install gitleaks:"
+    echo "     - Arch:   sudo pacman -S gitleaks"
+    echo "     - Fedora: sudo dnf install gitleaks"
+    echo "     - Ubuntu: sudo apt install gitleaks"
+    echo "     - macOS:  brew install gitleaks"
+fi
+
+exit 0

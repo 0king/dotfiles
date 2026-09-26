@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# =========================================================
+# Automated Dependency Installer (Chezmoi Pre-Apply Hook)
+# Runs BEFORE dotfiles are applied to guarantee tool availability
+# =========================================================
+
+set -euo pipefail
+
+echo "========================================================="
+echo "🔧 Checking and Installing Dotfile Dependencies..."
+echo "========================================================="
+
+has_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------
+# 1. Package Installation by OS & Distribution
+# ---------------------------------------------------------
+{{- if .install_packages }}
+{{-   if eq .chezmoi.os "darwin" }}
+echo "🍎 Detected macOS (Darwin) - Using Homebrew..."
+if ! has_cmd brew; then
+    echo "Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)"
+fi
+
+BREW_PACKAGES=(
+    git zsh starship zoxide fzf ripgrep fd bat lazygit yazi neovim gitleaks
+    jq font-fira-code-nerd-font
+)
+
+for pkg in "${BREW_PACKAGES[@]}"; do
+    if ! brew list "$pkg" >/dev/null 2>&1; then
+        echo "Installing $pkg via brew..."
+        brew install "$pkg" || echo "Warning: failed to install $pkg via brew"
+    fi
+done
+
+{{-   else if eq .chezmoi.os "linux" }}
+{{-     if eq .chezmoi.osRelease.id "ubuntu" "debian" }}
+echo "🐧 Detected Ubuntu/Debian - Checking apt packages..."
+export DEBIAN_FRONTEND=noninteractive
+
+if sudo -n true 2>/dev/null; then
+    sudo apt-get update -y
+
+    APT_PACKAGES=(
+        git zsh fzf ripgrep fd-find bat lazygit neovim jq curl wget unzip
+        build-essential wl-clipboard xclip
+    )
+
+    MISSING_APT=()
+    for pkg in "${APT_PACKAGES[@]}"; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            MISSING_APT+=("$pkg")
+        fi
+    done
+
+    if [ ${#MISSING_APT[@]} -gt 0 ]; then
+        echo "Installing missing apt packages: ${MISSING_APT[*]}..."
+        sudo apt-get install -y "${MISSING_APT[@]}" || echo "Some apt packages could not be installed directly."
+    fi
+else
+    echo "ℹ️  Passwordless sudo not available; skipping apt-get update. Run apt install manually if needed."
+fi
+
+mkdir -p "$HOME/.local/bin"
+if has_cmd batcat && ! has_cmd bat; then
+    ln -sf "$(which batcat)" "$HOME/.local/bin/bat"
+fi
+if has_cmd fdfind && ! has_cmd fd; then
+    ln -sf "$(which fdfind)" "$HOME/.local/bin/fd"
+fi
+
+if ! has_cmd starship; then
+    echo "Installing starship prompt..."
+    curl -sS https://starship.rs/install.sh | sh -s -- -y
+fi
+
+if ! has_cmd zoxide; then
+    echo "Installing zoxide..."
+    curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash
+fi
+
+if ! has_cmd gitleaks; then
+    echo "Installing gitleaks..."
+    GITLEAKS_VERSION=$(curl -s "https://api.github.com/repos/gitleaks/gitleaks/releases/latest" 2>/dev/null | grep -Po '"tag_name": "v\K[^"]*' || echo "8.21.2")
+    curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C "$HOME/.local/bin" gitleaks 2>/dev/null || true
+    chmod +x "$HOME/.local/bin/gitleaks" 2>/dev/null || true
+fi
+
+{{-     else if eq .chezmoi.osRelease.id "fedora" }}
+echo "🎩 Detected Fedora - Using dnf..."
+if sudo -n true 2>/dev/null; then
+    DNF_PACKAGES=(
+        git zsh starship zoxide fzf ripgrep fd-find bat lazygit neovim gitleaks
+        jq curl wget unzip gcc make wl-clipboard xclip
+    )
+    sudo dnf install -y "${DNF_PACKAGES[@]}" || echo "Warning: some dnf packages failed to install"
+else
+    echo "ℹ️  Passwordless sudo not available; skipping dnf install."
+fi
+
+{{-     else if eq .chezmoi.osRelease.id "arch" }}
+echo "🏹 Detected Arch Linux - Using pacman..."
+if sudo -n true 2>/dev/null; then
+    PAC_PACKAGES=(
+        git zsh starship zoxide fzf ripgrep fd bat lazygit yazi neovim gitleaks
+        jq curl wget unzip base-devel wl-clipboard xclip ttf-fira-code ttf-nerd-fonts-symbols
+    )
+    sudo pacman -S --needed --noconfirm "${PAC_PACKAGES[@]}" || echo "Warning: some pacman packages failed to install"
+else
+    echo "ℹ️  Passwordless sudo not available; skipping pacman install."
+fi
+{{-     end }}
+
+# ---------------------------------------------------------
+# 2. Linux Nerd Font Installation (FiraCode Nerd Font)
+# ---------------------------------------------------------
+FONT_DIR="$HOME/.local/share/fonts"
+if [ ! -f "$FONT_DIR/FiraCodeNerdFont-Regular.ttf" ]; then
+    echo "📦 Checking FiraCode Nerd Font..."
+    mkdir -p "$FONT_DIR"
+    curl -fLo "$FONT_DIR/FiraCode.zip" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip 2>/dev/null || true
+    if [ -f "$FONT_DIR/FiraCode.zip" ]; then
+        unzip -qo "$FONT_DIR/FiraCode.zip" -d "$FONT_DIR" 2>/dev/null || true
+        rm -f "$FONT_DIR/FiraCode.zip"
+        if has_cmd fc-cache; then
+            fc-cache -f "$FONT_DIR" >/dev/null 2>&1 || true
+        fi
+        echo "✅ FiraCode Nerd Font installed."
+    fi
+fi
+{{-   end }}
+{{- end }}
+
+# ---------------------------------------------------------
+# 3. Zsh Plugin Manager (Antidote)
+# ---------------------------------------------------------
+ANTIDOTE_DIR="$HOME/.config/zsh/.antidote"
+if [ ! -d "$ANTIDOTE_DIR" ]; then
+    echo "🔌 Cloning Antidote plugin manager for Zsh..."
+    git clone --depth=1 https://github.com/mattmc3/antidote.git "$ANTIDOTE_DIR"
+fi
+
+echo "========================================================="
+echo "✅ All dotfile dependencies checked successfully!"
+echo "========================================================="

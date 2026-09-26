@@ -1,0 +1,67 @@
+
+APP NAME                                  SIZE          TYPE        INSTALL DATE    
+───────────────────────────────────────────────────────────────────────────────────
+kf6-core24                                     1.63 GB  snap        2026-07-27 13:58
+cursor                                       869.38 MB  deb         2026-09-06 20:02
+gnome-46-2404                                614.53 MB  snap        2026-07-16 21:35
+gnome-42-2204                                531.49 MB  snap        2026-08-20 14:41
+libnvidia-gl-580                             519.80 MB  deb         2026-09-11 20:13
+code                                         518.39 MB  snap        2026-09-12 23:05
+brave-origin                                 422.45 MB  deb         2026-09-06 20:02
+mesa-2404                                    401.98 MB  snap        2026-07-16 21:35
+libnvidia-compute-580                        325.53 MB  deb         2026-09-11 20:13
+content-snap-core22-lite                     324.15 MB  snap        2026-09-15 02:48
+obsidian                                     306.57 MB  deb         2026-07-17 03:46
+firefox                                      260.84 MB  snap        2026-09-07 19:24
+libqt6webenginecore6                         197.90 MB  deb         2026-09-15 05:05
+linux-objects-nvidia-580-7.0.0-31-gen...     190.44 MB  deb         2026-09-11 20:13
+linux-objects-nvidia-580-7.0.0-30-gen...     190.39 MB  deb         2026-08-23 14:58
+linux-firmware-qualcomm-misc                 159.56 MB  deb         2026-07-16 21:42
+linux-modules-7.0.0-31-generic               159.53 MB  deb         2026-09-05 22:31
+linux-modules-7.0.0-30-generic               159.52 MB  deb         2026-08-23 14:57
+yazi                                         149.82 MB  snap        2026-09-01 20:47
+antigravity                                  145.01 MB  snap        2026-09-15 02:26
+ibus-data                                    144.18 MB  deb         2026-04-23 06:47
+snapd                                        140.20 MB  deb         2026-08-23 15:02
+libllvm21                                    132.19 MB  deb         2026-04-23 06:46
+nvidia-kernel-source-580                     118.23 MB  deb         2026-09-11 20:13
+mesa-vulkan-drivers                          107.63 MB  deb         2026-08-23 15:02
+linux-firmware-nvidia-graphics               103.71 MB  deb         2026-07-16 21:42
+nvidia-firmware-580-580.178.04               100.67 MB  deb         2026-09-11 20:13
+linux-firmware-intel-wireless                 97.30 MB  deb         2026-07-16 21:42
+qbittorrent-5.2.3_x86_64                      96.53 MB  appimage    2026-08-25 13:13
+libwebkit2gtk-4.1-0                           92.67 MB  deb         2026-09-01 14:29
+gtk-common-themes                             91.69 MB  snap        2026-04-23 06:51
+libwebkitgtk-6.0-4                            91.63 MB  deb         2026-09-01 14:29
+linux-headers-7.0.0-31                        90.32 MB  deb         2026-09-05 22:31
+linux-headers-7.0.0-30                        90.28 MB  deb         2026-08-23 14:57
+fonts-noto-cjk                                89.08 MB  deb         2026-04-23 06:46
+yaru-theme-icon                               78.41 MB  deb         2026-04-23 06:47
+bun                                           77.02 MB  elf         2026-08-20 06:30
+ffmpeg-2404                                   75.52 MB  snap        2026-09-15 11:52
+core22                                        73.98 MB  snap        2026-09-14 11:36
+gcc-15-x86-64-linux-gnu                       73.95 MB  deb         2026-07-31 18:51
+okular                                        70.77 MB  snap        2026-07-27 13:50
+core24                                        66.79 MB  snap        2026-09-14 03:35
+core20                                        63.79 MB  snap        2026-09-12 21:09
+ubuntu-wallpapers-resolute                    61.76 MB  deb         2026-04-23 06:47
+core26                                        60.05 MB  snap        2026-08-08 14:25
+linux-firmware-mellanox-spectrum              59.00 MB  deb         2026-07-16 21:42
+webkitgtk-6-gnome-2404                        58.93 MB  snap        2026-08-01 01:34
+libclang-cpp21                                57.55 MB  deb         2026-04-23 06:46
+uv                                            56.29 MB  elf         2026-08-15 00:59
+core18                                        55.50 MB  snap        2026-09-13 04:28
+libqt6webengine6-data                         52.15 MB  deb         2026-09-15 05:05
+snapd                                         50.27 MB  snap        2026-09-07 14:05
+───────────────────────────────────────────────────────────────────────────────────
+
+SUMMARY BREAKDOWN BY TYPE
+TYPE             COUNT      TOTAL DISK
+────────────────────────────────────────────
+deb                 30         5.16 GB
+snap                19         5.16 GB
+elf                  2       133.31 MB
+appimage             1        96.53 MB
+────────────────────────────────────────────
+TOTAL               52        10.54 GB
+
