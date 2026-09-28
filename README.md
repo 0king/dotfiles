@@ -41,8 +41,10 @@ Modern, reproducible, and cross-platform personal dotfiles managed with [chezmoi
 │   ├── yazi/                                # Yazi file manager configuration
 │   └── zed/                                 # Zed editor configuration (private_settings.json)
 ├── private_dot_local/
-│   └── bin/                                 # Custom user scripts (browser-picker, scripts collection)
-│       └── scripts/                         # Automation & utilities (create-github-repo, bash-boilerplate, etc.)
+│   └── bin/                                 # Custom user scripts on PATH (git_*, ubuntu_*, vscode_*, etc.)
+│       ├── code/                            # C/C++ source snippets (off PATH)
+│       ├── docs/                            # Script manuals & guides (off PATH)
+│       └── out/                             # Script-generated data & snapshots (off PATH)
 └── README.md                                # This documentation
 ```
 
