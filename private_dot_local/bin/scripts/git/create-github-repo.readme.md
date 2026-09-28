@@ -4,10 +4,11 @@ An interactive Bash script to automate GitHub repository creation and initializa
 
 ### Key Features
 
-1. **GitHub SSH Connectivity & Verification**:
+1. **GitHub Connectivity & Verification**:
    - Tests SSH connection to GitHub (`ssh -T git@github.com`) before performing operations.
    - Auto-detects your authenticated GitHub username directly from the SSH greeting.
-   - Configures the Git remote with the SSH URL: `git@github.com:<owner>/<repo>.git`.
+   - Configures the Git remote with SSH (`git@github.com:<owner>/<repo>.git`) or HTTPS (`https://github.com/<owner>/<repo>.git`).
+   - Seamless HTTPS fallback if SSH keys are not configured.
 
 2. **Git Repository Setup & Initialization**:
    - Detects if the current directory is already a Git repository.
@@ -30,7 +31,7 @@ An interactive Bash script to automate GitHub repository creation and initializa
    - Inspects the working tree for uncommitted changes or untracked files.
    - Offers to create an initial `README.md` if the directory is empty.
    - Prompts to stage and commit changes with a customizable commit message (default: `"Initial commit"`).
-   - Asks whether to push the branch to GitHub over SSH immediately (`git push -u origin <branch>`).
+   - Asks whether to push the branch to GitHub over SSH/HTTPS immediately (`git push -u origin <branch>`).
 
 ---
 
@@ -39,24 +40,24 @@ An interactive Bash script to automate GitHub repository creation and initializa
 #### 1. Interactive Mode (Default)
 Run the script in any project directory:
 ```bash
-./executable_create-github-repo.sh
+./create-github-repo.sh
 ```
 Or specify a target folder:
 ```bash
-./executable_create-github-repo.sh --dir /path/to/my-project
+./create-github-repo.sh --dir /path/to/my-project
 ```
 
 #### 2. Non-Interactive / Quick Flags
 You can also supply flags to automate or pre-fill parameters:
 ```bash
 # Create a private repo with a custom name and description
-./executable_create-github-repo.sh -n "my-app" -d "Application backend service"
+./create-github-repo.sh -n "my-app" -d "Application backend service"
 
 # Create a public repo in an organization and push immediately
-./executable_create-github-repo.sh -n "shared-utils" -o "my-org" --public --push -m "v1.0 release"
+./create-github-repo.sh -n "shared-utils" -o "my-org" --public --push -m "v1.0 release"
 
 # Display all options
-./executable_create-github-repo.sh --help
+./create-github-repo.sh --help
 ```
 
 ### Options Overview
@@ -70,6 +71,8 @@ You can also supply flags to automate or pre-fill parameters:
 | `-o, --org <org>` | Create under an organization | Personal user account |
 | `-b, --branch <branch>` | Default branch name | Current branch or `main` |
 | `-r, --remote <name>` | Git remote name | `origin` |
+| `--ssh` | Use SSH for Git remote URL | Default |
+| `--https` | Use HTTPS for Git remote URL | `false` |
 | `-m, --message <msg>` | Commit message | `"Initial commit"` |
 | `--push` / `--no-push` | Push to remote immediately / skip push | Prompted interactively |
 | `--dir <path>` | Target directory to initialize | Current directory |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # create-github-repo.sh — Interactive CLI tool to create a GitHub repository,
-# configure it with SSH remotes, initialize Git (if needed), and optionally
+# configure it with SSH or HTTPS remotes, initialize Git (if needed), and optionally
 # commit and push changes.
 #
 # Usage:
@@ -15,10 +15,10 @@
 #
 # Prerequisites:
 #   - git (required)
-#   - ssh (required)
 #   - curl (required)
+#   - ssh (optional, required only for SSH remotes)
 #   - jq (optional, recommended; fallback parser included)
-#   - GitHub SSH Key configured (for SSH remote operations)
+#   - GitHub SSH Key configured (if using SSH remotes)
 #   - GitHub Personal Access Token (PAT) with 'repo' scope OR 'gh' CLI authenticated
 #
 
@@ -92,13 +92,17 @@ SSH_USER=""
 SSH_AUTH_OK=false
 AUTH_USER=""
 USE_GH_CLI=false
+USE_HTTPS=false
+ACTIVE_TOKEN=""
+OWNER=""
+TARGET_BRANCH=""
 
 # ── Help / Usage ──────────────────────────────────────────────────────────────
 show_help() {
   cat <<EOF
 ${BOLD}Usage:${RESET} $(basename "$0") [OPTIONS]
 
-Interactive wizard to create a GitHub repository, link it via SSH, initialize git,
+Interactive wizard to create a GitHub repository, link it via SSH or HTTPS, initialize git,
 and optionally push local commits.
 
 ${BOLD}Options:${RESET}
@@ -109,6 +113,8 @@ ${BOLD}Options:${RESET}
   -o, --org <org>           Create repository under an Organization
   -b, --branch <branch>     Branch name to use (default: current or 'main')
   -r, --remote <name>       Git remote name (default: origin)
+      --ssh                 Use SSH for git remote URL (default)
+      --https               Use HTTPS for git remote URL
   -m, --message <msg>       Commit message if committing files (default: "Initial commit")
       --push                Automatically push to GitHub without prompting
       --no-push             Do not push to GitHub
@@ -161,6 +167,10 @@ parse_args() {
       -r|--remote)
         [[ $# -lt 2 ]] && die "Option $1 requires an argument."
         REMOTE_NAME="$2"; shift 2 ;;
+      --ssh)
+        USE_HTTPS=false; shift ;;
+      --https)
+        USE_HTTPS=true; shift ;;
       -m|--message)
         [[ $# -lt 2 ]] && die "Option $1 requires an argument."
         COMMIT_MSG="$2"; shift 2 ;;
@@ -188,19 +198,19 @@ parse_args() {
 # Read input from /dev/tty if available so prompts work even if redirected
 read_tty() {
   if [ -c /dev/tty ]; then
-    read -r "$@" </dev/tty
+    read -r "$@" </dev/tty || true
   else
-    read -r "$@"
+    read -r "$@" || true
   fi
 }
 
 # Read secret (silent echo) from /dev/tty
 read_secret_tty() {
   if [ -c /dev/tty ]; then
-    read -rs "$@" </dev/tty
+    read -rs "$@" </dev/tty || true
   else
     stty -echo 2>/dev/null || true
-    read -r "$@"
+    read -r "$@" || true
     stty echo 2>/dev/null || true
   fi
   printf "\n"
@@ -255,10 +265,12 @@ prompt_confirm() {
   done
 }
 
+# Sets variable $1 to the 0-based selected index
 prompt_choice() {
-  local prompt_text="$1"
-  local default_idx="$2"
-  shift 2
+  local var_name="$1"
+  local prompt_text="$2"
+  local default_idx="$3"
+  shift 3
   local options=("$@")
   local choice=""
 
@@ -273,7 +285,8 @@ prompt_choice() {
   done
 
   if [ "$INTERACTIVE" = false ]; then
-    return "$((default_idx - 1))"
+    printf -v "$var_name" '%d' "$((default_idx - 1))"
+    return 0
   fi
 
   while true; do
@@ -281,7 +294,8 @@ prompt_choice() {
     read_tty choice
     choice="${choice:-$default_idx}"
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
-      return "$((choice - 1))"
+      printf -v "$var_name" '%d' "$((choice - 1))"
+      return 0
     fi
     printf "Invalid selection. Please choose a number between 1 and %d.\n" "${#options[@]}"
   done
@@ -291,11 +305,14 @@ prompt_choice() {
 check_dependencies() {
   log_info "Checking essential dependencies..."
   local missing=()
-  for cmd in git ssh curl; do
+  for cmd in git curl; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       missing+=("$cmd")
     fi
   done
+  if [ "$USE_HTTPS" = false ] && ! command -v ssh >/dev/null 2>&1; then
+    missing+=("ssh")
+  fi
 
   if [ ${#missing[@]} -gt 0 ]; then
     die "Missing required command(s): ${missing[*]}. Please install them before proceeding."
@@ -308,6 +325,11 @@ check_dependencies() {
 
 # ── SSH Authentication Check ──────────────────────────────────────────────────
 check_ssh_auth() {
+  if [ "$USE_HTTPS" = true ]; then
+    log_info "Using HTTPS for remote operations (SSH check skipped)."
+    return 0
+  fi
+
   log_step "Step 1: Checking SSH Connection to GitHub"
   log_info "Testing SSH authentication with git@github.com..."
 
@@ -332,14 +354,42 @@ check_ssh_auth() {
     printf "  4. Ensure your key is loaded in agent: %s\n\n" "eval \$(ssh-agent -s) && ssh-add ~/.ssh/id_ed25519"
 
     if [ "$INTERACTIVE" = true ]; then
-      if ! prompt_confirm "Do you want to continue anyway? (SSH push may fail if keys are not ready)" "N"; then
-        die "Aborted by user to configure SSH."
-      fi
+      local auth_fail_choices=(
+        "Switch remote protocol to HTTPS (Recommended)"
+        "Continue with SSH anyway (SSH push may fail if keys are not ready)"
+        "Abort to configure SSH keys"
+      )
+      local fail_choice=0
+      prompt_choice fail_choice "How would you like to handle Git remote connection?" 1 "${auth_fail_choices[@]}"
+      case "$fail_choice" in
+        0)
+          USE_HTTPS=true
+          log_info "Remote protocol set to HTTPS."
+          ;;
+        1)
+          USE_HTTPS=false
+          log_warn "Continuing with SSH remote."
+          ;;
+        2)
+          die "Aborted by user to configure SSH."
+          ;;
+      esac
     fi
   fi
 }
 
 # ── GitHub Token & Authentication ─────────────────────────────────────────────
+clean_token() {
+  local tok="$1"
+  tok="${tok#Bearer }"
+  tok="${tok#bearer }"
+  tok="${tok#BEARER }"
+  tok="${tok#token }"
+  tok="${tok#TOKEN }"
+  tok="$(printf '%s' "$tok" | tr -d "[:space:]\"'")"
+  printf '%s' "$tok"
+}
+
 # Simple JSON string extractor fallback when jq is absent
 extract_json_field() {
   local json="$1"
@@ -353,19 +403,36 @@ extract_json_field() {
 
 verify_github_token() {
   local token="$1"
+  token="$(clean_token "$token")"
+  [ -z "$token" ] && return 1
+
   local res_file="$TEMP_DIR/user.json"
+  local curl_err="$TEMP_DIR/curl_user.log"
   local http_code=""
 
-  http_code=$(curl -s -w "%{http_code}" -o "$res_file" \
+  http_code=$(curl -sS -w "%{http_code}" -o "$res_file" \
     -H "Accept: application/vnd.github+json" \
     -H "Authorization: Bearer $token" \
+    -H "User-Agent: gh-repo-creator" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/user" 2>/dev/null || echo "000")
+    "https://api.github.com/user" 2>"$curl_err" || true)
+
+  http_code="${http_code: -3}"
 
   if [ "$http_code" = "200" ]; then
-    AUTH_USER=$(extract_json_field "$(cat "$res_file")" "login")
+    AUTH_USER=$(extract_json_field "$(cat "$res_file" 2>/dev/null || true)" "login")
     return 0
   else
+    if [ "$http_code" = "000" ] || [ -z "$http_code" ]; then
+      log_warn "Network connection failed while verifying token."
+      [ -s "$curl_err" ] && cat "$curl_err" >&2
+    elif [ "$http_code" = "401" ]; then
+      log_warn "GitHub token rejected (HTTP 401 Unauthorized): Invalid or expired token."
+    elif [ "$http_code" = "403" ]; then
+      log_warn "GitHub token lacks permissions or exceeded rate limit (HTTP 403 Forbidden)."
+    else
+      log_warn "GitHub API returned HTTP $http_code while verifying token."
+    fi
     return 1
   fi
 }
@@ -397,10 +464,12 @@ resolve_authentication() {
 
   # Check CLI argument or environment token
   local token="${CLI_TOKEN:-${GITHUB_TOKEN:-}}"
+  token="$(clean_token "$token")"
 
   # Check saved token file
   if [ -z "$token" ] && [ -f "$SAVED_TOKEN_FILE" ]; then
     token="$(head -n 1 "$SAVED_TOKEN_FILE" | tr -d '[:space:]')"
+    token="$(clean_token "$token")"
     if [ -n "$token" ]; then
       log_info "Found saved GitHub token in ${SAVED_TOKEN_FILE}"
     fi
@@ -414,7 +483,7 @@ resolve_authentication() {
       ACTIVE_TOKEN="$token"
       return 0
     else
-      log_warn "Provided GitHub token is invalid or expired."
+      log_warn "Provided GitHub token is invalid, expired, or cannot connect to GitHub."
       token=""
     fi
   fi
@@ -426,13 +495,14 @@ resolve_authentication() {
     fi
 
     printf "\n%sGitHub Personal Access Token (PAT) Required%s\n" "$BOLD" "$RESET"
-    printf "To create repositories, a token with %s'repo'%s scope is needed.\n" "$CYAN" "$RESET"
-    printf "Create one here: %shttps://github.com/settings/tokens/new?scopes=repo&description=create-github-repo-cli%s\n\n" "$CYAN" "$RESET"
+    printf "To create repositories, a Classic token with %s'repo'%s scope is recommended.\n" "$CYAN" "$RESET"
+    printf "Create one here: %shttps://github.com/settings/tokens/new?scopes=repo&description=create-github-repo-cli%s\n" "$CYAN" "$RESET"
+    printf "%sNote:%s If using a Fine-Grained PAT, ensure it has 'Administration: Read and write' and access to All Repositories.\n\n" "$YELLOW" "$RESET"
 
     while true; do
       printf "%sEnter your GitHub Personal Access Token:%s " "$BOLD" "$RESET"
       read_secret_tty token
-      token="$(printf "%s" "$token" | tr -d '[:space:]')"
+      token="$(clean_token "$token")"
 
       if [ -z "$token" ]; then
         log_warn "Token cannot be empty."
@@ -466,6 +536,7 @@ resolve_authentication() {
 # ── Local Git Inspection & Initialization ─────────────────────────────────────
 sanitize_repo_name() {
   local name="$1"
+  name="${name#@}"
   # Replace spaces and punctuation with hyphens, lowercase, remove invalid chars
   name="$(printf "%s" "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-_.')"
   name="$(printf "%s" "$name" | sed -E 's/^-+//; s/-+$//')"
@@ -556,6 +627,7 @@ GITIGNORE
       log_success "Created starter .gitignore"
     fi
   fi
+
   # Check & determine branch
   local detected_branch=""
   detected_branch="$(git branch --show-current 2>/dev/null || git symbolic-ref --short HEAD 2>/dev/null || echo "")"
@@ -592,20 +664,78 @@ GITIGNORE
 configure_repo_metadata() {
   log_step "Step 4: Repository Details"
 
-  # Owner (User vs Organization)
-  local default_owner="${AUTH_USER:-${SSH_USER:-}}"
-  if [ -z "$ORG_NAME" ] && [ "$INTERACTIVE" = true ]; then
-    printf "\nOwner options: [Personal account: %s@%s%s] or an Organization.\n" "$CYAN" "$default_owner" "$RESET"
-    local owner_input=""
-    prompt_input "Owner (press Enter for @$default_owner, or type org name)" "$default_owner" owner_input
-    if [ "$owner_input" != "$default_owner" ] && [ -n "$owner_input" ]; then
-      ORG_NAME="$owner_input"
-      OWNER="$ORG_NAME"
+  # Determine default personal owner
+  local default_personal="${AUTH_USER:-${SSH_USER:-}}"
+  default_personal="${default_personal#@}"
+
+  if [ -n "$ORG_NAME" ]; then
+    # Passed via CLI argument
+    ORG_NAME="${ORG_NAME#@}"
+    if [ -n "$default_personal" ] && [ "$ORG_NAME" = "$default_personal" ]; then
+      # User passed their personal username as --org
+      ORG_NAME=""
+      OWNER="$default_personal"
     else
-      OWNER="$default_owner"
+      OWNER="$ORG_NAME"
+    fi
+  elif [ "$INTERACTIVE" = true ]; then
+    local owner_choices=()
+    if [ -n "$default_personal" ]; then
+      owner_choices+=("Personal account (@$default_personal)" "An Organization")
+    else
+      owner_choices+=("Personal account" "An Organization")
+    fi
+
+    local owner_type=0
+    prompt_choice owner_type "Where should the repository be created?" 1 "${owner_choices[@]}"
+
+    if [ "$owner_type" -eq 1 ]; then
+      # Organization
+      local org_input=""
+      while true; do
+        prompt_input "Enter Organization name" "" org_input
+        org_input="${org_input#@}"
+        org_input="$(printf '%s' "$org_input" | tr -d '[:space:]')"
+        if [ -n "$org_input" ]; then
+          if [ -n "$default_personal" ] && [ "$org_input" = "$default_personal" ]; then
+            log_warn "'@$org_input' is your personal account, not an organization. Creating as personal repository."
+            ORG_NAME=""
+            OWNER="$default_personal"
+          else
+            ORG_NAME="$org_input"
+            OWNER="$ORG_NAME"
+          fi
+          break
+        fi
+        log_warn "Organization name cannot be empty."
+      done
+    else
+      # Personal account
+      ORG_NAME=""
+      if [ -n "$default_personal" ]; then
+        OWNER="$default_personal"
+      else
+        local user_input=""
+        while true; do
+          prompt_input "Enter your GitHub username" "" user_input
+          user_input="${user_input#@}"
+          user_input="$(printf '%s' "$user_input" | tr -d '[:space:]')"
+          if [ -n "$user_input" ]; then
+            OWNER="$user_input"
+            AUTH_USER="$user_input"
+            break
+          fi
+          log_warn "Username cannot be empty."
+        done
+      fi
     fi
   else
-    OWNER="${ORG_NAME:-$default_owner}"
+    # Non-interactive without --org
+    ORG_NAME=""
+    OWNER="${default_personal:-}"
+    if [ -z "$OWNER" ]; then
+      die "Cannot determine repository owner in non-interactive mode. Pass -o/--org or authenticate with GitHub."
+    fi
   fi
 
   # Description
@@ -616,23 +746,30 @@ configure_repo_metadata() {
   # Visibility
   if [ "$INTERACTIVE" = true ]; then
     local vis_options=("Private (restricted access)" "Public (visible to everyone)")
-    local default_idx=1
-    [ "$IS_PRIVATE" = false ] && default_idx=2
-    prompt_choice "Select repository visibility:" "$default_idx" "${vis_options[@]}"
-    local choice=$?
-    if [ "$choice" -eq 1 ]; then
+    local default_vis_idx=1
+    [ "$IS_PRIVATE" = false ] && default_vis_idx=2
+    local vis_choice=0
+    prompt_choice vis_choice "Select repository visibility:" "$default_vis_idx" "${vis_options[@]}"
+    if [ "$vis_choice" -eq 1 ]; then
       IS_PRIVATE=false
     else
       IS_PRIVATE=true
     fi
   fi
 
+  local target_url=""
+  if [ "$USE_HTTPS" = true ]; then
+    target_url="https://github.com/${OWNER}/${REPO_NAME}.git"
+  else
+    target_url="git@github.com:${OWNER}/${REPO_NAME}.git"
+  fi
+
   printf "\n%sSummary of repository to create:%s\n" "$BOLD" "$RESET"
   printf "  • Name:        %s%s%s\n" "$BOLD" "$REPO_NAME" "$RESET"
-  printf "  • Owner:       %s%s%s\n" "$CYAN" "$OWNER" "$RESET"
+  printf "  • Owner:       %s%s%s%s\n" "$CYAN" "$OWNER" "$([ -n "$ORG_NAME" ] && echo " (Organization)" || echo " (Personal)")" "$RESET"
   printf "  • Visibility:  %s%s%s\n" "$YELLOW" "$([ "$IS_PRIVATE" = true ] && echo "Private" || echo "Public")" "$RESET"
   [ -n "$REPO_DESC" ] && printf "  • Description: %s\n" "$REPO_DESC"
-  printf "  • Remote SSH:  %sgit@github.com:%s/%s.git%s\n\n" "$CYAN" "$OWNER" "$REPO_NAME" "$RESET"
+  printf "  • Remote URL:  %s%s%s\n\n" "$CYAN" "$target_url" "$RESET"
 
   if [ "$INTERACTIVE" = true ]; then
     if ! prompt_confirm "Create this repository on GitHub now?" "Y"; then
@@ -653,6 +790,9 @@ create_remote_repo() {
     log_info "Creating repository via GitHub CLI (gh)..."
     local gh_args=("$OWNER/$REPO_NAME" "--$visibility_flag")
     [ -n "$REPO_DESC" ] && gh_args+=("--description" "$REPO_DESC")
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      gh_args+=("--source=." "--remote=$REMOTE_NAME")
+    fi
 
     if gh repo create "${gh_args[@]}"; then
       log_success "GitHub repository created successfully via gh CLI!"
@@ -681,27 +821,37 @@ create_remote_repo() {
     payload="{\"name\":\"$REPO_NAME\",\"description\":\"$escaped_desc\",\"private\":$IS_PRIVATE,\"auto_init\":false}"
   fi
 
-  log_info "Sending creation request to GitHub API..."
+  log_info "Sending creation request to GitHub API ($api_url)..."
   local res_file="$TEMP_DIR/create_res.json"
+  local curl_err="$TEMP_DIR/curl_create.log"
   local http_code=""
 
-  http_code=$(curl -s -w "%{http_code}" -o "$res_file" -X POST \
+  http_code=$(curl -sS -w "%{http_code}" -o "$res_file" -X POST \
     -H "Accept: application/vnd.github+json" \
+    -H "Content-Type: application/json" \
     -H "Authorization: Bearer $ACTIVE_TOKEN" \
+    -H "User-Agent: gh-repo-creator" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -d "$payload" \
-    "$api_url" 2>/dev/null || echo "000")
+    "$api_url" 2>"$curl_err" || true)
+
+  http_code="${http_code: -3}"
 
   if [ "$http_code" = "201" ]; then
     log_success "GitHub repository created successfully: ${BOLD}https://github.com/$OWNER/$REPO_NAME${RESET}"
   elif [ "$http_code" = "422" ]; then
-    local err_msg
-    err_msg=$(extract_json_field "$(cat "$res_file")" "message")
+    local err_msg=""
+    if command -v jq >/dev/null 2>&1; then
+      err_msg=$(jq -r '(.errors[].message // .message) // empty' "$res_file" 2>/dev/null | head -n1 || true)
+    fi
+    [ -z "$err_msg" ] && err_msg=$(extract_json_field "$(cat "$res_file" 2>/dev/null || true)" "message")
+    [ -z "$err_msg" ] && err_msg="Unprocessable entity"
+
     log_warn "GitHub responded with 422: ${err_msg}"
     printf "%sThe repository '%s/%s' might already exist or the name is invalid.%s\n" "$YELLOW" "$OWNER" "$REPO_NAME" "$RESET"
 
     if [ "$INTERACTIVE" = true ]; then
-      if prompt_confirm "Do you want to link the existing repository '$OWNER/$REPO_NAME' via SSH anyway?" "Y"; then
+      if prompt_confirm "Do you want to link the existing repository '$OWNER/$REPO_NAME' anyway?" "Y"; then
         log_info "Proceeding with existing repository..."
       else
         die "Aborted. Please choose a different repository name."
@@ -709,60 +859,95 @@ create_remote_repo() {
     else
       log_info "Non-interactive mode: proceeding with existing repository link..."
     fi
+  elif [ "$http_code" = "000" ] || [ -z "$http_code" ]; then
+    log_error "Network connection failed. Could not reach GitHub API."
+    if [ -f "$curl_err" ] && [ -s "$curl_err" ]; then
+      cat "$curl_err" >&2
+    fi
+    die "Please verify your internet connection or proxy settings."
+  elif [ "$http_code" = "401" ]; then
+    log_error "Authentication failed (HTTP 401 Unauthorized)."
+    log_error "Your GitHub token is invalid, expired, or revoked."
+    die "Please update your token via --token or in $SAVED_TOKEN_FILE."
+  elif [ "$http_code" = "403" ]; then
+    local error_body
+    error_body=$(cat "$res_file" 2>/dev/null || cat "$curl_err" 2>/dev/null || echo "Forbidden")
+    log_error "Permission denied (HTTP 403 Forbidden):"
+    printf "%s\n" "$error_body" >&2
+    log_warn "Troubleshooting tips:"
+    log_warn "  1. If using a Classic PAT, ensure it has the 'repo' scope."
+    log_warn "  2. If using a Fine-Grained PAT, ensure it has 'Administration: Read and write' permissions and access to All Repositories."
+    log_warn "  3. If creating under an organization, ensure your account has permission to create repositories in @$OWNER."
+    die "Failed to create GitHub repository due to permissions."
+  elif [ "$http_code" = "404" ]; then
+    local error_body
+    error_body=$(cat "$res_file" 2>/dev/null || cat "$curl_err" 2>/dev/null || echo "Not Found")
+    log_error "Endpoint not found (HTTP 404):"
+    printf "%s\n" "$error_body" >&2
+    if [ -n "$ORG_NAME" ]; then
+      log_warn "GitHub Organization '@$ORG_NAME' was not found or your token does not have access to it."
+    fi
+    die "Failed to create GitHub repository."
   else
     local error_body
-    error_body=$(cat "$res_file" 2>/dev/null || echo "Unknown error")
+    error_body=$(cat "$res_file" 2>/dev/null || cat "$curl_err" 2>/dev/null || echo "Unknown error")
     log_error "GitHub API error (HTTP $http_code):"
     printf "%s\n" "$error_body" >&2
     die "Failed to create GitHub repository."
   fi
 }
 
-# ── Configure Remote URL (SSH) ────────────────────────────────────────────────
-setup_ssh_remote() {
-  log_step "Step 6: Configuring Git SSH Remote"
+# ── Configure Remote URL (SSH / HTTPS) ────────────────────────────────────────
+setup_git_remote() {
+  log_step "Step 6: Configuring Git Remote"
 
-  local ssh_url="git@github.com:${OWNER}/${REPO_NAME}.git"
-  log_info "Target SSH Remote: ${BOLD}${ssh_url}${RESET}"
+  local target_url=""
+  if [ "$USE_HTTPS" = true ]; then
+    target_url="https://github.com/${OWNER}/${REPO_NAME}.git"
+  else
+    target_url="git@github.com:${OWNER}/${REPO_NAME}.git"
+  fi
+
+  log_info "Target Remote URL: ${BOLD}${target_url}${RESET}"
 
   local existing_url=""
   existing_url="$(git remote get-url "$REMOTE_NAME" 2>/dev/null || true)"
 
   if [ -n "$existing_url" ]; then
-    if [ "$existing_url" = "$ssh_url" ]; then
-      log_success "Remote '$REMOTE_NAME' is already configured correctly: $ssh_url"
+    if [ "$existing_url" = "$target_url" ]; then
+      log_success "Remote '$REMOTE_NAME' is already configured correctly: $target_url"
     else
       log_warn "Remote '$REMOTE_NAME' already exists and points to: $existing_url"
       if [ "$INTERACTIVE" = true ]; then
         local choices=(
-          "Update remote '$REMOTE_NAME' to SSH: $ssh_url"
+          "Update remote '$REMOTE_NAME' to: $target_url"
           "Keep existing remote and add a new remote (e.g. 'github')"
           "Cancel remote configuration"
         )
-        prompt_choice "How would you like to handle the existing remote?" 1 "${choices[@]}"
-        local choice=$?
-        case "$choice" in
+        local rem_choice=0
+        prompt_choice rem_choice "How would you like to handle the existing remote?" 1 "${choices[@]}"
+        case "$rem_choice" in
           0)
-            git remote set-url "$REMOTE_NAME" "$ssh_url"
-            log_success "Updated remote '$REMOTE_NAME' to $ssh_url"
+            git remote set-url "$REMOTE_NAME" "$target_url"
+            log_success "Updated remote '$REMOTE_NAME' to $target_url"
             ;;
           1)
             prompt_input "Enter new remote name" "github" REMOTE_NAME
-            git remote add "$REMOTE_NAME" "$ssh_url"
-            log_success "Added remote '$REMOTE_NAME' with $ssh_url"
+            git remote add "$REMOTE_NAME" "$target_url"
+            log_success "Added remote '$REMOTE_NAME' with $target_url"
             ;;
           2)
             log_warn "Skipped remote configuration."
             ;;
         esac
       else
-        git remote set-url "$REMOTE_NAME" "$ssh_url"
-        log_success "Updated remote '$REMOTE_NAME' to $ssh_url"
+        git remote set-url "$REMOTE_NAME" "$target_url"
+        log_success "Updated remote '$REMOTE_NAME' to $target_url"
       fi
     fi
   else
-    git remote add "$REMOTE_NAME" "$ssh_url"
-    log_success "Added remote '$REMOTE_NAME' -> $ssh_url"
+    git remote add "$REMOTE_NAME" "$target_url"
+    log_success "Added remote '$REMOTE_NAME' -> $target_url"
   fi
 }
 
@@ -785,7 +970,7 @@ handle_commit_and_push() {
     fi
   fi
 
-  # Check if directory is completely empty
+  # Check if directory has commits
   local has_commits=false
   if git rev-parse --verify HEAD >/dev/null 2>&1; then
     has_commits=true
@@ -848,7 +1033,9 @@ handle_commit_and_push() {
   if [ -n "$AUTO_PUSH" ]; then
     do_push="$AUTO_PUSH"
   elif [ "$INTERACTIVE" = true ] && [ "$has_commits" = true ]; then
-    if prompt_confirm "Push branch '${TARGET_BRANCH}' to '${REMOTE_NAME}' via SSH now?" "Y"; then
+    local proto_label="SSH"
+    [ "$USE_HTTPS" = true ] && proto_label="HTTPS"
+    if prompt_confirm "Push branch '${TARGET_BRANCH}' to '${REMOTE_NAME}' via ${proto_label} now?" "Y"; then
       do_push=true
     fi
   fi
@@ -857,11 +1044,13 @@ handle_commit_and_push() {
     if [ "$has_commits" = false ]; then
       log_warn "Nothing to push (no commits exist yet). Create a file and commit first."
     else
-      log_info "Pushing ${TARGET_BRANCH} to ${REMOTE_NAME} (${ssh_url:-git@github.com:${OWNER}/${REPO_NAME}.git})..."
+      local remote_url_disp
+      remote_url_disp="$(git remote get-url "$REMOTE_NAME" 2>/dev/null || echo "remote")"
+      log_info "Pushing ${TARGET_BRANCH} to ${REMOTE_NAME} (${remote_url_disp})..."
       if git push -u "$REMOTE_NAME" "$TARGET_BRANCH"; then
-        log_success "Pushed successfully to GitHub via SSH!"
+        log_success "Pushed successfully to GitHub!"
       else
-        log_error "Push failed. Check SSH keys, permissions, or network connectivity."
+        log_error "Push failed. Check remote URL, credentials/keys, permissions, or network connectivity."
         printf "You can retry pushing anytime with: %s\n" "${BOLD}git push -u $REMOTE_NAME $TARGET_BRANCH${RESET}"
       fi
     fi
@@ -873,13 +1062,16 @@ handle_commit_and_push() {
 
 # ── Summary Display ───────────────────────────────────────────────────────────
 display_summary() {
+  local remote_url_disp
+  remote_url_disp="$(git remote get-url "$REMOTE_NAME" 2>/dev/null || echo "git@github.com:${OWNER}/${REPO_NAME}.git")"
+
   printf "\n"
   printf "%s╔══════════════════════════════════════════════════════════════════════════════╗%s\n" "$GREEN" "$RESET"
   printf "%s║                    GitHub Repository Setup Complete!                         ║%s\n" "$GREEN" "$RESET"
   printf "%s╚══════════════════════════════════════════════════════════════════════════════╝%s\n" "$GREEN" "$RESET"
   printf "  %s• Repository:%s    %s/%s\n" "$BOLD" "$RESET" "$OWNER" "$REPO_NAME"
   printf "  %s• Web URL:%s       https://github.com/%s/%s\n" "$BOLD" "$RESET" "$OWNER" "$REPO_NAME"
-  printf "  %s• SSH Remote:%s    git@github.com:%s/%s.git\n" "$BOLD" "$RESET" "$OWNER" "$REPO_NAME"
+  printf "  %s• Remote URL:%s    %s\n" "$BOLD" "$RESET" "$remote_url_disp"
   printf "  %s• Branch:%s        %s\n" "$BOLD" "$RESET" "$TARGET_BRANCH"
   printf "  %s• Visibility:%s    %s\n" "$BOLD" "$RESET" "$([ "$IS_PRIVATE" = true ] && echo "Private" || echo "Public")"
   printf "\n"
@@ -890,7 +1082,7 @@ main() {
   parse_args "$@"
 
   printf "\n%s%s╭──────────────────────────────────────────────────────────╮%s\n" "$BOLD" "$CYAN" "$RESET"
-  printf "%s%s│          GitHub Repository Creator & SSH Setup           │%s\n" "$BOLD" "$CYAN" "$RESET"
+  printf "%s%s│          GitHub Repository Creator & Setup               │%s\n" "$BOLD" "$CYAN" "$RESET"
   printf "%s%s╰──────────────────────────────────────────────────────────╯%s\n\n" "$BOLD" "$CYAN" "$RESET"
 
   check_dependencies
@@ -899,7 +1091,7 @@ main() {
   setup_local_git
   configure_repo_metadata
   create_remote_repo
-  setup_ssh_remote
+  setup_git_remote
   handle_commit_and_push
   display_summary
 }
