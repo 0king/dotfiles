@@ -230,15 +230,18 @@ git branch -M main
 git push -u origin main
 ```
 
-### ⚡ Automated Git Commit & Push (`[git]`)
+### ⚡ Automated Git Commit & Push (`[git]` & Hooks)
 Automated Git synchronization is configured in `.chezmoi.toml.tmpl` and `~/.config/chezmoi/chezmoi.toml`:
 ```toml
 [git]
+    autoAdd = true
     autoCommit = true
     autoPush = true
 ```
 
-- **`autoCommit = true`**: Whenever you modify the dotfiles repository via `chezmoi add`, `chezmoi re-add`, `chezmoi edit`, or `chezmoi forget`, Chezmoi automatically stages and commits your changes with an informative commit message.
-- **`autoPush = true`**: Once your remote repository is linked and upstream tracking is configured (`git push -u origin main`), Chezmoi automatically pushes all commits directly to your remote repository.
+- **`autoAdd = true`**: Automatically runs `git add` whenever managing files with `chezmoi add`.
+- **`autoCommit = true`**: Automatically stages and commits source modifications with an informative commit message when using `chezmoi add`, `chezmoi edit`, or `chezmoi forget`.
+- **`autoPush = true`**: Automatically pushes all commits directly to your remote repository once upstream tracking is configured (`git push -u origin main`).
+- **Post-Apply & Post-Re-add Hooks (`[hooks.apply.post]`, `[hooks.re-add.post]`)**: Whenever `chezmoi apply` or `chezmoi re-add` finishes successfully, automated hooks verify if any changes remain uncommitted in `~/.local/share/chezmoi`. If changes are found, they are automatically staged, committed, and pushed. Dry runs (`--dry-run` / `-n`) are safely detected and skipped.
 - **Gitleaks Pre-Commit Protection**: Every automatic commit is scanned by `.githooks/pre-commit` before completion, guaranteeing secrets and API keys are never accidentally committed or pushed.
-- **Zsh Helper (`gacp`)**: Defined in `functions.zsh` for quick non-chezmoi Git workflows: `gacp "commit message"` runs `git add -A && git commit -m "$*" && git push`.
+- **Zsh Helper (`gacp`)**: Defined in `functions.zsh` for quick direct repository edits: `gacp "commit message"` runs `git add -A && git commit -m "$*" && git push`.
