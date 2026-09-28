@@ -242,6 +242,7 @@ Automated Git synchronization is configured in `.chezmoi.toml.tmpl` and `~/.conf
 - **`autoAdd = true`**: Automatically runs `git add` whenever managing files with `chezmoi add`.
 - **`autoCommit = true`**: Automatically stages and commits source modifications with an informative commit message when using `chezmoi add`, `chezmoi edit`, or `chezmoi forget`.
 - **`autoPush = true`**: Automatically pushes all commits directly to your remote repository once upstream tracking is configured (`git push -u origin main`).
-- **Post-Apply & Post-Re-add Hooks (`[hooks.apply.post]`, `[hooks.re-add.post]`)**: Whenever `chezmoi apply` or `chezmoi re-add` finishes successfully, automated hooks verify if any changes remain uncommitted in `~/.local/share/chezmoi`. If changes are found, they are automatically staged, committed, and pushed. Dry runs (`--dry-run` / `-n`) are safely detected and skipped.
+- **Post-Apply Hook (`[hooks.apply.post]`)**: Whenever `chezmoi apply` finishes successfully, an automated hook verifies if any changes remain uncommitted in `~/.local/share/chezmoi` (such as direct repository or template edits). If changes are found, they are automatically staged, committed, and pushed. Dry runs (`--dry-run` / `-n`) are safely detected and skipped.
 - **Gitleaks Pre-Commit Protection**: Every automatic commit is scanned by `.githooks/pre-commit` before completion, guaranteeing secrets and API keys are never accidentally committed or pushed.
 - **Zsh Helper (`gacp`)**: Defined in `functions.zsh` for quick direct repository edits: `gacp "commit message"` runs `git add -A && git commit -m "$*" && git push`.
+

@@ -77,29 +77,6 @@ if [ -d "$SOURCE_DIR/.git" ] && [ -n "$(git -C "$SOURCE_DIR" status --porcelain)
 fi
 '''
     ]
-
-[hooks.re-add.post]
-    command = "bash"
-    args = [
-        "-c",
-        '''
-SOURCE_DIR="${CHEZMOI_SOURCE_DIR:-$HOME/.local/share/chezmoi}"
-case " $CHEZMOI_ARGS " in
-    *" --dry-run "*|*" -n "*) exit 0 ;;
-esac
-if [ -d "$SOURCE_DIR/.git" ] && [ -n "$(git -C "$SOURCE_DIR" status --porcelain)" ]; then
-    echo "📦 [chezmoi post-re-add] Staging and committing dotfiles changes..."
-    git -C "$SOURCE_DIR" add -A
-    if ! git -C "$SOURCE_DIR" diff --cached --quiet; then
-        CHANGED=$(git -C "$SOURCE_DIR" diff --cached --name-only | tr '\n' ', ' | sed 's/, $//')
-        git -C "$SOURCE_DIR" commit -m "chore: auto-sync dotfiles after re-add" -m "Files: $CHANGED"
-        {{- if $auto_push }}
-        git -C "$SOURCE_DIR" push || echo "⚠️ [chezmoi post-re-add] git push failed or remote unreachable"
-        {{- end }}
-    fi
-fi
-'''
-    ]
 {{- end }}
 
 
