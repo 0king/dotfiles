@@ -2,6 +2,8 @@
 {{- $email := promptStringOnce . "email" "Git author email" -}}
 {{- $desktop := promptChoiceOnce . "desktop" "Primary desktop environment" (list "gnome" "kde" "hyprland" "none/headless") "gnome" -}}
 {{- $install_packages := promptBoolOnce . "install_packages" "Automatically install system packages via package manager?" true -}}
+{{- $auto_commit := promptBoolOnce . "auto_commit" "Automatically commit changes to git?" true -}}
+{{- $auto_push := promptBoolOnce . "auto_push" "Automatically push committed changes to remote repository?" true -}}
 
 # Safety: Require confirmation before overwriting modified or pre-existing files
 lessInteractive = true
@@ -11,10 +13,12 @@ lessInteractive = true
     email = {{ $email | quote }}
     desktop = {{ $desktop | quote }}
     install_packages = {{ $install_packages }}
+    auto_commit = {{ $auto_commit }}
+    auto_push = {{ $auto_push }}
 
 [git]
-    autoCommit = false
-    autoPush = false
+    autoCommit = {{ $auto_commit }}
+    autoPush = {{ $auto_push }}
 
 [hooks.apply.pre]
     command = "bash"
@@ -30,3 +34,22 @@ chezmoi status | cut -c 4- | while IFS= read -r f; do
 done
 '''
     ]
+
+[hooks.re-add.pre]
+    command = "bash"
+    args = [
+        "-c",
+        '''
+BACKUP_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi/backups/$(date +%Y%m%d_%H%M%S)"
+SOURCE_DIR="${CHEZMOI_SOURCE_DIR:-$HOME/.local/share/chezmoi}"
+chezmoi status | cut -c 4- | while IFS= read -r f; do
+    sp="$(chezmoi source-path "$HOME/$f" 2>/dev/null || true)"
+    if [ -n "$sp" ] && { [ -f "$sp" ] || [ -L "$sp" ]; }; then
+        rel="${sp#"$SOURCE_DIR/"}"
+        mkdir -p "$BACKUP_DIR/$(dirname "$rel")"
+        cp -P "$sp" "$BACKUP_DIR/$rel" 2>/dev/null || true
+    fi
+done
+'''
+    ]
+

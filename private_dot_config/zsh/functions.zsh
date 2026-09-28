@@ -25,6 +25,17 @@ gac() {
   git commit -m "$*"
 }
 
+# git add, commit & push
+# usage: gacp 'my commit message'
+gacp() {
+  if [ -z "$1" ]; then
+    echo "Error: Commit message required."
+    return 1
+  fi
+  
+  git add -A && git commit -m "$*" && git push
+}
+
 # run c files
 run() {
     if [ -z "$1" ]; then
@@ -83,23 +94,109 @@ run() {
     esac
 }
 
-# chezmoi safe wrapper: preview diff and ask confirmation before apply
+# chezmoi safe wrapper: preview affected files and ask confirmation before apply or re-add
 chezmoi() {
     if [[ "$1" == "apply" ]]; then
-        if ! command chezmoi verify >/dev/null 2>&1; then
-            echo "==> Pending differences between destination and target state:"
-            command chezmoi diff
-            echo ""
-            read -q "REPLY?Do you want to proceed with applying these changes? (y/N): "
-            echo ""
-            if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
-                echo "Apply cancelled."
-                return 1
+        local skip_prompt=0
+        for arg in "${@:2}"; do
+            if [[ "$arg" == "-n" || "$arg" == "--dry-run" || "$arg" == "-f" || "$arg" == "--force" || "$arg" == "-h" || "$arg" == "--help" ]]; then
+                skip_prompt=1
+                break
             fi
+        done
+        if (( ! skip_prompt )) && ! command chezmoi verify "${@:2}" >/dev/null 2>&1; then
+            echo "⚠️ The following files are going to be modified in your home directory:"
+            command chezmoi status "${@:2}"
+            echo ""
+            while true; do
+                if ! read -r "REPLY?Apply changes? [y,n,d,q,?] "; then
+                    echo ""
+                    echo "Apply cancelled."
+                    return 1
+                fi
+                local input="${REPLY#"${REPLY%%[![:space:]]*}"}"
+                input="${input%"${input##*[![:space:]]}"}"
+
+                case "$input" in
+                    d|D|1)
+                        echo ""
+                        command chezmoi diff "${@:2}"
+                        echo ""
+                        continue
+                        ;;
+                    \?)
+                        echo ""
+                        echo "  y - yes, apply changes"
+                        echo "  n - no, do not apply changes"
+                        echo "  d - diff, view pending differences"
+                        echo "  q - quit, cancel apply"
+                        echo "  ? - show this help"
+                        echo ""
+                        continue
+                        ;;
+                    y|Y|yes|YES)
+                        break
+                        ;;
+                    *)
+                        echo "Apply cancelled."
+                        return 1
+                        ;;
+                esac
+            done
         fi
         command chezmoi apply "${@:2}"
+    elif [[ "$1" == "re-add" ]]; then
+        local skip_prompt=0
+        for arg in "${@:2}"; do
+            if [[ "$arg" == "-n" || "$arg" == "--dry-run" || "$arg" == "-f" || "$arg" == "--force" || "$arg" == "-h" || "$arg" == "--help" ]]; then
+                skip_prompt=1
+                break
+            fi
+        done
+        if (( ! skip_prompt )) && ! command chezmoi verify "${@:2}" >/dev/null 2>&1; then
+            echo "⚠️ The following files are going to be updated in your dotfiles repository (~/.local/share/chezmoi):"
+            command chezmoi status "${@:2}"
+            echo ""
+            while true; do
+                if ! read -r "REPLY?Re-add changes to repository? [y,n,d,q,?] "; then
+                    echo ""
+                    echo "Re-add cancelled."
+                    return 1
+                fi
+                local input="${REPLY#"${REPLY%%[![:space:]]*}"}"
+                input="${input%"${input##*[![:space:]]}"}"
+
+                case "$input" in
+                    d|D|1)
+                        echo ""
+                        command chezmoi diff --reverse "${@:2}"
+                        echo ""
+                        continue
+                        ;;
+                    \?)
+                        echo ""
+                        echo "  y - yes, re-add changes to repository"
+                        echo "  n - no, do not re-add changes"
+                        echo "  d - diff, view reverse differences (destination -> repository)"
+                        echo "  q - quit, cancel re-add"
+                        echo "  ? - show this help"
+                        echo ""
+                        continue
+                        ;;
+                    y|Y|yes|YES)
+                        break
+                        ;;
+                    *)
+                        echo "Re-add cancelled."
+                        return 1
+                        ;;
+                esac
+            done
+        fi
+        command chezmoi re-add "${@:2}"
     else
         command chezmoi "$@"
     fi
 }
+
 

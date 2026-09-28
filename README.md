@@ -148,27 +148,42 @@ chezmoi add --encrypt ~/.ssh/config
 
 ## 🛡️ Overwrite Prevention & Safety Safeguards
 
-To prevent accidentally overwriting local machine files when running `chezmoi apply`, this repository comes with three layers of automated defense:
+To prevent accidentally overwriting local machine files when running `chezmoi apply` or accidentally overwriting repository files when running `chezmoi re-add`, this repository comes with three layers of automated defense:
 
 ### 1. Interactive Overwrite Prompts (`lessInteractive = true`)
-Configured in `.chezmoi.toml.tmpl` and active in `~/.config/chezmoi/chezmoi.toml`. Whenever `chezmoi apply` would modify or overwrite an existing file on disk, chezmoi pauses and prompts for explicit confirmation:
+Configured in `.chezmoi.toml.tmpl` and active in `~/.config/chezmoi/chezmoi.toml`. Whenever `chezmoi apply` or `chezmoi re-add` would modify or overwrite an existing file on disk, chezmoi pauses and prompts for explicit confirmation:
 - `y` — **Yes**, overwrite this file
 - `n` — **No**, skip this file
 - `d` — **Diff**, view exact line changes for this file
-- `q` — **Quit**, abort apply immediately
+- `q` — **Quit**, abort operation immediately
 
-### 2. Automated Pre-Apply Backups (`[hooks.apply.pre]`)
-A pre-apply hook runs automatically before changes are written to `$HOME`. It creates a snapshot of any existing files that are about to be updated:
+### 2. Automated Pre-Execution Backups (`[hooks.apply.pre]` & `[hooks.re-add.pre]`)
+Pre-execution hooks run automatically before changes are written to disk. They create timestamped snapshots of files about to be modified:
+- **`[hooks.apply.pre]`**: Backs up existing files in `$HOME` before `chezmoi apply` writes repository changes to your machine.
+- **`[hooks.re-add.pre]`**: Backs up existing files in the source repository (`~/.local/share/chezmoi`) before `chezmoi re-add` syncs modified files from `$HOME`.
+
+Backups are saved to:
 ```text
 ~/.cache/chezmoi/backups/<YYYYMMDD_HHMMSS>/
 ```
 If you ever accidentally overwrite a file, you can immediately recover the previous version from this directory.
 
-### 3. Shell Wrapper with Pre-Apply Diff
-A safe `chezmoi` wrapper is defined in `functions.zsh`. When running `chezmoi apply` in Zsh:
-1. It runs `chezmoi verify` to check if differences exist.
-2. If differences are detected, it automatically displays the full `chezmoi diff`.
-3. It asks for explicit confirmation (`Do you want to proceed with applying these changes? (y/N)`) before invoking `apply`.
+### 3. Shell Wrapper with Affected Files Preview & On-Demand Diff
+A safe `chezmoi` wrapper is defined in `functions.zsh`. It intercepts both `apply` and `re-add`:
+
+- **For `chezmoi apply`**:
+  1. Checks if differences exist using `chezmoi verify`.
+  2. Lists affected files that will be modified in `$HOME` (`chezmoi status`).
+  3. Prompts: `Apply changes? [y,n,d,q,?]`.
+  4. Entering `d` (or `1`) displays the pending diff, `y` applies changes, and `n`, `q`, or empty/space/Enter cancels.
+  
+- **For `chezmoi re-add`**:
+  1. Checks if differences exist using `chezmoi verify`.
+  2. Lists modified files that will be updated in the repository (`~/.local/share/chezmoi`).
+  3. Prompts: `Re-add changes to repository? [y,n,d,q,?]`.
+  4. Entering `d` (or `1`) displays the reverse diff (`chezmoi diff --reverse`), showing exactly what local edits will be brought into the repo, `y` confirms and re-adds, and `n`, `q`, or empty/space/Enter cancels.
+
+*(Note: Passing `-n`, `--dry-run`, `-f`, `--force`, `-h`, or `--help` automatically bypasses the confirmation prompt.)*
 
 ### 4. Preserving Machine-Specific Modifications
 - **Keep local edits in dotfiles repo**: Run `chezmoi add <path>` (or `chezmoi re-add` to update all modified managed files).
@@ -184,15 +199,17 @@ A safe `chezmoi` wrapper is defined in `functions.zsh`. When running `chezmoi ap
 | `chezmoi diff` | Inspect the exact diff before applying changes |
 | `chezmoi apply` | Deploy repository changes (with interactive prompts & backup) |
 | `chezmoi apply <path>` | Safely deploy only a specific file or directory |
-| `chezmoi re-add` | Update repository with any modified files from `$HOME` |
+| `chezmoi re-add` | Update repository with modified files from `$HOME` (with interactive prompts & backup) |
 | `chezmoi merge <path>` | Open a 3-way merge tool to resolve conflicts interactively |
 | `chezmoi edit <path>` | Edit a managed file directly in `$EDITOR` inside the repository |
 | `chezmoi add <path>` | Start managing a new configuration file in Chezmoi |
 | `chezmoi cd` | Open a shell directly inside `~/.local/share/chezmoi` |
+| `gac '<msg>'` | Quick Git add & commit in any repo (`functions.zsh`) |
+| `gacp '<msg>'` | Quick Git add, commit & push in any repo (`functions.zsh`) |
 
 ---
 
-## 🌐 Linking to a Remote Git Repository
+## 🌐 Linking to a Remote Git Repository & Automated Git Sync
 
 When you are ready to push your dotfiles to GitHub, GitLab, or Codeberg:
 
@@ -206,7 +223,20 @@ git remote add origin git@github.com:0king/dotfiles.git
 # 3. Verify author identity (ensuring no private info in commit logs)
 git log -1 --format="Author: %an <%ae>"
 
-# 4. Push your main branch
+# 4. Push your main branch and set upstream tracking
 git branch -M main
 git push -u origin main
 ```
+
+### ⚡ Automated Git Commit & Push (`[git]`)
+Automated Git synchronization is configured in `.chezmoi.toml.tmpl` and `~/.config/chezmoi/chezmoi.toml`:
+```toml
+[git]
+    autoCommit = true
+    autoPush = true
+```
+
+- **`autoCommit = true`**: Whenever you modify the dotfiles repository via `chezmoi add`, `chezmoi re-add`, `chezmoi edit`, or `chezmoi forget`, Chezmoi automatically stages and commits your changes with an informative commit message.
+- **`autoPush = true`**: Once your remote repository is linked and upstream tracking is configured (`git push -u origin main`), Chezmoi automatically pushes all commits directly to your remote repository.
+- **Gitleaks Pre-Commit Protection**: Every automatic commit is scanned by `.githooks/pre-commit` before completion, guaranteeing secrets and API keys are never accidentally committed or pushed.
+- **Zsh Helper (`gacp`)**: Defined in `functions.zsh` for quick non-chezmoi Git workflows: `gacp "commit message"` runs `git add -A && git commit -m "$*" && git push`.

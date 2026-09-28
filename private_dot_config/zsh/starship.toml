@@ -16,7 +16,7 @@ truncate_to_repo = false
 format = "([](#C2410C)[ $path ](bold white bg:#C2410C)[](fg:#C2410C) )"
 repo_root_format = """[](#C2410C)[ $repo_root$read_only ](bold white bg:#C2410C)[](fg:#C2410C)
 [$before_root_path$repo_root$path]($before_repo_root_style) """
-before_repo_root_style = "dimmed white"
+before_repo_root_style = "bold #f38c06"
 repo_root_style = "bold white bg:#C2410C"
 
 [directory.substitutions]
