@@ -50,7 +50,7 @@ Universal kanata config for all keyboards.
 
 (defalias
   ;; Layer toggles (with Linux tap-hold workaround (#422)) 
-  cl (multi f24 (tap-hold 0 200 esc (layer-while-held lyr-mouse)) (macro 5 (on-press tap-vkey relf24))) ;; cl = capslock 
+  cl (multi f24 (tap-hold 0 300 esc (layer-while-held lyr-mouse)) (macro 5 (on-press tap-vkey relf24))) ;; cl = capslock 
   sp (multi f24 (tap-hold 0 200 spc (layer-while-held lyr-alt)) (macro 5 (on-press tap-vkey relf24))) ;; sp = space 
 
   
