@@ -34,12 +34,12 @@ Universal kanata config for all keyboards.
 (defvar
   left-hand-keys (
     q w e r t
-    a s d f g
+    a g
     z x c v b
   )
   right-hand-keys (
     y u i o p
-    h j k l ;
+    h ;
     n m , . /
   )
 )
