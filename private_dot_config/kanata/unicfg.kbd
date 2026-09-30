@@ -140,7 +140,7 @@ Universal kanata config for all keyboards.
 )
 
 (defchordsv2
-  (j k) esc 50 all-released (lyr-mouse lyr-mouse-fast lyr-mouse-slow lyr-media lyr-bypass)
+  (u i) esc 50 all-released (lyr-mouse lyr-mouse-fast lyr-mouse-slow lyr-media lyr-bypass)
 )
 
 ;; Base layer with HRMs
