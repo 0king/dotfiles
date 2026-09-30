@@ -15,6 +15,7 @@ Universal kanata config for all keyboards.
 (defcfg
   process-unmapped-keys yes
   linux-device-detect-mode keyboard-only
+  concurrent-tap-hold yes
 )
 
 (defvirtualkeys 
@@ -97,6 +98,10 @@ Universal kanata config for all keyboards.
   mr mrgt
   cpy C-c
   pst C-v
+)
+
+(defchordsv2
+  (j k) esc 50 all-released (lyr-mouse lyr-media lyr-bypass)
 )
 
 ;; Base layer with HRMs
