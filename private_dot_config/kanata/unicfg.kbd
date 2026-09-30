@@ -58,9 +58,9 @@ Universal kanata config for all keyboards.
   j (multi f24 (tap-hold 200 200 j rsft) (macro 5 (on-press tap-vkey relf24))) 
   k (multi f24 (tap-hold 200 200 k rctl) (macro 5 (on-press tap-vkey relf24)))
   l (multi f24 (tap-hold 200 200 l ralt) (macro 5 (on-press tap-vkey relf24)))
-  ; (multi f24 (tap-hold 200 200 ; rmet) (macro 5 (on-press tap-vkey relf24)))
+  ; (multi f24 (tap-hold 300 300 ; rmet) (macro 5 (on-press tap-vkey relf24)))
 
-  a (multi f24 (tap-hold 200 200 a lmet) (macro 5 (on-press tap-vkey relf24)))
+  a (multi f24 (tap-hold 300 300 a lmet) (macro 5 (on-press tap-vkey relf24)))
   s (multi f24 (tap-hold 200 200 s lalt) (macro 5 (on-press tap-vkey relf24)))
   d (multi f24 (tap-hold 200 200 d lctl) (macro 5 (on-press tap-vkey relf24)))
   f (multi f24 (tap-hold 200 200 f lsft) (macro 5 (on-press tap-vkey relf24)))
