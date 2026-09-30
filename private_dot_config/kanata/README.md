@@ -2,6 +2,86 @@
 kanata v1.12.0
 ubuntu 26
 
+# Problems with HRMs
+- accidental rollover (misfires)
+- lot of hand switching
+
+# update 30.09.26
+- to fix HRM misfires, trying out the [home row mod advanced](https://github.com/jtroo/kanata/blob/3aa9fa535ead451d5fb04c6e8dbd48532250c3ec/cfg_samples/home-row-mod-advanced.kbd):
+  - when a home row mod activates tap, the home row mods are disabled while continuing to type rapidly
+  - tap-hold-release-keys helps make the hold action more responsive
+  - pressing another key on the same half of the keyboard as the home row mod will activate an early tap action
+- increase tap-hold timeout for pinky fingers
+- toggle switch for mac/windows layout
+- chord jk for esc (possible conflict with HRM?)
+- mouse layer - scroll to top/bottom.  add a faster mouse scroll key - use u/h. currently u is @pst
+- add meta + c/p as copy/paste
+- left meta - becomes **control**
+
+## can we use chords and tap-hold on same keys?
+
+**Yes**, you can use **`j` and `k` as a chord (combo) for `Esc`** while simultaneously using them as home-row mods (Shift on `j`, Ctrl on `k`).
+
+Kanata (v1.12.0) has built-in support for input chords via **`defchordsv2`**, which cleanly integrates with tap-hold / home-row mods.
+
+---
+
+### How It Works Under the Hood
+
+1. **Processing Order:** In Kanata, `defchordsv2` intercepts raw input events **before** layer actions (including tap-hold HRMs) are evaluated.
+2. **When pressing `j` and `k` together (within the chord timeout, e.g., 50ms):**
+   - Kanata captures both keys and triggers `esc`.
+   - Neither key reaches the HRM tap-hold logic, so `rsft` and `rctl` are never activated, and neither `j` nor `k` is output.
+3. **When pressing `j` or `k` individually:**
+   - Kanata waits for the chord window (50ms). Once no companion key is pressed (or when released/followed by another key), it routes the key to your base layer.
+   - Your existing home-row mod definition (`@j` or `@k`) handles it normally: tapping outputs the letter, and holding activates the modifier.
+
+---
+
+### Required Changes to [`unicfg.kbd`](file:///home/dj/.local/share/chezmoi/private_dot_config/kanata/unicfg.kbd)
+
+To enable this, only two small adjustments are needed:
+
+#### 1. Add `concurrent-tap-hold yes` to `defcfg`
+Kanata strictly requires `concurrent-tap-hold yes` when `defchordsv2` is used:
+
+```lisp
+(defcfg
+  process-unmapped-keys yes
+  linux-device-detect-mode keyboard-only
+  concurrent-tap-hold yes
+)
+```
+
+#### 2. Add the `defchordsv2` block
+Add this block right before your layers:
+
+```lisp
+(defchordsv2
+  (j k) esc 50 all-released (lyr-mouse lyr-media lyr-bypass)
+)
+```
+
+You do **not** need to modify your `@j` and `@k` aliases or touch `lyr-base`.
+
+---
+
+### Important Nuances & Edge Cases
+
+1. **Why `lyr-mouse` is in disabled layers:**
+   In your [`lyr-mouse`](file:///home/dj/.local/share/chezmoi/private_dot_config/kanata/unicfg.kbd#L150-L157), `j` is mapped to `@mml` (mouse cursor left) and `k` is mapped to `@mmd` (mouse cursor down). Disabling the chord on `lyr-mouse` prevents accidental `Esc` presses when moving the cursor diagonally down-left.
+2. **Chord Timeout (50ms):**
+   - `50` ms is the sweet spot for adjacent same-hand fingers.
+   - If set too high (e.g., `>80ms`), fast rolling when typing words like `"jack"`, `"joke"`, or `"junk"` could accidentally trigger `Esc`.
+   - If set too low (e.g., `<35ms`), you may find it difficult to press both keys simultaneously.
+3. **Release Behaviour (`all-released` vs `first-release`):**
+   - `all-released` (recommended for `Esc`) keeps the chord active until both keys are released, avoiding stray key emissions.
+
+---
+
+Would you like me to apply this update to your [`unicfg.kbd`](file:///home/dj/.local/share/chezmoi/private_dot_config/kanata/unicfg.kbd)?
+
+
 # Big questions:
 Q: how to setup modifiers?
 1. HRM (tap-hold)
