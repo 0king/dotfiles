@@ -108,7 +108,7 @@ Universal kanata config for all keyboards.
   _    _    _    _    _    _    _    _    _    _    _    _    _    _
   @fork-esc-bypass-media  @a   @s   @d   @f   _    _    @j   @k   @l   @;   _    _
   @ls  _    _    _    _    _    _    _    _    _    _    @rs
-  @lc  @lm  @la            @sp            @ra  @rm  @rc
+  @lc  @lm  @la            @sp            @ra  @rc  @rm
 )
 
 ;; ----- Alt layer (trigger = hold space) -----
