@@ -157,7 +157,7 @@ Universal kanata config for all keyboards.
 
 (deflayer lyr-alt
   _    brdn brup  prnt  _    _     _     _     _     _     _     vold  volu     ;; function row 
-  _    f1   f2    f3    f4   f5    f6    f7    f8    f9    f10   f11   f12  _   ;; number row
+  _    S-1  S-2   S-3   S-4  S-5   S-6   S-7   S-8   S-9   S-0   S--   S-=  _   ;; number row
   _    grv  S-grv up    pgup tab   _     _     _     _     _     _     _    _
   _    ret  left  down  rght end   home  _     _     _     _     _     _
   _    del  bspc  spc   pgdn _     _     _     _     _     _     _
