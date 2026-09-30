@@ -87,21 +87,39 @@ Universal kanata config for all keyboards.
   mml (movemouse-left 10 5)
   mmr (movemouse-right 10 5)
 
-  ;; Scrolling
+  ;; Normal Scrolling
   mwl (mwheel-left 100 30)
   mwd (mwheel-down 100 50)
   mwu (mwheel-up 100 50)
   mwr (mwheel-right 100 30)
 
-  ;; Mouse clicks & Macros
+  ;; Fast Scrolling (holding u)
+  mwlf (mwheel-left 50 100)
+  mwdf (mwheel-down 50 200)
+  mwuf (mwheel-up 50 200)
+  mwrf (mwheel-right 50 100)
+
+  ;; Slow Scrolling (holding y)
+  mwls (mwheel-left 100 10)
+  mwds (mwheel-down 100 15)
+  mwus (mwheel-up 100 15)
+  mwrs (mwheel-right 100 10)
+
+ ;; Scroll speed layer triggers
+  to-mwfst (layer-while-held lyr-mouse-fast)
+  to-mwslw (layer-while-held lyr-mouse-slow)
+
+  ;; Scroll to top / bottom (max distance in kanata is 30000)
+  mtop (mwheel-up 50 30000)
+  mbot (mwheel-down 50 30000)
+
+  ;; Mouse clicks
   ml mlft
-  mr mrgt
-  cpy C-c
-  pst C-v
+  mr mrgt 
 )
 
 (defchordsv2
-  (j k) esc 50 all-released (lyr-mouse lyr-media lyr-bypass)
+  (j k) esc 50 all-released (lyr-mouse lyr-mouse-fast lyr-mouse-slow lyr-media lyr-bypass)
 )
 
 ;; Base layer with HRMs
@@ -147,6 +165,8 @@ Universal kanata config for all keyboards.
 )
 
 ;; hold c/v to change cursor speed
+;; u = increase scroll speed
+;; o/p = scroll to top/bottom
 ;; keys m/n also scroll
 ;; ijkl = cursor
 ;; esdf = scroll
@@ -155,10 +175,27 @@ Universal kanata config for all keyboards.
 (deflayer lyr-mouse
   _    _    _    _    _    _    _    _    _    _    _    _    _         ;; function row
   _    _    _    _    _    _    _    _    _    _    _    _    _    _    ;; number row
-  _    _    _    @mwu @mr  _  @cpy @pst @mmu    _    _    _    _    _
-  _    _    @mwl @mwd @mwr _  _    @mml @mmd @mmr  _    _    _
+  _ _ _    @mwu  @mr _ @to-mwslw @to-mwfst      @mmu     @mtop @mbot    _    _    _
+  _ _ @mwl @mwd @mwr _  _                  @mml @mmd @mmr  _    _    _
   _    _    _    @fst @slw _  @mwu @mwd  _  _  _    _
   _    _    _              @ml            _    _    _
+)
+
+(deflayer lyr-mouse-fast
+  _    _    _    _     _    _    _    _    _    _    _    _    _
+  _    _    _    _     _    _    _    _    _    _    _    _    _    _
+  _    _    _    @mwuf _    _    _    _    _    _    _    _    _    _
+  _    _    @mwlf @mwdf @mwrf _ _    _    _    _    _    _    _
+  _    _    _    _     _    _    @mwuf @mwdf _  _    _    _
+  _    _    _               _              _    _    _
+)
+(deflayer lyr-mouse-slow
+  _    _    _    _     _    _    _    _    _    _    _    _    _
+  _    _    _    _     _    _    _    _    _    _    _    _    _    _
+  _    _    _    @mwus _    _    _    _    _    _    _    _    _    _
+  _    _    @mwls @mwds @mwrs _ _    _    _    _    _    _    _
+  _    _    _    _     _    _    @mwus @mwds _  _    _    _
+  _    _    _               _              _    _    _
 )
 
 ;; MEDIA LAYER (Meta + ESC)
