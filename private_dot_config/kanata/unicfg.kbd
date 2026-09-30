@@ -31,6 +31,23 @@ Universal kanata config for all keyboards.
   lctl lmet lalt           spc            ralt rmet rctl
 )
 
+(defvar
+  left-hand-keys (
+    q w e r t
+    a s d f g
+    z x c v b
+  )
+  right-hand-keys (
+    y u i o p
+    h j k l ;
+    n m , . /
+  )
+)
+
+(deffakekeys
+  to-base (layer-switch lyr-base)
+)
+
 (defalias
   ;; Layer toggles (with Linux tap-hold workaround (#422)) 
   cl (multi f24 (tap-hold 0 200 esc (layer-while-held lyr-mouse)) (macro 5 (on-press tap-vkey relf24))) ;; cl = capslock 
@@ -55,16 +72,20 @@ Universal kanata config for all keyboards.
   fork-esc-base (fork @switch-media @switch-base (lctl rctl))
   fork-esc-base-media (fork esc @fork-esc-base (lmet rmet))
 
-  ;; --- HOME ROW MODS ---
-  j (multi f24 (tap-hold 200 200 j rsft) (macro 5 (on-press tap-vkey relf24))) 
-  k (multi f24 (tap-hold 200 200 k rctl) (macro 5 (on-press tap-vkey relf24)))
-  l (multi f24 (tap-hold 200 200 l ralt) (macro 5 (on-press tap-vkey relf24)))
-  ; (multi f24 (tap-hold 300 300 ; rmet) (macro 5 (on-press tap-vkey relf24)))
+  tap (multi
+    (layer-switch lyr-no-hrm)
+    (on-idle-fakekey to-base tap 20)
+  )
 
-  a (multi f24 (tap-hold 300 300 a lmet) (macro 5 (on-press tap-vkey relf24)))
-  s (multi f24 (tap-hold 200 200 s lalt) (macro 5 (on-press tap-vkey relf24)))
-  d (multi f24 (tap-hold 200 200 d lctl) (macro 5 (on-press tap-vkey relf24)))
-  f (multi f24 (tap-hold 200 200 f lsft) (macro 5 (on-press tap-vkey relf24)))
+  ;; --- HOME ROW MODS ---
+  a (tap-hold-release-keys 300 300 (multi a @tap) lmet $left-hand-keys)
+  s (tap-hold-release-keys 200 200 (multi s @tap) lalt $left-hand-keys)
+  d (tap-hold-release-keys 200 200 (multi d @tap) lctl $left-hand-keys)
+  f (tap-hold-release-keys 200 200 (multi f @tap) lsft $left-hand-keys)
+  j (tap-hold-release-keys 200 200 (multi j @tap) rsft $right-hand-keys)
+  k (tap-hold-release-keys 200 200 (multi k @tap) rctl $right-hand-keys)
+  l (tap-hold-release-keys 200 200 (multi l @tap) ralt $right-hand-keys)
+  ; (tap-hold-release-keys 300 300 (multi ; @tap) rmet $right-hand-keys)
 
   ;; --- PHYSICAL MODIFIER OVERRIDES ---
   ;; These hold the physical mod AND instantly trigger the no-hrm layer
