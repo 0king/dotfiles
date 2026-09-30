@@ -12,10 +12,8 @@ ubuntu 26
   - tap-hold-release-keys helps make the hold action more responsive
   - pressing another key on the same half of the keyboard as the home row mod will activate an early tap action
 - increase tap-hold timeout for pinky fingers
-- toggle switch for mac/windows layout
 - chord jk for esc (possible conflict with HRM?)
-- mouse layer - scroll to top/bottom.  add a faster mouse scroll key - use u/h. currently u is @pst
-- add meta + c/p as copy/paste
+- mouse layer - scroll to top/bottom.  add a faster mouse scroll key
 - left meta - becomes **control**
 
 ## can we use chords and tap-hold on same keys?
