@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+#
+# kanata_update_config — Copy kanata config from chezmoi and restart kanata service
+#
+# Usage:
+#   kanata_update_config [OPTIONS]
+#
+# Description:
+#   Copies unicfg.kbd from chezmoi configuration to /etc/kanata/unicfg.kbd,
+#   sets ownership to root:root and permissions to 644, and restarts
+#   the systemd kanata.service.
+#
+
+set -euo pipefail
+
+# ── ANSI Color Palette ────────────────────────────────────────────────────────
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  RESET=$'\033[0m'
+  RED=$'\033[31m'
+  GREEN=$'\033[32m'
+  YELLOW=$'\033[33m'
+  CYAN=$'\033[36m'
+else
+  BOLD=""
+  DIM=""
+  RESET=""
+  RED=""
+  GREEN=""
+  YELLOW=""
+  CYAN=""
+fi
+
+# ── Logging Functions ─────────────────────────────────────────────────────────
+log_info()    { printf "%s[INFO]%s  %s\n" "$CYAN" "$RESET" "$*"; }
+log_success() { printf "%s[OK]%s    %s\n" "$GREEN" "$RESET" "$*"; }
+log_warn()    { printf "%s[WARN]%s  %s\n" "$YELLOW" "$RESET" "$*" >&2; }
+log_error()   { printf "%s[ERROR]%s %s\n" "$RED" "$RESET" "$*" >&2; }
+die()         { log_error "$*"; exit 1; }
+
+# ── Default Configuration ─────────────────────────────────────────────────────
+DRY_RUN=0
+SKIP_CHECK=0
+VERBOSE=0
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+
+DEST_DIR="/etc/kanata"
+DEST_FILE="${DEST_DIR}/unicfg.kbd"
+
+# ── Help / Usage ──────────────────────────────────────────────────────────────
+show_help() {
+  cat <<HELP
+${BOLD}Usage:${RESET} ${SCRIPT_NAME} [OPTIONS]
+
+${BOLD}Description:${RESET}
+  Copies the kanata configuration (unicfg.kbd) from chezmoi to ${DEST_FILE},
+  secures permissions (root:root, 0644), and restarts kanata.service.
+
+${BOLD}Options:${RESET}
+  -n, --dry-run     Show actions without modifying files or restarting services
+      --no-check    Skip validating configuration with 'kanata --check'
+  -v, --verbose     Display detailed progress output
+  -h, --help        Show this help message and exit
+
+${BOLD}Source Detection:${RESET}
+  Automatically locates unicfg.kbd in Chezmoi:
+    1. chezmoi source-path ~/.config/kanata/unicfg.kbd
+    2. \${CHEZMOI_SOURCE_DIR:-\$HOME/.local/share/chezmoi}/private_dot_config/kanata/unicfg.kbd
+    3. \${XDG_CONFIG_HOME:-\$HOME/.config}/kanata/unicfg.kbd
+
+${BOLD}Examples:${RESET}
+  ${SCRIPT_NAME}
+  ${SCRIPT_NAME} --dry-run
+  ${SCRIPT_NAME} --no-check
+HELP
+}
+
+# ── Parse Arguments ───────────────────────────────────────────────────────────
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help)
+        show_help
+        exit 0
+        ;;
+      -n|--dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      --no-check|--skip-check)
+        SKIP_CHECK=1
+        shift
+        ;;
+      -v|--verbose)
+        VERBOSE=1
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        die "Unknown option: $1 (use --help for usage)"
+        ;;
+      *)
+        die "Unexpected argument: $1"
+        ;;
+    esac
+  done
+}
+
+# ── Resolve Source Configuration ──────────────────────────────────────────────
+resolve_source_config() {
+  # 1. Ask chezmoi directly for the source-path of unicfg.kbd
+  if command -v chezmoi >/dev/null 2>&1; then
+    local cz_src
+    cz_src="$(chezmoi source-path "${HOME}/.config/kanata/unicfg.kbd" 2>/dev/null || true)"
+    if [ -n "$cz_src" ] && [ -f "$cz_src" ]; then
+      echo "$cz_src"
+      return 0
+    fi
+  fi
+
+  # 2. Standard Chezmoi source directory (~/.local/share/chezmoi)
+  local cz_source_dir="${CHEZMOI_SOURCE_DIR:-$HOME/.local/share/chezmoi}"
+  if [ -f "${cz_source_dir}/private_dot_config/kanata/unicfg.kbd" ]; then
+    echo "${cz_source_dir}/private_dot_config/kanata/unicfg.kbd"
+    return 0
+  fi
+
+  # 3. If CHEZMOI_HOME was manually provided
+  if [ -n "${CHEZMOI_HOME:-}" ]; then
+    if [ -f "${CHEZMOI_HOME}/private_dot_config/kanata/unicfg.kbd" ]; then
+      echo "${CHEZMOI_HOME}/private_dot_config/kanata/unicfg.kbd"
+      return 0
+    elif [ -f "${CHEZMOI_HOME}/.config/kanata/unicfg.kbd" ]; then
+      echo "${CHEZMOI_HOME}/.config/kanata/unicfg.kbd"
+      return 0
+    fi
+  fi
+
+  # 4. Deployed user config in ~/.config/kanata/unicfg.kbd
+  local user_config="${XDG_CONFIG_HOME:-$HOME/.config}/kanata/unicfg.kbd"
+  if [ -f "$user_config" ]; then
+    echo "$user_config"
+    return 0
+  fi
+
+  return 1
+}
+
+# ── Main Entry Point ──────────────────────────────────────────────────────────
+main() {
+  parse_args "$@"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_warn "Dry-run mode activated: no changes will be made to system files or services."
+  fi
+
+  local src_config
+  if ! src_config="$(resolve_source_config)"; then
+    die "Could not locate unicfg.kbd in Chezmoi source repository or user config."
+  fi
+
+  log_info "Source configuration: ${BOLD}${src_config}${RESET}"
+  log_info "Target destination:   ${BOLD}${DEST_FILE}${RESET}"
+
+  # Validate configuration syntax using kanata if available
+  if [ "$SKIP_CHECK" -eq 0 ]; then
+    if command -v kanata >/dev/null 2>&1; then
+      log_info "Validating configuration with 'kanata --check'..."
+      if ! kanata -c "$src_config" --check; then
+        die "Configuration check failed! Please fix syntax errors before deploying."
+      fi
+      log_success "Configuration syntax is valid."
+    elif [ "$VERBOSE" -eq 1 ]; then
+      log_warn "'kanata' binary not found on PATH; skipping validation check."
+    fi
+  else
+    log_warn "Configuration validation skipped (--no-check specified)."
+  fi
+
+  # Step 1: Ensure destination directory exists
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] sudo mkdir -p \"$DEST_DIR\""
+    echo "[dry-run] sudo cp \"$src_config\" \"$DEST_FILE\""
+    echo "[dry-run] sudo chown root:root \"$DEST_FILE\""
+    echo "[dry-run] sudo chmod 644 \"$DEST_FILE\""
+    echo "[dry-run] sudo systemctl restart kanata.service"
+
+    local user_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/kanata/unicfg.kbd"
+    if [ "$src_config" != "$user_cfg" ] && [ -d "$(dirname "$user_cfg")" ]; then
+      echo "[dry-run] cp \"$src_config\" \"$user_cfg\""
+    fi
+
+    log_success "Dry run complete."
+    exit 0
+  fi
+
+  if [ ! -d "$DEST_DIR" ]; then
+    log_info "Creating target directory: ${DEST_DIR}"
+    sudo mkdir -p "$DEST_DIR"
+  fi
+
+  # Step 2: Copy configuration to system location
+  log_info "Copying configuration to ${DEST_FILE}..."
+  sudo cp "$src_config" "$DEST_FILE"
+
+  # Step 3: Update ownership to root:root
+  log_info "Setting ownership to root:root..."
+  sudo chown root:root "$DEST_FILE"
+
+  # Step 4: Set file permissions to 644
+  log_info "Setting permissions to 644..."
+  sudo chmod 644 "$DEST_FILE"
+
+  # Step 5: Keep ~/.config/kanata/unicfg.kbd in sync if copied from chezmoi repo
+  local user_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/kanata/unicfg.kbd"
+  if [ "$src_config" != "$user_cfg" ] && [ -d "$(dirname "$user_cfg")" ]; then
+    log_info "Keeping ${user_cfg} in sync..."
+    cp "$src_config" "$user_cfg" 2>/dev/null || true
+  fi
+
+  # Step 6: Restart kanata systemd service
+  log_info "Restarting kanata.service..."
+  sudo systemctl restart kanata.service
+
+  log_success "Kanata configuration updated and service restarted successfully."
+}
+
+main "$@"
