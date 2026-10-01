@@ -82,8 +82,9 @@ Universal kanata config for all keyboards.
   s (tap-hold-release-keys 200 200 (multi s @tap) lalt $left-hand-keys)
   d (tap-hold-release-keys 200 200 (multi d @tap) lctl $left-hand-keys)
   f (tap-hold-release-keys 200 200 (multi f @tap) lsft $left-hand-keys)
-  j (tap-hold-release-keys 200 200 (multi j @tap) rsft $right-hand-keys)
-  k (tap-hold-release-keys 200 200 (multi k @tap) rctl $right-hand-keys)
+  ;; j/k: tap-hold-release-timeout (500ms hold alone repeats char; chord with other key acts as Shift/Ctrl)
+  j (tap-hold-release-timeout 200 500 (multi j @tap) rsft j)
+  k (tap-hold-release-timeout 200 500 (multi k @tap) rctl k)
   l (tap-hold-release-keys 200 200 (multi l @tap) ralt $right-hand-keys)
   ; (tap-hold-release-keys 300 300 (multi ; @tap) rmet $right-hand-keys)
 
