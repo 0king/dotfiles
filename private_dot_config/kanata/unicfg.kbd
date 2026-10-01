@@ -6,7 +6,6 @@ Universal kanata config for all keyboards.
 - base (with HRMs)
 - alt (hold space)
 - mouse (hold ESC or capslock)
-- no-hrm (disable HRMs when holding physical mods)
 - media (meta + ESC)
 - bypass (meta + control + ESC)
 
@@ -82,10 +81,10 @@ Universal kanata config for all keyboards.
   s (tap-hold-release-keys 200 200 (multi s @tap) lalt $left-hand-keys)
   d (tap-hold-release-keys 200 200 (multi d @tap) lctl $left-hand-keys)
   f (tap-hold-release-keys 200 200 (multi f @tap) lsft $left-hand-keys)
-  ;; j/k: tap-hold-release-timeout (500ms hold alone repeats char; chord with other key acts as Shift/Ctrl)
+  ;; vim keys use timeout for reliable char repetition
   j (tap-hold-release-timeout 200 500 (multi j @tap) rsft j)
   k (tap-hold-release-timeout 200 500 (multi k @tap) rctl k)
-  l (tap-hold-release-keys 200 200 (multi l @tap) ralt $right-hand-keys)
+  l (tap-hold-release-timeout 200 500 (multi l @tap) ralt l)
   ; (tap-hold-release-keys 300 300 (multi ; @tap) rmet $right-hand-keys)
 
   ;; --- MOUSE SPEEDS ---
