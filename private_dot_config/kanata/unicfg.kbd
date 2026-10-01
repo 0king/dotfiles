@@ -87,17 +87,6 @@ Universal kanata config for all keyboards.
   l (tap-hold-release-keys 200 200 (multi l @tap) ralt $right-hand-keys)
   ; (tap-hold-release-keys 300 300 (multi ; @tap) rmet $right-hand-keys)
 
-  ;; --- PHYSICAL MODIFIER OVERRIDES ---
-  ;; These hold the physical mod AND instantly trigger the no-hrm layer
-  ls (multi lsft (layer-while-held lyr-no-hrm))
-  rs (multi rsft (layer-while-held lyr-no-hrm))
-  lc (multi lctl (layer-while-held lyr-no-hrm))
-  lm (multi lmet (layer-while-held lyr-no-hrm))
-  la (multi lalt (layer-while-held lyr-no-hrm))
-  rc (multi rctl (layer-while-held lyr-no-hrm))
-  rm (multi rmet (layer-while-held lyr-no-hrm))
-  ra (multi ralt (layer-while-held lyr-no-hrm))
-
   ;; --- MOUSE SPEEDS ---
   fst (movemouse-speed 500) 
   slw (movemouse-speed 20)  
@@ -151,8 +140,8 @@ Universal kanata config for all keyboards.
   _    _    _    _    _    _    _    _    _    _    _    _    _    _                ;; number row
   _    _    _    _    _    _    _    _    _    _    _    _    _    _
   @fork-esc-bypass-media  @a   @s   @d   @f   _    _    @j   @k   @l   @;   _    _
-  @ls  _    _    _    _    _    _    _    _    _    _    @rs
-  @lc  @lm  @la            @sp            @ra  @rc  @rm
+  _  _  _    _    _    _    _    _    _    _    _    _
+  _  _  _            @sp            _ _ _
 )
 
 ;; ----- Alt layer (trigger = hold space) -----
