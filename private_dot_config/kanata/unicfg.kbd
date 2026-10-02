@@ -47,6 +47,21 @@ Universal kanata config for all keyboards.
   to-base (layer-switch lyr-base)
 )
 
+;; Templates with key-timing fast-typing skip (#1455)
+(deftemplate charmod-keys (char mod keys tap-time hold-time)
+  (switch 
+    ((key-timing 3 less-than 250)) (multi $char @tap) break
+    () (tap-hold-release-keys $tap-time $hold-time (multi $char @tap) $mod $keys) break
+  )
+)
+
+(deftemplate charmod-timeout (char mod tap-time hold-time)
+  (switch 
+    ((key-timing 3 less-than 250)) (multi $char @tap) break
+    () (tap-hold-release-timeout $tap-time $hold-time (multi $char @tap) $mod $char) break
+  )
+)
+
 (defalias
   ;; Layer toggles (with Linux tap-hold workaround (#422)) 
   cl (multi f24 (tap-hold 0 300 esc (layer-while-held lyr-mouse)) (macro 5 (on-press tap-vkey relf24))) ;; cl = capslock 
@@ -77,15 +92,15 @@ Universal kanata config for all keyboards.
   )
 
   ;; --- HOME ROW MODS ---
-  a (tap-hold-release-keys 300 300 (multi a @tap) lmet $left-hand-keys)
-  s (tap-hold-release-keys 200 200 (multi s @tap) lalt $left-hand-keys)
-  d (tap-hold-release-keys 200 200 (multi d @tap) lctl $left-hand-keys)
-  f (tap-hold-release-keys 200 200 (multi f @tap) lsft $left-hand-keys)
+  a (t! charmod-keys a lmet $left-hand-keys 300 300)
+  s (t! charmod-keys s lalt $left-hand-keys 200 200)
+  d (t! charmod-keys d lctl $left-hand-keys 200 200)
+  f (t! charmod-keys f lsft $left-hand-keys 200 200)
   ;; vim keys use timeout for reliable char repetition
-  j (tap-hold-release-timeout 200 500 (multi j @tap) rsft j)
-  k (tap-hold-release-timeout 200 500 (multi k @tap) rctl k)
-  l (tap-hold-release-timeout 200 500 (multi l @tap) ralt l)
-  ; (tap-hold-release-keys 300 300 (multi ; @tap) rmet $right-hand-keys)
+  j (t! charmod-timeout j rsft 200 500)
+  k (t! charmod-timeout k rctl 200 500)
+  l (t! charmod-timeout l ralt 200 500)
+  ; (t! charmod-keys ; rmet $right-hand-keys 300 300)
 
   ;; --- MOUSE SPEEDS ---
   fst (movemouse-speed 500) 
