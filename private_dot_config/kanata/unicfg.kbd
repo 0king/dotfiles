@@ -31,6 +31,7 @@ Universal kanata config for all keyboards.
 )
 
 (defvar
+  ;; exlude s(alt) d (ctrl) f(shft) to support multi mod tap
   left-hand-keys (
     q w e r t
     a g
@@ -55,10 +56,15 @@ Universal kanata config for all keyboards.
   )
 )
 
-(deftemplate charmod-timeout (char mod tap-time hold-time)
+;; Vim HRM keys template:
+;; 1. Double-tap (press within 200 ms after tap): disables HRM and holds raw key for repetition
+;; 2. Fast-typing skip (#1455)
+;; 3. Fallback HRM tap-hold
+(deftemplate charmod-vim (char mod keys tap-time hold-time)
   (switch 
+    ((and (key-history $char 1) (key-timing 1 less-than 200))) $char break
     ((key-timing 3 less-than 250)) (multi $char @tap) break
-    () (tap-hold-release-timeout $tap-time $hold-time (multi $char @tap) $mod $char) break
+    () (tap-hold-release-keys $tap-time $hold-time (multi $char @tap) $mod $keys) break
   )
 )
 
@@ -96,10 +102,10 @@ Universal kanata config for all keyboards.
   s (t! charmod-keys s lalt $left-hand-keys 200 200)
   d (t! charmod-keys d lctl $left-hand-keys 200 200)
   f (t! charmod-keys f lsft $left-hand-keys 200 200)
-  ;; vim keys use timeout for reliable char repetition
-  j (t! charmod-timeout j rsft 200 500)
-  k (t! charmod-timeout k rctl 200 500)
-  l (t! charmod-timeout l ralt 200 500)
+  ;; vim keys use double-tap repetition rule
+  j (t! charmod-vim j rsft $right-hand-keys 200 200)
+  k (t! charmod-vim k rctl $right-hand-keys 200 200)
+  l (t! charmod-vim l ralt $right-hand-keys 200 200)
   ; (t! charmod-keys ; rmet $right-hand-keys 300 300)
 
   ;; --- MOUSE SPEEDS ---

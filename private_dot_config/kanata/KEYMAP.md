@@ -7,6 +7,7 @@
 * **HRM (Home Row Mods)**:
   * Left: `A` (Super) · `S` (Alt) · `D` (Ctrl) · `F` (Shift)
   * Right: `J` (Shift) · `K` (Ctrl) · `L` (Alt) · `;` (Super)
+* **Vim Repeat**: Double-tap (tap into hold) on `J`, `K`, `L` disables HRM and repeats character
 * *Physical Mods held*: Drops HRMs (`no-hrm`)
 
 ---
