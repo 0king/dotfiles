@@ -32,12 +32,12 @@ Universal kanata config for all keyboards.
 
 (defvar
   ;; exlude s(alt) d (ctrl) f(shft) to support multi mod tap
-  left-hand-keys (
+  left-hand (
     q w e r t
     a g
     z x c v b
   )
-  right-hand-keys (
+  right-hand (
     y u i o p
     h ;
     n m , . /
@@ -49,7 +49,7 @@ Universal kanata config for all keyboards.
 )
 
 ;; Templates with key-timing fast-typing skip (#1455)
-(deftemplate charmod-keys (char mod keys tap-time hold-time)
+(deftemplate mod-taphold-recency (char mod keys tap-time hold-time)
   (switch 
     ((key-timing 3 less-than 250)) (multi $char @tap) break
     () (tap-hold-release-keys $tap-time $hold-time (multi $char @tap) $mod $keys) break
@@ -60,7 +60,7 @@ Universal kanata config for all keyboards.
 ;; 1. Double-tap (press within 200 ms after tap): disables HRM and holds raw key for repetition
 ;; 2. Fast-typing skip (#1455)
 ;; 3. Fallback HRM tap-hold
-(deftemplate charmod-vim (char mod keys tap-time hold-time)
+(deftemplate mod-vim (char mod keys tap-time hold-time)
   (switch 
     ((and (key-history $char 1) (key-timing 1 less-than 200))) $char break
     ((key-timing 3 less-than 250)) (multi $char @tap) break
@@ -93,20 +93,20 @@ Universal kanata config for all keyboards.
   fork-esc-base-media (fork esc @fork-esc-base (lmet rmet))
 
   tap (multi
-    (layer-switch lyr-no-hrm)
+    (layer-switch lyr-nohrm)
     (on-idle-fakekey to-base tap 20)
   )
 
   ;; --- HOME ROW MODS ---
-  a (t! charmod-keys a lmet $left-hand-keys 300 300)
-  s (t! charmod-keys s lalt $left-hand-keys 200 200)
-  d (t! charmod-keys d lctl $left-hand-keys 200 200)
-  f (t! charmod-keys f lsft $left-hand-keys 200 200)
+  a (t! mod-taphold-recency a lmet $left-hand 300 300)
+  s (t! mod-taphold-recency s lalt $left-hand 200 200)
+  d (t! mod-taphold-recency d lctl $left-hand 200 200)
+  f (t! mod-taphold-recency f lsft $left-hand 200 200)
   ;; vim keys use double-tap repetition rule
-  j (t! charmod-vim j rsft $right-hand-keys 200 200)
-  k (t! charmod-vim k rctl $right-hand-keys 200 200)
-  l (t! charmod-vim l ralt $right-hand-keys 200 200)
-  ; (t! charmod-keys ; rmet $right-hand-keys 300 300)
+  j (t! mod-vim j rsft $right-hand 200 200)
+  k (t! mod-vim k rctl $right-hand 200 200)
+  l (t! mod-vim l ralt $right-hand 200 200)
+  ; (t! mod-taphold-recency ; rmet $right-hand 300 300)
 
   ;; --- MOUSE SPEEDS ---
   fst (movemouse-speed 500) 
@@ -156,6 +156,7 @@ Universal kanata config for all keyboards.
 ;; Base layer with HRMs
 ;; hold space for alt layer
 ;; hold esc/capslock for mouse layer
+;; physical super and control are swapped
 (deflayer lyr-base
   @fork-esc-bypass-media  _    _    _    _    _    _    _    _    _    _    _    _  ;; function row
   _    _    _    _    _    _    _    _    _    _    _    _    _    _                ;; number row
@@ -239,8 +240,8 @@ Universal kanata config for all keyboards.
   _       _     _           @sp             _     _     _
 )
 
-;; When a physical mod is held, the home row instantly drops HRM logic
-(deflayer lyr-no-hrm
+;; disable HRMs
+(deflayer lyr-nohrm
   _    _    _    _    _    _    _    _    _    _    _    _    _
   _    _    _    _    _    _    _    _    _    _    _    _    _    _
   _    _    _    _    _    _    _    _    _    _    _    _    _    _
