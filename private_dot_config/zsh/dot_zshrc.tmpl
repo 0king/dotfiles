@@ -139,4 +139,7 @@ fi
 
 # Mise runtime manager
 (( $+commands[mise] )) && eval "$(mise activate zsh)"
-eval "$(atuin init zsh)"
+
+# shell history
+eval "$(atuin init zsh --disable-up-arrow)"
+
