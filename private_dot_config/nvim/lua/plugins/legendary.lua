@@ -1,5 +1,12 @@
 return {
   {
+    "folke/snacks.nvim",
+    opts = {},
+    keys = {
+      { "<leader>sp", false },
+    },
+  },
+  {
     "0king/legendary.nvim",
     priority = 10000,
     lazy = false,
