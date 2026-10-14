@@ -1,12 +1,5 @@
 return {
   {
-    "folke/snacks.nvim",
-    opts = {},
-    keys = {
-      { "<leader>sp", false },
-    },
-  },
-  {
     "0king/legendary.nvim",
     priority = 10000,
     lazy = false,
@@ -14,7 +7,7 @@ return {
       { "kkharji/sqlite.lua" },
     },
     keys = {
-      { "<leader>sp", "<cmd>CommandPalette<cr>", desc = "Command Palette" },
+      { "<leader>P", "<cmd>CommandPalette<cr>", desc = "Command Palette" },
       { "<C-S-P>", "<cmd>CommandPalette<cr>", mode = { "n", "x", "i" }, desc = "Command Palette" },
     },
     opts = {
