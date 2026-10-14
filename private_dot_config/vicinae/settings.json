@@ -15,7 +15,7 @@
    "wrap_navigation": true,
    "escape_key_behavior": "",
    "tray": {
-      "enabled": true
+      "enabled": false
    },
    "theme": {
       "dark": {
