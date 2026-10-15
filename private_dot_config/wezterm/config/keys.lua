@@ -91,8 +91,8 @@ function M.apply_to_config(config)
 	})
 
 	-- Unified Line Scrolling (Arrow keys & Vim keys)
-	table.insert(config.keys, { key = "Up", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
-	table.insert(config.keys, { key = "Down", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
+	table.insert(config.keys, { key = "UpArrow", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
+	table.insert(config.keys, { key = "DownArrow", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
 	-- Explicitly override Ctrl+Shift+K to prevent WezTerm's default ClearScrollback
 	table.insert(config.keys, { key = "k", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
 	table.insert(config.keys, { key = "K", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
