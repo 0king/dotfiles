@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Backup of Atuin Shell History Database
+Documentation=file://%h/.local/bin/backup-atuin-history
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/backup-atuin-history backup --quiet
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/installs/atuin/latest/.mise-bins:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal

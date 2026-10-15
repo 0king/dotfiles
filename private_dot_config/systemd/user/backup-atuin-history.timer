@@ -1,0 +1,11 @@
+[Unit]
+Description=Run hourly Atuin history backup
+Documentation=file://%h/.local/bin/backup-atuin-history
+
+[Timer]
+OnCalendar=*:00:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,612 @@
+#!/usr/bin/env bash
+#
+# backup-atuin-history — Automated hourly backup, export, and restore utility for Atuin shell history
+#
+# Usage:
+#   backup-atuin-history [backup] [DIR] [OPTIONS]
+#   backup-atuin-history export [DIR] [OPTIONS]
+#   backup-atuin-history import <BACKUP_FILE> [OPTIONS]
+#   backup-atuin-history list [DIR]
+#   backup-atuin-history prune [DIR]
+#   backup-atuin-history --daemon [DIR]
+#   backup-atuin-history --install-timer
+#   backup-atuin-history --uninstall-timer
+#   backup-atuin-history --status-timer
+#
+# Description:
+#   Performs hot, consistent SQLite backups (.backup) of Atuin's history database
+#   together with a portable plain-text history export suitable for 'atuin import bash'.
+#   Includes automated hourly systemd timer integration, retention rotation,
+#   and desktop failure notifications via notify-send.
+#
+
+set -euo pipefail
+
+# ── ANSI Color Palette ────────────────────────────────────────────────────────
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  RESET=$'\033[0m'
+  RED=$'\033[31m'
+  GREEN=$'\033[32m'
+  YELLOW=$'\033[33m'
+  BLUE=$'\033[34m'
+  MAGENTA=$'\033[35m'
+  CYAN=$'\033[36m'
+  WHITE=$'\033[37m'
+else
+  BOLD=""
+  DIM=""
+  RESET=""
+  RED=""
+  GREEN=""
+  YELLOW=""
+  BLUE=""
+  MAGENTA=""
+  CYAN=""
+  WHITE=""
+fi
+
+# ── Logging Helpers ───────────────────────────────────────────────────────────
+log_info()    { printf "%s[INFO]%s  %s\n" "$CYAN" "$RESET" "$*"; }
+log_success() { printf "%s[OK]%s    %s\n" "$GREEN" "$RESET" "$*"; }
+log_warn()    { printf "%s[WARN]%s  %s\n" "$YELLOW" "$RESET" "$*" >&2; }
+log_error()   { printf "%s[ERROR]%s %s\n" "$RED" "$RESET" "$*" >&2; }
+die()         { log_error "$*"; notify_failure "$*"; exit 1; }
+
+# ── Defaults & Configuration ──────────────────────────────────────────────────
+DEFAULT_BACKUP_DIR="${HOME}/Desktop/fj/Dropbox/archives/backups/terminal/atuin-history"
+BACKUP_DIR="${ATUIN_BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"
+ATUIN_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/atuin"
+ATUIN_DB="${ATUIN_DATA_DIR}/history.db"
+RECORDS_DB="${ATUIN_DATA_DIR}/records.db"
+
+RETENTION_DAYS=7
+KEEP_COUNT=24
+QUIET=0
+FORCE=0
+DAEMON_INTERVAL=3600
+
+# ── Failure Notification Helper ───────────────────────────────────────────────
+notify_failure() {
+  local error_msg="$1"
+  # In case DBUS_SESSION_BUS_ADDRESS is missing in headless/cron environments
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -n "${UID:-}" ]; then
+    local runtime_bus="/run/user/${UID}/bus"
+    if [ -S "$runtime_bus" ]; then
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=${runtime_bus}"
+    fi
+  fi
+
+  if command -v notify-send &>/dev/null; then
+    notify-send \
+      -u critical \
+      -a "Atuin Backup" \
+      -i "dialog-error" \
+      "Atuin History Backup Failed" \
+      "$error_msg" 2>/dev/null || true
+  fi
+}
+
+# Trap unexpected errors to ensure desktop notification is dispatched
+trap 'exit_code=$?; if [ $exit_code -ne 0 ]; then notify_failure "Command failed with exit code $exit_code at line $LINENO"; fi' ERR
+
+# ── Path Normalization ────────────────────────────────────────────────────────
+normalize_path() {
+  local raw_path="$1"
+  # Expand leading tilde
+  raw_path="${raw_path/#\~/$HOME}"
+  # Normalize lowercase ~/desktop to ~/Desktop if ~/Desktop exists and ~/desktop does not
+  if [[ "$raw_path" == "$HOME/desktop"* ]] && [ ! -d "$HOME/desktop" ] && [ -d "$HOME/Desktop" ]; then
+    raw_path="$HOME/Desktop${raw_path#$HOME/desktop}"
+  fi
+  printf "%s" "$raw_path"
+}
+
+# ── Tool Discovery ────────────────────────────────────────────────────────────
+find_atuin() {
+  if command -v atuin &>/dev/null; then
+    command -v atuin
+    return 0
+  fi
+
+  # Check mise shim or managed installs
+  if command -v mise &>/dev/null && mise which atuin &>/dev/null; then
+    mise which atuin
+    return 0
+  fi
+
+  local mise_atuin="$HOME/.local/share/mise/installs/atuin/latest/.mise-bins/atuin"
+  if [ -x "$mise_atuin" ]; then
+    printf "%s" "$mise_atuin"
+    return 0
+  fi
+
+  local cargo_atuin="$HOME/.cargo/bin/atuin"
+  if [ -x "$cargo_atuin" ]; then
+    printf "%s" "$cargo_atuin"
+    return 0
+  fi
+
+  return 1
+}
+
+find_sqlite3() {
+  if command -v sqlite3 &>/dev/null; then
+    command -v sqlite3
+    return 0
+  fi
+  return 1
+}
+
+# ── Core Operations ───────────────────────────────────────────────────────────
+
+cmd_backup() {
+  local target_dir
+  target_dir="$(normalize_path "$BACKUP_DIR")"
+
+  local SQLITE_BIN
+  SQLITE_BIN="$(find_sqlite3)" || die "sqlite3 binary not found in PATH"
+
+  local ATUIN_BIN=""
+  ATUIN_BIN="$(find_atuin || true)"
+
+  if [ ! -f "$ATUIN_DB" ]; then
+    die "Atuin history database not found at '$ATUIN_DB'"
+  fi
+
+  mkdir -p "$target_dir" || die "Failed to create backup directory '$target_dir'"
+
+  local timestamp
+  timestamp="$(date +"%Y-%m-%d_%H%M%S")"
+
+  local db_dest="${target_dir}/atuin-history_${timestamp}.db"
+  local txt_dest="${target_dir}/atuin-history_${timestamp}.txt"
+  local tmp_db="${target_dir}/.tmp_${timestamp}.db"
+  local tmp_txt="${target_dir}/.tmp_${timestamp}.txt"
+
+  [ "$QUIET" -eq 1 ] || log_info "Starting Atuin history backup to: ${BOLD}${target_dir}${RESET}"
+
+  # 1. Hot SQLite Backup using online backup API
+  if ! "$SQLITE_BIN" "$ATUIN_DB" ".backup '${tmp_db}'" 2>/dev/null; then
+    rm -f "${tmp_db}"
+    die "SQLite .backup command failed on '${ATUIN_DB}'"
+  fi
+
+  # 2. SQLite Database Integrity Verification
+  local check_result
+  check_result="$("$SQLITE_BIN" "${tmp_db}" "PRAGMA integrity_check;" 2>&1 || true)"
+  if [ "$check_result" != "ok" ]; then
+    rm -f "${tmp_db}"
+    die "Integrity check failed on backup snapshot (result: ${check_result})"
+  fi
+
+  mv "${tmp_db}" "${db_dest}"
+  chmod 600 "${db_dest}"
+
+  local row_count
+  row_count="$("$SQLITE_BIN" "${db_dest}" "SELECT count(*) FROM history;" 2>/dev/null || echo "unknown")"
+
+  # 3. Plain-text Export (compatible with 'atuin import bash' or standard shells)
+  local export_success=0
+  if [ -n "$ATUIN_BIN" ] && [ -x "$ATUIN_BIN" ]; then
+    if "$ATUIN_BIN" history list --cmd-only > "${tmp_txt}" 2>/dev/null; then
+      mv "${tmp_txt}" "${txt_dest}"
+      chmod 600 "${txt_dest}"
+      export_success=1
+    fi
+  fi
+
+  # Fallback to direct SQLite query if atuin CLI export failed or unavailable
+  if [ "$export_success" -eq 0 ]; then
+    if "$SQLITE_BIN" "${db_dest}" "SELECT command FROM history WHERE deleted_at IS NULL ORDER BY timestamp ASC;" > "${tmp_txt}" 2>/dev/null; then
+      mv "${tmp_txt}" "${txt_dest}"
+      chmod 600 "${txt_dest}"
+      export_success=1
+    else
+      rm -f "${tmp_txt}"
+      log_warn "Could not generate plain-text export; SQLite snapshot was saved successfully."
+    fi
+  fi
+
+  # 4. Also back up records.db if present (Atuin sync records store)
+  if [ -f "$RECORDS_DB" ]; then
+    local records_dest="${target_dir}/atuin-records_${timestamp}.db"
+    local tmp_records="${target_dir}/.tmp_records_${timestamp}.db"
+    if "$SQLITE_BIN" "$RECORDS_DB" ".backup '${tmp_records}'" 2>/dev/null; then
+      if [ "$("$SQLITE_BIN" "${tmp_records}" "PRAGMA integrity_check;" 2>&1 || true)" = "ok" ]; then
+        mv "${tmp_records}" "${records_dest}"
+        chmod 600 "${records_dest}"
+      else
+        rm -f "${tmp_records}"
+      fi
+    else
+      rm -f "${tmp_records}"
+    fi
+  fi
+
+  # 5. Prune old backups per retention policy
+  prune_backups "$target_dir"
+
+  # 6. Summary reporting
+  local db_size
+  db_size="$(du -h "${db_dest}" | cut -f1)"
+  local txt_size="N/A"
+  [ -f "${txt_dest}" ] && txt_size="$(du -h "${txt_dest}" | cut -f1)"
+
+  if [ "$QUIET" -eq 0 ]; then
+    log_success "Backup completed successfully!"
+    printf "  • %sSQLite snapshot:%s %s (%s, %s entries)\n" "$BOLD" "$RESET" "$(basename "$db_dest")" "$db_size" "$row_count"
+    if [ -f "${txt_dest}" ]; then
+      printf "  • %sText export:%s     %s (%s)\n" "$BOLD" "$RESET" "$(basename "$txt_dest")" "$txt_size"
+    fi
+    printf "  • %sDestination:%s     %s\n" "$DIM" "$RESET" "$target_dir"
+  fi
+}
+
+cmd_export() {
+  local target_dir
+  target_dir="$(normalize_path "$BACKUP_DIR")"
+  cmd_backup
+}
+
+cmd_import() {
+  local import_file="$1"
+  import_file="$(normalize_path "$import_file")"
+
+  if [ ! -f "$import_file" ]; then
+    die "Import file '$import_file' does not exist"
+  fi
+
+  local SQLITE_BIN
+  SQLITE_BIN="$(find_sqlite3)" || die "sqlite3 binary not found in PATH"
+
+  local ATUIN_BIN=""
+  ATUIN_BIN="$(find_atuin || true)"
+
+  case "$import_file" in
+    *.db)
+      log_info "Verifying SQLite backup file: ${import_file}"
+      local check_result
+      check_result="$("$SQLITE_BIN" "$import_file" "PRAGMA integrity_check;" 2>&1 || true)"
+      if [ "$check_result" != "ok" ]; then
+        die "Integrity check failed on '$import_file': ${check_result}"
+      fi
+
+      local backup_count
+      backup_count="$("$SQLITE_BIN" "$import_file" "SELECT count(*) FROM history;" 2>/dev/null || echo "unknown")"
+      log_info "Backup contains ${BOLD}${backup_count}${RESET} history entries"
+
+      if [ "$FORCE" -eq 0 ] && [ -t 0 ]; then
+        printf "%s[PROMPT]%s Replace active Atuin database with this backup? [y/N]: " "$YELLOW" "$RESET"
+        read -r reply
+        if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+          log_info "Import cancelled by user."
+          return 0
+        fi
+      fi
+
+      # Create pre-restore safety backup of live DB
+      mkdir -p "$ATUIN_DATA_DIR"
+      if [ -f "$ATUIN_DB" ]; then
+        local pre_restore_backup="${ATUIN_DATA_DIR}/history.db.pre-restore-$(date +%Y%m%d_%H%M%S)"
+        log_info "Creating pre-restore safety backup: ${pre_restore_backup}"
+        "$SQLITE_BIN" "$ATUIN_DB" ".backup '${pre_restore_backup}'" || cp "$ATUIN_DB" "${pre_restore_backup}"
+      fi
+
+      # Restore database
+      log_info "Restoring history database..."
+      cp "$import_file" "$ATUIN_DB"
+      chmod 600 "$ATUIN_DB"
+
+      # Clear stale WAL and SHM journal files
+      rm -f "${ATUIN_DB}-wal" "${ATUIN_DB}-shm"
+
+      # Rebuild store index if atuin CLI is available
+      if [ -n "$ATUIN_BIN" ] && [ -x "$ATUIN_BIN" ]; then
+        log_info "Rebuilding Atuin history store..."
+        "$ATUIN_BIN" store rebuild history 2>/dev/null || true
+      fi
+
+      local current_count
+      current_count="$("$SQLITE_BIN" "$ATUIN_DB" "SELECT count(*) FROM history;" 2>/dev/null || echo "$backup_count")"
+      log_success "History database successfully restored (${current_count} entries)!"
+      ;;
+
+    *.txt|*.sh|*.history)
+      [ -n "$ATUIN_BIN" ] && [ -x "$ATUIN_BIN" ] || die "Atuin binary required to import text history. Please install or ensure atuin is in PATH."
+      log_info "Importing plain-text history from: ${import_file}"
+      
+      # Use HISTFILE override with atuin import bash
+      if HISTFILE="$import_file" "$ATUIN_BIN" import bash; then
+        log_success "Text history import completed successfully!"
+      else
+        die "Failed to import history from '$import_file'"
+      fi
+      ;;
+
+    *)
+      die "Unsupported file extension for '$import_file'. Expected .db (SQLite snapshot) or .txt (plain-text export)."
+      ;;
+  esac
+}
+
+cmd_list() {
+  local target_dir
+  target_dir="$(normalize_path "$BACKUP_DIR")"
+
+  if [ ! -d "$target_dir" ]; then
+    log_warn "Backup directory '$target_dir' does not exist yet."
+    return 0
+  fi
+
+  printf "\n%sAvailable Atuin Backups in %s:%s\n\n" "$BOLD" "$target_dir" "$RESET"
+  printf "  %-32s %-10s %-10s %s\n" "SNAPSHOT TIMESTAMP" "DB SIZE" "TXT SIZE" "ENTRIES"
+  printf "  %-32s %-10s %-10s %s\n" "------------------" "-------" "--------" "-------"
+
+  local SQLITE_BIN
+  SQLITE_BIN="$(find_sqlite3 || true)"
+
+  local found=0
+  for db_file in $(find "$target_dir" -maxdepth 1 -name "atuin-history_*.db" -type f | sort -r); do
+    found=1
+    local filename
+    filename="$(basename "$db_file")"
+    local base="${filename%.db}"
+    local txt_file="${target_dir}/${base}.txt"
+
+    local db_size
+    db_size="$(du -h "$db_file" | cut -f1)"
+
+    local txt_size="-"
+    [ -f "$txt_file" ] && txt_size="$(du -h "$txt_file" | cut -f1)"
+
+    local entries="-"
+    if [ -n "$SQLITE_BIN" ]; then
+      entries="$("$SQLITE_BIN" "$db_file" "SELECT count(*) FROM history;" 2>/dev/null || echo "-")"
+    fi
+
+    printf "  %-32s %-10s %-10s %s\n" "$base" "$db_size" "$txt_size" "$entries"
+  done
+
+  if [ "$found" -eq 0 ]; then
+    printf "  (no backup archives found)\n"
+  fi
+  printf "\n"
+}
+
+prune_backups() {
+  local target_dir="$1"
+
+  # Find all DB files sorted newest first
+  mapfile -t all_db_files < <(find "$target_dir" -maxdepth 1 -name "atuin-history_*.db" -type f | sort -r)
+  local total_files=${#all_db_files[@]}
+
+  # If we have more than KEEP_COUNT files, check for files older than RETENTION_DAYS
+  if [ "$total_files" -gt "$KEEP_COUNT" ]; then
+    local pruned=0
+    # Files starting from index KEEP_COUNT are eligible for pruning if older than RETENTION_DAYS
+    for ((i = KEEP_COUNT; i < total_files; i++)); do
+      local file="${all_db_files[$i]}"
+      if [ -n "$(find "$file" -mtime "+$RETENTION_DAYS" 2>/dev/null)" ]; then
+        local base
+        base="$(basename "$file" .db)"
+        rm -f "$file"
+        rm -f "${target_dir}/${base}.txt"
+        rm -f "${target_dir}/atuin-records_${base#atuin-history_}.db"
+        ((pruned++))
+      fi
+    done
+    if [ "$pruned" -gt 0 ] && [ "$QUIET" -eq 0 ]; then
+      log_info "Pruned $pruned old backup set(s) older than $RETENTION_DAYS days (retaining at least $KEEP_COUNT backups)."
+    fi
+  fi
+}
+
+cmd_daemon() {
+  log_info "Starting Atuin history backup daemon (interval: ${DAEMON_INTERVAL}s)..."
+  while true; do
+    cmd_backup || true
+    sleep "$DAEMON_INTERVAL"
+  done
+}
+
+# ── Systemd Timer Integration ─────────────────────────────────────────────────
+SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
+SERVICE_NAME="backup-atuin-history.service"
+TIMER_NAME="backup-atuin-history.timer"
+
+cmd_install_timer() {
+  mkdir -p "$SYSTEMD_USER_DIR"
+
+  local script_path
+  script_path="${HOME}/.local/bin/backup-atuin-history"
+
+  cat > "${SYSTEMD_USER_DIR}/${SERVICE_NAME}" <<EOF
+[Unit]
+Description=Hourly Backup of Atuin Shell History Database
+Documentation=file://${script_path}
+
+[Service]
+Type=oneshot
+ExecStart=${script_path} backup --quiet
+Environment=PATH=${HOME}/.local/bin:${HOME}/.local/share/mise/installs/atuin/latest/.mise-bins:${HOME}/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal
+EOF
+
+  cat > "${SYSTEMD_USER_DIR}/${TIMER_NAME}" <<EOF
+[Unit]
+Description=Run hourly Atuin history backup
+Documentation=file://${script_path}
+
+[Timer]
+OnCalendar=*:00:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$TIMER_NAME"
+  log_success "Systemd user timer '${TIMER_NAME}' installed and started!"
+  cmd_status_timer
+}
+
+cmd_uninstall_timer() {
+  log_info "Disabling systemd user timer..."
+  systemctl --user disable --now "$TIMER_NAME" 2>/dev/null || true
+  rm -f "${SYSTEMD_USER_DIR}/${SERVICE_NAME}" "${SYSTEMD_USER_DIR}/${TIMER_NAME}"
+  systemctl --user daemon-reload
+  log_success "Systemd user timer and service uninstalled."
+}
+
+cmd_status_timer() {
+  printf "\n%s=== Timer Status ===%s\n" "$BOLD" "$RESET"
+  systemctl --user status "$TIMER_NAME" --no-pager || true
+  printf "\n%s=== Scheduled Timers ===%s\n" "$BOLD" "$RESET"
+  systemctl --user list-timers "$TIMER_NAME" --no-pager || true
+  printf "\n"
+}
+
+# ── Help & Usage ──────────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+${BOLD}backup-atuin-history${RESET} — Automated backup, export, and restore for Atuin shell history
+
+${BOLD}USAGE:${RESET}
+  backup-atuin-history [COMMAND] [DIR] [OPTIONS]
+
+${BOLD}COMMANDS:${RESET}
+  backup [DIR]             Run backup now (default command)
+  export [DIR]             Export current history to DB snapshot and text format
+  import <FILE>            Restore or import history from a backup file (.db or .txt)
+  list [DIR]               List available backup snapshots with entry counts and sizes
+  prune [DIR]              Manually clean up backups older than retention policy
+  --daemon [DIR]           Run continuous backup loop every 1 hour in foreground
+  --install-timer          Install and enable systemd user timer (runs hourly with catch-up)
+  --uninstall-timer        Disable and remove systemd user timer
+  --status-timer           Check status of systemd timer and next run schedule
+
+${BOLD}OPTIONS:${RESET}
+  -d, --dir <PATH>         Destination backup directory
+                           (Default: ${DEFAULT_BACKUP_DIR})
+  -r, --retention <DAYS>   Keep backups for N days (default: 7)
+  -k, --keep <COUNT>       Minimum backups to retain during prune (default: 24)
+  -q, --quiet              Suppress normal output (useful for cron/systemd)
+  -f, --force              Bypass interactive confirmations during restore
+  -h, --help               Display this help text
+
+${BOLD}IMPORT & EXPORT EXAMPLES:${RESET}
+  ${CYAN}# Run manual backup to default Dropbox location:${RESET}
+  backup-atuin-history
+
+  ${CYAN}# Import an SQLite snapshot (full fidelity restore):${RESET}
+  backup-atuin-history import /path/to/atuin-history_2026-10-16_010000.db
+
+  ${CYAN}# Import a plain-text export into Atuin on another machine:${RESET}
+  backup-atuin-history import /path/to/atuin-history_2026-10-16_010000.txt
+  ${DIM}# (Equivalently: HISTFILE=/path/to/file.txt atuin import bash)${RESET}
+
+  ${CYAN}# Check upcoming automated timer runs:${RESET}
+  backup-atuin-history --status-timer
+
+EOF
+}
+
+# ── Argument Parsing ──────────────────────────────────────────────────────────
+COMMAND="backup"
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    backup|export|list|prune)
+      COMMAND="$1"
+      shift
+      ;;
+    import)
+      COMMAND="import"
+      shift
+      if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+        POSITIONAL+=("$1")
+        shift
+      fi
+      ;;
+    --daemon)
+      COMMAND="daemon"
+      shift
+      ;;
+    --install-timer)
+      COMMAND="install-timer"
+      shift
+      ;;
+    --uninstall-timer)
+      COMMAND="uninstall-timer"
+      shift
+      ;;
+    --status-timer)
+      COMMAND="status-timer"
+      shift
+      ;;
+    -d|--dir)
+      BACKUP_DIR="$2"
+      shift 2
+      ;;
+    -r|--retention)
+      RETENTION_DAYS="$2"
+      shift 2
+      ;;
+    -k|--keep)
+      KEEP_COUNT="$2"
+      shift 2
+      ;;
+    -q|--quiet)
+      QUIET=1
+      shift
+      ;;
+    -f|--force)
+      FORCE=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -z "${POSITIONAL[*]:-}" && ! "$1" =~ ^- ]]; then
+        POSITIONAL+=("$1")
+      else
+        die "Unknown argument: $1 (see --help for usage)"
+      fi
+      shift
+      ;;
+  esac
+done
+
+# If positional arg provided for directory or file
+if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
+  if [ "$COMMAND" = "import" ]; then
+    IMPORT_FILE="${POSITIONAL[0]}"
+  else
+    BACKUP_DIR="${POSITIONAL[0]}"
+  fi
+fi
+
+# ── Main Dispatch ─────────────────────────────────────────────────────────────
+case "$COMMAND" in
+  backup)          cmd_backup ;;
+  export)          cmd_export ;;
+  import)
+    [ -n "${IMPORT_FILE:-}" ] || die "Missing file path to import. Usage: backup-atuin-history import <FILE>"
+    cmd_import "$IMPORT_FILE"
+    ;;
+  list)            cmd_list ;;
+  prune)           prune_backups "$(normalize_path "$BACKUP_DIR")" ;;
+  daemon)          cmd_daemon ;;
+  install-timer)   cmd_install_timer ;;
+  uninstall-timer) cmd_uninstall_timer ;;
+  status-timer)    cmd_status_timer ;;
+  *)               usage; exit 1 ;;
+esac
