@@ -159,9 +159,15 @@ Configured in `.chezmoi.toml.tmpl` and active in `~/.config/chezmoi/chezmoi.toml
 - `d` — **Diff**, view exact line changes for this file
 - `q` — **Quit**, abort operation immediately
 
-### 2. Automated Pre-Execution Backups (`[hooks.apply.pre]` & `[hooks.re-add.pre]`)
-Pre-execution hooks run automatically before changes are written to disk. They create timestamped snapshots of files about to be modified:
-- **`[hooks.apply.pre]`**: Backs up existing files in `$HOME` before `chezmoi apply` writes repository changes to your machine.
+### 2. Conflict Protection & Automated Pre-Execution Backups (`[hooks.apply.pre]` & `[hooks.re-add.pre]`)
+Pre-execution hooks run automatically before changes are written to disk:
+- **`[hooks.apply.pre]`**: 
+  1. **Conflict Protection**: Intercepts changes to protected directories (e.g., `~/.config/zed`, `~/.config/vicinae`) where local changes must never be overwritten without explicit choice. Prompts interactively with:
+     - `1) re-add` — Preserves local home changes and syncs them into the chezmoi source repo.
+     - `2) apply (overwrite)` — Discards local home changes and overwrites from the repository.
+     - `3) diff` — Views differences between the repository and local home file.
+     - `4) cancel` — Immediately aborts `chezmoi apply` without modifying any file.
+  2. **Automated Backup**: Creates timestamped snapshots in `$HOME` before `chezmoi apply` writes repository changes to your machine.
 - **`[hooks.re-add.pre]`**: Backs up existing files in the source repository (`~/.local/share/chezmoi`) before `chezmoi re-add` syncs modified files from `$HOME`.
 
 Backups are saved to:

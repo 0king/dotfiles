@@ -26,8 +26,91 @@ lessInteractive = true
     args = [
         "-c",
         '''
+# 1. Skip on dry-run
+case " $CHEZMOI_ARGS " in
+    *" --dry-run "*|*" -n "*) exit 0 ;;
+esac
+
+# 2. Protected directories relative to destination directory ($HOME)
+PROTECTED_PREFIXES=(
+    ".config/zed"
+    ".config/vicinae"
+)
+
+# 3. Intercept overwrites for protected directories
+mapfile -t STATUS_LINES < <(chezmoi status 2>/dev/null)
+for line in "${STATUS_LINES[@]}"; do
+    [ -z "$line" ] && continue
+    status_dest="${line:0:1}"
+    status_target="${line:1:1}"
+    rel_path="${line:3}"
+
+    # Check if target is under any protected directory
+    is_protected=0
+    for prefix in "${PROTECTED_PREFIXES[@]}"; do
+        if [[ "$rel_path" == "$prefix"* ]] || [[ "$rel_path" == "$prefix" ]]; then
+            is_protected=1
+            break
+        fi
+    done
+
+    [ "$is_protected" -eq 0 ] && continue
+
+    # A home file is at risk if it exists locally and changes are detected
+    if [ -f "$HOME/$rel_path" ] || [ -L "$HOME/$rel_path" ]; then
+        if [ "$status_target" != " " ] || [ "$status_dest" = "M" ]; then
+            # Ensure interactive terminal is available
+            if [ ! -e /dev/tty ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+                echo "❌ [chezmoi apply] Aborting: protected file ~/$rel_path would be overwritten, but no interactive terminal (TTY) is available to prompt." >&2
+                exit 1
+            fi
+
+            while true; do
+                echo "" > /dev/tty
+                echo "============================================================" > /dev/tty
+                echo "⚠️  PROTECTED FILE CONFLICT: ~/$rel_path" > /dev/tty
+                echo "    Chezmoi is about to overwrite changes in your home directory!" > /dev/tty
+                echo "============================================================" > /dev/tty
+                echo "Options:" > /dev/tty
+                echo "  [1] re-add            (keep local changes & update chezmoi repo)" > /dev/tty
+                echo "  [2] apply (overwrite) (discard local changes & overwrite with repo)" > /dev/tty
+                echo "  [3] diff              (view differences between repo and local)" > /dev/tty
+                echo "  [4] cancel            (abort chezmoi apply immediately)" > /dev/tty
+                printf "Choice [1-4]: " > /dev/tty
+                read -r choice < /dev/tty
+
+                case "$choice" in
+                    1|[rR]*)
+                        echo "📥 Re-adding ~/$rel_path to chezmoi..." > /dev/tty
+                        chezmoi re-add "$HOME/$rel_path"
+                        break
+                        ;;
+                    2|[aA]*)
+                        echo "⚠️  Proceeding with overwrite for ~/$rel_path..." > /dev/tty
+                        break
+                        ;;
+                    3|[dD]*)
+                        echo "" > /dev/tty
+                        echo "--- Diff for ~/$rel_path ---" > /dev/tty
+                        chezmoi diff "$HOME/$rel_path" > /dev/tty 2>&1 || true
+                        echo "----------------------------" > /dev/tty
+                        ;;
+                    4|[cC]*|[qQ]*)
+                        echo "❌ Aborting chezmoi apply." > /dev/tty
+                        exit 1
+                        ;;
+                    *)
+                        echo "Invalid choice: '$choice'. Please enter 1, 2, 3, or 4." > /dev/tty
+                        ;;
+                esac
+            done
+        fi
+    fi
+done
+
+# 4. Automated backup routine for files that will be modified/applied
 BACKUP_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi/backups/$(date +%Y%m%d_%H%M%S)"
-chezmoi status | cut -c 4- | while IFS= read -r f; do
+chezmoi status 2>/dev/null | cut -c 4- | while IFS= read -r f; do
     if [ -f "$HOME/$f" ] || [ -L "$HOME/$f" ]; then
         mkdir -p "$BACKUP_DIR/$(dirname "$f")"
         cp -P "$HOME/$f" "$BACKUP_DIR/$f" 2>/dev/null || true
