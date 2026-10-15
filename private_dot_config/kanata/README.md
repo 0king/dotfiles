@@ -138,3 +138,89 @@ Because your physical modifiers activate the no-hrm layer, and your spacebar act
 Press Meta, THEN Space: no-hrm goes on the stack first. altt goes on top. The altt layer maps s d f to arrows. Result: Meta + Arrows (Works!)
 Press Space, THEN Meta: altt goes on the stack first. no-hrm goes on top. The no-hrm layer forcefully maps s d f back to standard letters. Result: Meta + S D F (Fails!)
 As long as you press your modifiers before you press the spacebar (which is the standard typing habit anyway), your arrow keys and shortcuts will work flawlessly.
+
+# Systemd Service & Real-Time Priority
+
+Kanata runs as a hardened systemd system service (`/etc/systemd/system/kanata.service`) under an unprivileged user (`kanata-svc`).
+
+### High-Priority & Real-Time Tuning
+To keep Kanata completely responsive with zero input lag even when the CPU and disk are under 100% saturation (e.g. heavy compilation, rendering, or memory paging), the service is configured with real-time CPU scheduling, cgroup memory locking, and OOM killer protection:
+
+```ini
+[Unit]
+Description=Kanata keyboard remapper
+Documentation=https://jtroo.github.io/config.html
+Wants=modprobe@uinput.service
+After=modprobe@uinput.service
+Requires=dev-uinput.device
+After=dev-uinput.device
+
+[Service]
+Type=simple
+User=kanata-svc
+Group=kanata-svc
+
+ExecStart=/usr/local/bin/kanata --cfg /etc/kanata/unicfg.kbd --no-wait
+
+Restart=on-failure
+RestartSec=3
+
+# Priority & Real-Time Scheduling
+# - Round-robin real-time scheduling guarantees immediate CPU time over standard tasks
+# - Priority 50 preempts normal tasks without starving audio threads (PipeWire/JACK ~80-88)
+# - Nice=-20 is retained as a fallback if real-time policy is ever disabled
+CPUSchedulingPolicy=rr
+CPUSchedulingPriority=50
+Nice=-20
+
+# Memory Protection
+# - MemorySwapMax=0 prevents anonymous heap/stack pages from being swapped to disk
+# - MemoryMin=16M guarantees 16MB of physical RAM cannot be evicted by the kernel page cache
+MemorySwapMax=0
+MemoryMin=16M
+
+# OOM Killer Protection
+# - OOMScoreAdjust=-1000 completely exempts Kanata from the kernel OOM killer
+OOMScoreAdjust=-1000
+
+# Sandboxing
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+# Allow access to input devices and uinput
+DeviceAllow=/dev/uinput rw
+DeviceAllow=char-input r
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Applying & Verifying Changes
+
+1. **Edit the service file**:
+   ```bash
+   sudo nano /etc/systemd/system/kanata.service
+   ```
+2. **Reload systemd and restart the service**:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart kanata.service
+   ```
+3. **Verify running scheduling policy & priority**:
+   ```bash
+   chrt -p $(pgrep -x kanata)
+   ```
+   *(Expected: `SCHED_RR` with priority `50`)*
+4. **Verify OOM score adjustment**:
+   ```bash
+   cat /proc/$(pgrep -x kanata)/oom_score_adj
+   ```
+   *(Expected: `-1000`)*
+5. **Verify cgroup memory protection**:
+   ```bash
+   cat /sys/fs/cgroup/system.slice/kanata.service/memory.min
+   cat /sys/fs/cgroup/system.slice/kanata.service/memory.swap.max
+   ```
+
