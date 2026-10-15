@@ -10,5 +10,6 @@ putting all my scripts here and using chezmoi for sync/backup
   - Scripts flattened using `<directory>_<file>` naming pattern (e.g. `git_create-github-repo.sh`, `ubuntu_list-installed-apps.ubuntu.sh`, `vscode_vscode-projects.sh`, `bootstrap_*.sh`, etc.)
 - **code/** (off `$PATH`): C / C++ and other source code files (e.g. `check-c-version.c`)
 - **docs/** (off `$PATH`): Documentation, script guides, and READMEs
+  - `terminal-keymap.md`: Unified terminal keybindings and actions reference (Kitty, Alacritty, WezTerm, Ghostty)
 - **out/** (off `$PATH`): Script-generated data snapshots, audit logs, and reports
 

@@ -1,6 +1,8 @@
 # Documentation & repo metadata (do not copy to $HOME)
 README.md
 LICENSE
+docs/
+terminal-keymap.md
 .git/
 .githooks/
 scripts/

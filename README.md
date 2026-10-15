@@ -32,10 +32,10 @@ Modern, reproducible, and cross-platform personal dotfiles managed with [chezmoi
 │   │   ├── dot_zsh_plugins.txt              # Antidote plugin bundle manifest
 │   │   └── dot_gitignore                    # Local zsh ignore
 │   ├── nvim/                                # LazyVim modular configuration (Lua, plugins, keymaps)
-│   ├── wezterm/                             # Modular WezTerm Lua configuration
-│   ├── alacritty/                           # Alacritty terminal configuration & themes
-│   ├── kitty/                               # Kitty terminal configuration
-│   ├── ghostty/                             # Ghostty terminal configuration
+│   ├── wezterm/                             # Modular WezTerm Lua configuration (unified keymaps)
+│   ├── alacritty/                           # Alacritty terminal configuration & themes (unified keymaps)
+│   ├── kitty/                               # Kitty terminal configuration (unified keymaps)
+│   ├── ghostty/                             # Ghostty terminal configuration (unified keymaps)
 │   ├── kanata/                              # Keyboard remap configurations (unicfg.kbd)
 │   ├── vicinae/                             # Launcher configuration (settings.json)
 │   ├── yazi/                                # Yazi file manager configuration
@@ -43,10 +43,25 @@ Modern, reproducible, and cross-platform personal dotfiles managed with [chezmoi
 ├── private_dot_local/
 │   └── bin/                                 # Custom user scripts on PATH (git_*, ubuntu_*, vscode_*, etc.)
 │       ├── code/                            # C/C++ source snippets (off PATH)
-│       ├── docs/                            # Script manuals & guides (off PATH)
+│       ├── docs/                            # Script manuals & guides (terminal-keymap.md, etc.)
 │       └── out/                             # Script-generated data & snapshots (off PATH)
+├── docs/
+│   └── terminal-keymap.md                   # Complete unified terminal keymap reference
 └── README.md                                # This documentation
 ```
+
+---
+
+## ⌨️ Unified Terminal Keybindings (Kitty, Alacritty, WezTerm, Ghostty)
+
+All four terminal emulators share an identical mental model, keybinding matrix, and clipboard behaviors:
+- **Copy on Select**: Highlighting text with the mouse automatically copies it to the system clipboard across all terminals.
+- **Select All (`Ctrl + Shift + A`)**: Captures and copies the entire buffer/scrollback history directly to the clipboard.
+- **Vim Mode (`Ctrl + Shift + Space` or `Ctrl + Shift + X`)**: Activates keyboard scrollback navigation—native modal Vi mode in Alacritty and WezTerm, and a Neovim pager overlay in Kitty and Ghostty.
+- **Line Scrolling**: `Ctrl + Shift + Up/Down` and `Ctrl + Shift + K/J` (with WezTerm's default `ClearScrollback` safely overridden).
+- **Page & Boundary Scrolling**: `Shift + PageUp/Down`, `Ctrl + Shift + PageUp/Down`, and `Shift/Ctrl + Shift + Home/End`.
+
+👉 **Full Documentation**: See [`docs/terminal-keymap.md`](docs/terminal-keymap.md) for the detailed cheatsheet and architecture breakdown.
 
 ---
 
