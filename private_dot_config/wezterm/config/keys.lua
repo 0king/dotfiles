@@ -72,6 +72,59 @@ function M.apply_to_config(config)
 		action = select_all_and_copy,
 	})
 
+	-- Copy-on-select: Copy directly to Clipboard and PrimarySelection on mouse release
+	config.mouse_bindings = config.mouse_bindings or {}
+	table.insert(config.mouse_bindings, {
+		event = { Up = { streak = 1, button = "Left" } },
+		mods = "NONE",
+		action = act.CompleteSelectionOrOpenLinkAtMouseCursor("ClipboardAndPrimarySelection"),
+	})
+	table.insert(config.mouse_bindings, {
+		event = { Up = { streak = 2, button = "Left" } },
+		mods = "NONE",
+		action = act.CompleteSelection("ClipboardAndPrimarySelection"),
+	})
+	table.insert(config.mouse_bindings, {
+		event = { Up = { streak = 3, button = "Left" } },
+		mods = "NONE",
+		action = act.CompleteSelection("ClipboardAndPrimarySelection"),
+	})
+
+	-- Unified Line Scrolling (Arrow keys & Vim keys)
+	table.insert(config.keys, { key = "Up", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
+	table.insert(config.keys, { key = "Down", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
+	-- Explicitly override Ctrl+Shift+K to prevent WezTerm's default ClearScrollback
+	table.insert(config.keys, { key = "k", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
+	table.insert(config.keys, { key = "K", mods = "CTRL|SHIFT", action = act.ScrollByLine(-1) })
+	table.insert(config.keys, { key = "j", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
+	table.insert(config.keys, { key = "J", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
+
+	-- Unified Page Scrolling
+	table.insert(config.keys, { key = "PageUp", mods = "SHIFT", action = act.ScrollByPage(-1) })
+	table.insert(config.keys, { key = "PageDown", mods = "SHIFT", action = act.ScrollByPage(1) })
+	table.insert(config.keys, { key = "PageUp", mods = "CTRL|SHIFT", action = act.ScrollByPage(-1) })
+	table.insert(config.keys, { key = "PageDown", mods = "CTRL|SHIFT", action = act.ScrollByPage(1) })
+
+	-- Unified Boundary Scrolling
+	table.insert(config.keys, { key = "Home", mods = "SHIFT", action = act.ScrollToTop })
+	table.insert(config.keys, { key = "End", mods = "SHIFT", action = act.ScrollToBottom })
+	table.insert(config.keys, { key = "Home", mods = "CTRL|SHIFT", action = act.ScrollToTop })
+	table.insert(config.keys, { key = "End", mods = "CTRL|SHIFT", action = act.ScrollToBottom })
+
+	-- Unified Vim Mode (ActivateCopyMode)
+	table.insert(config.keys, { key = "Space", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
+	table.insert(config.keys, { key = "phys:Space", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
+	table.insert(config.keys, { key = "x", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
+	table.insert(config.keys, { key = "X", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
+
+	-- Unified Copy & Paste
+	table.insert(config.keys, { key = "c", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") })
+	table.insert(config.keys, { key = "C", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") })
+	table.insert(config.keys, { key = "v", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") })
+	table.insert(config.keys, { key = "V", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") })
+	table.insert(config.keys, { key = "Insert", mods = "SHIFT", action = act.PasteFrom("PrimarySelection") })
+	table.insert(config.keys, { key = "Insert", mods = "CTRL", action = act.CopyTo("Clipboard") })
+
 	-- Register in Command Palette (Ctrl + Shift + P)
 	wezterm.on("augment-command-palette", function(window, pane)
 		return {

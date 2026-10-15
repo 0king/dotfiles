@@ -33,3 +33,47 @@ size = 14.0
 {{- else }}
 size = 11.5
 {{- end }}
+
+[selection]
+save_to_clipboard = true
+
+[keyboard]
+bindings = [
+  # Clipboard
+  { key = "C", mods = "Control|Shift", action = "Copy" },
+  { key = "V", mods = "Control|Shift", action = "Paste" },
+  { key = "Insert", mods = "Control", action = "Copy" },
+  { key = "Insert", mods = "Shift", action = "PasteSelection" },
+
+  # Select All & Copy (Automated Vi Mode Macro)
+  { key = "A", mods = "Control|Shift", mode = "~Vi", action = "ToggleViMode" },
+  { key = "A", mods = "Control|Shift", action = "ScrollToTop" },
+  { key = "A", mods = "Control|Shift", action = "ToggleLineSelection" },
+  { key = "A", mods = "Control|Shift", action = "ScrollToBottom" },
+  { key = "A", mods = "Control|Shift", action = "Copy" },
+
+  # Vim Mode (Toggle Vi Mode)
+  { key = "Space", mods = "Control|Shift", action = "ToggleViMode" },
+  { key = "X", mods = "Control|Shift", action = "ToggleViMode" },
+
+  # Line Scrolling (Arrow keys & Vim keys)
+  { key = "Up", mods = "Control|Shift", action = "ScrollLineUp" },
+  { key = "Down", mods = "Control|Shift", action = "ScrollLineDown" },
+  { key = "K", mods = "Control|Shift", action = "ScrollLineUp" },
+  { key = "J", mods = "Control|Shift", action = "ScrollLineDown" },
+
+  # Page Scrolling
+  { key = "PageUp", mods = "Shift", action = "ScrollPageUp" },
+  { key = "PageDown", mods = "Shift", action = "ScrollPageDown" },
+  { key = "PageUp", mods = "Control|Shift", action = "ScrollPageUp" },
+  { key = "PageDown", mods = "Control|Shift", action = "ScrollPageDown" },
+
+  # Scroll to Boundary
+  { key = "Home", mods = "Shift", action = "ScrollToTop" },
+  { key = "End", mods = "Shift", action = "ScrollToBottom" },
+  { key = "Home", mods = "Control|Shift", action = "ScrollToTop" },
+  { key = "End", mods = "Control|Shift", action = "ScrollToBottom" },
+
+  # Search
+  { key = "F", mods = "Control|Shift", action = "SearchForward" },
+]
