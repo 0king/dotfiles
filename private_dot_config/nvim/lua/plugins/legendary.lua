@@ -7,7 +7,7 @@ return {
       { "kkharji/sqlite.lua" },
     },
     keys = {
-      { "<leader>P", "<cmd>CommandPalette<cr>", desc = "Command Palette" },
+      { "<leader>p", "<cmd>CommandPalette<cr>", desc = "Command Palette" },
       { "<A-x>", "<cmd>CommandPalette<cr>", mode = { "n", "x", "i" }, desc = "Command Palette" },
     },
     opts = {
