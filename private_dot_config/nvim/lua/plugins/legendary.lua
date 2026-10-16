@@ -8,7 +8,7 @@ return {
     },
     keys = {
       { "<leader>P", "<cmd>CommandPalette<cr>", desc = "Command Palette" },
-      { "<C-S-P>", "<cmd>CommandPalette<cr>", mode = { "n", "x", "i" }, desc = "Command Palette" },
+      { "<A-x>", "<cmd>CommandPalette<cr>", mode = { "n", "x", "i" }, desc = "Command Palette" },
     },
     opts = {
       include_builtin = true,
