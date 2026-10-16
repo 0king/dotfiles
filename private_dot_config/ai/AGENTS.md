@@ -7,6 +7,10 @@
 ## Documentation of Changes
 - **Always document changes made**: Always document all changes made to code, configuration, or files. Clearly describe what was modified, added, or removed, along with the reasoning behind the modifications.
 
+## Proper Documentation Standards
+- **Keep proper documentation alongside code**: Every top-level abstraction, public trait/interface, and architectural decision needs a matching doc artifact — rustdoc on public items, a `README.md` or `ARCHITECTURE.md` entry for new crates/modules, and updated contracts when behavior changes.
+- A behavior change without a matching doc/test update is incomplete. Prefer editing existing docs over creating new files; never leave `README`/`ARCHITECTURE`/trait docs stale after a refactor.
+
 ## AI Configuration Management (Skills, Rules & Prompts)
 All AI configurations on this computer are centralized in `~/.config/ai` and version-controlled via `chezmoi` (`~/.local/share/chezmoi/private_dot_config/ai`). All AI agents (Antigravity/Gemini, Cursor, Claude Code, Cline, Aider, Kilo, OpenCode, VS Code/Copilot) read from this centralized location via symlinks.
 
