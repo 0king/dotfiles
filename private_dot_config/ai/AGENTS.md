@@ -11,6 +11,13 @@
 - **Keep proper documentation alongside code**: Every top-level abstraction, public trait/interface, and architectural decision needs a matching doc artifact — rustdoc on public items, a `README.md` or `ARCHITECTURE.md` entry for new crates/modules, and updated contracts when behavior changes.
 - A behavior change without a matching doc/test update is incomplete. Prefer editing existing docs over creating new files; never leave `README`/`ARCHITECTURE`/trait docs stale after a refactor.
 
+## Safe File Deletion & System Trash
+- **Use trash instead of permanent removal**: When deleting user code, project files, or configuration files, prefer using `trash-put` (from `trash-cli`) or `gio trash` over `rm` / `rm -rf` so files can be recovered from system trash if needed.
+- **Permitted uses of `rm` / `rm -rf`**:
+  - Ephemeral temporary files in `/tmp` or `/var/tmp`.
+  - Disposable build artifacts, dependency directories, and caches (e.g., `target/`, `node_modules/`, `.cache/`, `dist/`, `build/`).
+  - When the user explicitly requests permanent deletion or shredding.
+
 ## AI Configuration Management (Skills, Rules & Prompts)
 All AI configurations on this computer are centralized in `~/.config/ai` and version-controlled via `chezmoi` (`~/.local/share/chezmoi/private_dot_config/ai`). All AI agents (Antigravity/Gemini, Cursor, Claude Code, Cline, Aider, Kilo, OpenCode, VS Code/Copilot) read from this centralized location via symlinks.
 
