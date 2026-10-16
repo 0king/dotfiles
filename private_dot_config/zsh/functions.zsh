@@ -94,7 +94,7 @@ run() {
     esac
 }
 
-# chezmoi safe wrapper: preview affected files and ask confirmation before apply or re-add
+# chezmoi safe wrapper: preview affected files before apply/re-add and detect unmanaged files on status
 chezmoi() {
     if [[ "$1" == "apply" ]]; then
         local skip_prompt=0
@@ -194,6 +194,35 @@ chezmoi() {
             done
         fi
         command chezmoi re-add "${@:2}"
+    elif [[ "$1" == "status" ]]; then
+        local skip_unmanaged=0
+        local -a status_args=()
+        for arg in "${@:2}"; do
+            if [[ "$arg" == "--no-unmanaged" ]]; then
+                skip_unmanaged=1
+            else
+                status_args+=("$arg")
+                if [[ "$arg" == "-h" || "$arg" == "--help" || "$arg" == "-f" || "$arg" == "--format" ]]; then
+                    skip_unmanaged=1
+                fi
+            fi
+        done
+
+        command chezmoi status "${status_args[@]}"
+        local status_exit=$?
+        if (( status_exit != 0 )); then
+            return $status_exit
+        fi
+
+        # If running in an interactive terminal, check for untracked files in managed directories
+        if (( ! skip_unmanaged )) && [[ -t 0 && -t 1 ]]; then
+            local check_script="$HOME/.local/bin/chezmoi_check-unmanaged.sh"
+            if command -v chezmoi_check-unmanaged.sh >/dev/null 2>&1; then
+                chezmoi_check-unmanaged.sh "${status_args[@]}"
+            elif [ -x "$check_script" ]; then
+                "$check_script" "${status_args[@]}"
+            fi
+        fi
     else
         command chezmoi "$@"
     fi
