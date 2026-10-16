@@ -20,7 +20,9 @@ Modern, reproducible, and cross-platform personal dotfiles managed with [chezmoi
 │   └── pre-commit                           # Local pre-commit hook scanning staged changes with gitleaks
 ├── dot_zshenv                               # Universal environment variables & XDG paths (runs first)
 ├── run_onchange_before_install-dependencies.sh.tmpl  # Automated pre-apply dependency installer hook
+├── run_after_setup-ai-symlinks.sh.tmpl       # Automated post-apply AI tool symlink hook
 ├── private_dot_config/
+│   ├── ai/                                  # Universal AI configuration (AGENTS.md, skills, rules, prompts)
 │   ├── git/
 │   │   ├── config.tmpl                      # XDG Git configuration (templated name & email)
 │   │   └── ignore                           # Global .gitignore (OS, editor, and build patterns)
@@ -42,6 +44,7 @@ Modern, reproducible, and cross-platform personal dotfiles managed with [chezmoi
 │   └── zed/                                 # Zed editor configuration (private_settings.json)
 ├── private_dot_local/
 │   └── bin/                                 # Custom user scripts on PATH (git_*, ubuntu_*, vscode_*, etc.)
+│       ├── executable_sync-ai-agents        # Universal AI tool symlinker (Cursor, Gemini, Claude, etc.)
 │       ├── code/                            # C/C++ source snippets (off PATH)
 │       ├── docs/                            # Script manuals & guides (terminal-keymap.md, etc.)
 │       └── out/                             # Script-generated data & snapshots (off PATH)
@@ -266,4 +269,73 @@ Automated Git synchronization is configured in `.chezmoi.toml.tmpl` and `~/.conf
 - **Post-Apply Hook (`[hooks.apply.post]`)**: Whenever `chezmoi apply` finishes successfully, an automated hook verifies if any changes remain uncommitted in `~/.local/share/chezmoi` (such as direct repository or template edits). If changes are found, they are automatically staged, committed, and pushed. Dry runs (`--dry-run` / `-n`) are safely detected and skipped.
 - **Gitleaks Pre-Commit Protection**: Every automatic commit is scanned by `.githooks/pre-commit` before completion, guaranteeing secrets and API keys are never accidentally committed or pushed.
 - **Zsh Helper (`gacp`)**: Defined in `functions.zsh` for quick direct repository edits: `gacp "commit message"` runs `git add -A && git commit -m "$*" && git push`.
+
+---
+
+## 🤖 Universal AI Agents & Skills Architecture (`~/.config/ai`)
+
+A single source of truth for global agent guidelines (`AGENTS.md`), modular skills (`SKILL.md`), modular rules, and reusable prompts across all AI coding assistants on this computer:
+- **Antigravity / Gemini CLI**
+- **Cursor**
+- **Claude Code**
+- **VS Code & GitHub Copilot**
+- **Aider**
+- **Cline / Roo Code**
+- **Kilo**
+- **OpenCode**
+- **Universal Fallbacks**: `~/.agents`, `~/.ai`, and `~/.config/agents` (automatically covers future tools)
+
+### 📂 Directory Layout
+```text
+~/.config/ai/
+├── AGENTS.md                  # Canonical global guidelines & rules for all AI agents
+├── rules/                     # Modular rule files (.md / .mdc)
+├── skills/                    # Modular agent skills (SKILL.md, scripts, references)
+│   ├── audit-threat/
+│   ├── audit-rust-threat/
+│   └── audit-cpp-node-threat/
+└── prompts/                   # Reusable prompt templates and system prompts
+```
+
+### 🔄 Day-to-Day Operations
+
+#### 1. When a File is Modified in `$HOME` (or via any tool's symlink)
+If an AI agent or editor updates `~/.config/ai/AGENTS.md`, a skill, or a rule (even through `~/.cursorrules` or `~/.gemini/config/AGENTS.md`):
+```bash
+# 1. Inspect what changed
+chezmoi status
+chezmoi diff
+
+# 2. Sync back to Chezmoi repository
+chezmoi re-add ~/.config/ai
+# (or re-add a single file: chezmoi re-add ~/.config/ai/AGENTS.md)
+```
+*Chezmoi will stage, verify with `gitleaks`, commit, and push automatically.*
+
+#### 2. When a File is Modified in the Chezmoi Repository
+If you edit files in `~/.local/share/chezmoi/private_dot_config/ai/`:
+```bash
+chezmoi diff
+chezmoi apply
+```
+*The automated post-apply hook `run_after_setup-ai-symlinks.sh.tmpl` automatically runs `sync-ai-agents` to ensure all agent symlinks are verified and refreshed.*
+
+#### 3. When a New AI Agent is Installed
+Run the sync script to automatically detect and create all necessary symlinks:
+```bash
+# Audit status (dry run)
+sync-ai-agents --check
+
+# Create / update symlinks
+sync-ai-agents
+```
+To add support for a new tool that uses custom paths, edit `private_dot_local/bin/executable_sync-ai-agents`, add the target paths using `link_target`, and run `chezmoi apply`.
+
+### 🧠 Instructions for AI Agents: Creating Skills & Rules
+
+- **Adding a Skill**: Create a directory `~/.config/ai/skills/<skill-name>/` containing `SKILL.md` with YAML frontmatter (`name`, `description`), optional `scripts/` (executable helper tools), and `references/` (detailed documentation). Always write descriptions in third-person.
+- **Adding Global Rules**: Edit `~/.config/ai/AGENTS.md` directly.
+- **Adding Modular Rules**: Place `.md` files in `~/.config/ai/rules/<rule-name>.md`.
+- **Adding Prompts**: Place templates in `~/.config/ai/prompts/<prompt-name>.md`.
+- **Always Document Changes**: Summarize all modifications, files affected, and rationale per the global change documentation rule.
 
