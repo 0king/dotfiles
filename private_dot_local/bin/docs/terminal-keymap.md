@@ -21,7 +21,6 @@ Standardized keybindings, clipboard behaviors, and Vim navigation across **Kitty
 | **Scroll to Top** | `Shift + Home`<br>`Ctrl + Shift + Home` | `scroll_to_top` | `scroll_home` | `ScrollToTop` | `ScrollToTop` |
 | **Scroll to Bottom** | `Shift + End`<br>`Ctrl + Shift + End` | `scroll_to_bottom` | `scroll_end` | `ScrollToBottom` | `ScrollToBottom` |
 | **Search Buffer** | `Ctrl + Shift + F` | `start_search` | `show_scrollback` | `SearchForward` | `Search(...)` |
-| **Command Palette** | `Ctrl + Shift + P` | Application Pass-through | `map ctrl+shift+p no_op` (Pass-through) | Application Pass-through | `augment-command-palette` |
 
 ---
 
@@ -54,10 +53,6 @@ Activates modal keyboard navigation across all four terminals using two compleme
 ### 4. Safe Scrolling & Override Protection
 - Both standard Arrow keys (`Up`/`Down`) and Vim navigation keys (`K`/`J`) with `Ctrl + Shift` scroll line-by-line.
 - **WezTerm Safety**: In WezTerm, `Ctrl + Shift + K` defaults to `ClearScrollback 'ScrollbackOnly'` (which deletes terminal history). This dotfiles configuration explicitly overrides this binding to `ScrollByLine(-1)`, protecting you from accidental history loss.
-
-### 5. Command Palette Pass-Through (`Ctrl + Shift + P`)
-- By default, Kitty binds `Ctrl + Shift + P` (`kitty_mod + p`) as a multi-key chord prefix for its built-in hints kittens (`kitten hints`), which prevents the keystroke from reaching CLI applications.
-- This configuration adds `map ctrl+shift+p no_op` in Kitty so `Ctrl + Shift + P` passes cleanly through to Neovim (for `legendary.nvim` Command Palette / Command Prompt).
 
 ---
 
