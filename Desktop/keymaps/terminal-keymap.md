@@ -13,3 +13,4 @@
 | Scroll to top | `Shift + Home` / `Ctrl + Shift + Home` |
 | Scroll to bottom | `Shift + End` / `Ctrl + Shift + End` |
 | Search buffer | `Ctrl + Shift + F` |
+| New window | `Ctrl + Shift + N` |

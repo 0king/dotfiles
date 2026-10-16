@@ -125,6 +125,10 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "Insert", mods = "SHIFT", action = act.PasteFrom("PrimarySelection") })
 	table.insert(config.keys, { key = "Insert", mods = "CTRL", action = act.CopyTo("Clipboard") })
 
+	-- Window Management
+	table.insert(config.keys, { key = "n", mods = "CTRL|SHIFT", action = act.SpawnWindow })
+	table.insert(config.keys, { key = "N", mods = "CTRL|SHIFT", action = act.SpawnWindow })
+
 	-- Register in Command Palette (Ctrl + Shift + P)
 	wezterm.on("augment-command-palette", function(window, pane)
 		return {

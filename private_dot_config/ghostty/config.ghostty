@@ -36,3 +36,6 @@ keybind = ctrl+shift+end=scroll_to_bottom
 
 # Search
 keybind = ctrl+shift+f=start_search
+
+# Window Management
+keybind = ctrl+shift+n=new_window

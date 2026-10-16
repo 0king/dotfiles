@@ -21,6 +21,7 @@ Standardized keybindings, clipboard behaviors, and Vim navigation across **Kitty
 | **Scroll to Top** | `Shift + Home`<br>`Ctrl + Shift + Home` | `scroll_to_top` | `scroll_home` | `ScrollToTop` | `ScrollToTop` |
 | **Scroll to Bottom** | `Shift + End`<br>`Ctrl + Shift + End` | `scroll_to_bottom` | `scroll_end` | `ScrollToBottom` | `ScrollToBottom` |
 | **Search Buffer** | `Ctrl + Shift + F` | `start_search` | `show_scrollback` | `SearchForward` | `Search(...)` |
+| **New Window** | `Ctrl + Shift + N` | `new_window` | `new_os_window` | `CreateNewWindow` | `SpawnWindow` |
 
 ---
 
