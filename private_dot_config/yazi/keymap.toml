@@ -1,0 +1,14 @@
+# ~/.config/yazi/keymap.toml
+
+[mgr]
+prepend_keymap = [
+	# '?' to open help (overrides find --previous / backward search)
+	{ on = "?", run = "help", desc = "Open help" },
+
+	# Ctrl+? and Ctrl+/ to open help
+	{ on = "<C-?>", run = "help", desc = "Open help" },
+	{ on = "<C-/>", run = "help", desc = "Open help" },
+
+	# ':h' sequence to open help (':help' is shadowed by ':h')
+	{ on = [ ":", "h" ], run = "help", desc = "Open help" },
+]
