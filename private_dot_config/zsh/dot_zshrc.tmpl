@@ -109,6 +109,15 @@ fi
 [[ -s "$plugins_zsh" ]] && source "$plugins_zsh"
 
 # =========================================================
+# Syntax Highlighting Overrides
+# =========================================================
+# Remove path and autodirectory underlining so underscores remain readable
+(( ${+ZSH_HIGHLIGHT_STYLES} )) || typeset -A ZSH_HIGHLIGHT_STYLES
+ZSH_HIGHLIGHT_STYLES[path]='none'
+ZSH_HIGHLIGHT_STYLES[path_prefix]='none'
+ZSH_HIGHLIGHT_STYLES[autodirectory]='fg=green'
+
+# =========================================================
 # Modular Config Files
 # =========================================================
 source "$ZDOTDIR/aliases.zsh"
