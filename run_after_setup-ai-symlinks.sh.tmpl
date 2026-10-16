@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# =========================================================
+# Setup AI Symlinks (Chezmoi Post-Apply Hook)
+# Runs AFTER dotfiles are applied to link ~/.config/ai
+# to all AI tools (Cursor, Gemini, Claude, VS Code, etc.)
+# =========================================================
+
+set -euo pipefail
+
+case " ${CHEZMOI_ARGS:-} " in
+    *" --dry-run "*|*" -n "*) exit 0 ;;
+esac
+
+SYNC_SCRIPT="$HOME/.local/bin/sync-ai-agents"
+
+if [ -f "$SYNC_SCRIPT" ]; then
+    chmod +x "$SYNC_SCRIPT"
+    "$SYNC_SCRIPT"
+fi

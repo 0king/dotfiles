@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# sync-ai-agents: Universal AI Agent Rules & Skills Symlinker
+#
+# Links global AGENTS.md, skills, rules, and prompts from ~/.config/ai
+# to all supported AI tools and editors:
+#   - Antigravity / Gemini
+#   - Cursor
+#   - Claude Code
+#   - VS Code / GitHub Copilot
+#   - Aider
+#   - Cline
+#   - Kilo
+#   - OpenCode
+#   - Universal ~/.agents and ~/.ai fallbacks for future tools
+# ==============================================================================
+
+set -euo pipefail
+
+AI_BASE="${XDG_CONFIG_HOME:-$HOME/.config}/ai"
+AGENTS_SRC="$AI_BASE/AGENTS.md"
+RULES_SRC="$AI_BASE/rules"
+SKILLS_SRC="$AI_BASE/skills"
+PROMPTS_SRC="$AI_BASE/prompts"
+
+CHECK_ONLY=0
+if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
+    CHECK_ONLY=1
+fi
+
+if [ ! -d "$AI_BASE" ]; then
+    echo "❌ AI configuration directory not found at: $AI_BASE" >&2
+    exit 1
+fi
+
+BACKUP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/ai-backups/$(date +%Y%m%d_%H%M%S)"
+
+link_target() {
+    local source="$1"
+    local target="$2"
+    local desc="$3"
+
+    # Verify source exists
+    if [ ! -e "$source" ]; then
+        echo "⚠️  Source missing for $desc: $source"
+        return 0
+    fi
+
+    # Check if target is already pointing to source
+    if [ -L "$target" ]; then
+        local current_target
+        current_target="$(readlink -f "$target" 2>/dev/null || true)"
+        local expected_target
+        expected_target="$(readlink -f "$source" 2>/dev/null || true)"
+
+        if [ "$current_target" = "$expected_target" ]; then
+            echo "   ✅ Already linked: $target ($desc)"
+            return 0
+        fi
+    fi
+
+    if [ "$CHECK_ONLY" -eq 1 ]; then
+        echo "   🔍 Would link: $target -> $source ($desc)"
+        return 0
+    fi
+
+    # Ensure parent dir exists
+    local parent_dir
+    parent_dir="$(dirname "$target")"
+    if [ ! -d "$parent_dir" ]; then
+        mkdir -p "$parent_dir"
+    fi
+
+    # If target exists and is a regular file/directory, back it up
+    if [ -e "$target" ] && [ ! -L "$target" ]; then
+        mkdir -p "$BACKUP_ROOT"
+        echo "   📦 Backing up existing $target -> $BACKUP_ROOT/"
+        mv "$target" "$BACKUP_ROOT/"
+    fi
+
+    # Remove stale symlink if any
+    rm -rf "$target" 2>/dev/null || true
+
+    # Create symlink
+    ln -sfn "$source" "$target"
+    echo "   🔗 Linked: $target -> $source ($desc)"
+}
+
+echo "=================================================================="
+echo "🤖 Syncing Universal AI Agent Guidelines, Skills & Rules"
+echo "   Source: $AI_BASE"
+echo "=================================================================="
+
+# ------------------------------------------------------------------------------
+# 1. Universal Fallbacks (covers any future AI tool looking in standard paths)
+# ------------------------------------------------------------------------------
+echo ""
+echo "🌐 1. Universal Fallback Paths (future-proofing)"
+link_target "$AI_BASE" "$HOME/.agents" "Universal ~/.agents root"
+link_target "$AI_BASE" "$HOME/.ai" "Universal ~/.ai root"
+link_target "$AI_BASE" "${XDG_CONFIG_HOME:-$HOME/.config}/agents" "Universal ~/.config/agents root"
+
+# ------------------------------------------------------------------------------
+# 2. Antigravity / Gemini
+# ------------------------------------------------------------------------------
+echo ""
+echo "🚀 2. Antigravity & Gemini CLI"
+link_target "$AGENTS_SRC" "$HOME/.gemini/config/AGENTS.md" "Antigravity AGENTS.md"
+link_target "$AGENTS_SRC" "$HOME/.gemini/config/GEMINI.md" "Antigravity GEMINI.md"
+link_target "$SKILLS_SRC" "$HOME/.gemini/config/skills" "Antigravity Skills"
+link_target "$RULES_SRC" "$HOME/.gemini/config/rules" "Antigravity Rules"
+link_target "$PROMPTS_SRC" "$HOME/.gemini/config/prompts" "Antigravity Prompts"
+
+# ------------------------------------------------------------------------------
+# 3. Cursor
+# ------------------------------------------------------------------------------
+echo ""
+echo "🖱️  3. Cursor"
+link_target "$AGENTS_SRC" "$HOME/.cursorrules" "Cursor Legacy Global Rules"
+link_target "$AGENTS_SRC" "$HOME/.cursor/AGENTS.md" "Cursor AGENTS.md"
+link_target "$RULES_SRC" "$HOME/.cursor/rules" "Cursor Rules"
+link_target "$SKILLS_SRC" "$HOME/.cursor/skills" "Cursor Skills"
+link_target "$PROMPTS_SRC" "$HOME/.cursor/prompts" "Cursor Prompts"
+
+# ------------------------------------------------------------------------------
+# 4. Claude Code
+# ------------------------------------------------------------------------------
+echo ""
+echo "🧠 4. Claude Code"
+link_target "$AGENTS_SRC" "$HOME/.claude/CLAUDE.md" "Claude Global CLAUDE.md"
+link_target "$SKILLS_SRC" "$HOME/.claude/skills" "Claude Skills"
+link_target "$RULES_SRC" "$HOME/.claude/rules" "Claude Rules"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/claude/CLAUDE.md" "Claude XDG CLAUDE.md"
+
+# ------------------------------------------------------------------------------
+# 5. VS Code & GitHub Copilot
+# ------------------------------------------------------------------------------
+echo ""
+echo "💻 5. VS Code & GitHub Copilot"
+link_target "$PROMPTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/prompts" "VS Code User Prompts"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/instructions.md" "VS Code User Instructions"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/AGENTS.md" "VS Code AGENTS.md"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/github-copilot/copilot-instructions.md" "Copilot Global Instructions"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/github-copilot/AGENTS.md" "Copilot AGENTS.md"
+
+# ------------------------------------------------------------------------------
+# 6. Aider
+# ------------------------------------------------------------------------------
+echo ""
+echo "🛠️  6. Aider"
+link_target "$AGENTS_SRC" "$HOME/.aider/CONVENTIONS.md" "Aider Conventions"
+link_target "$AGENTS_SRC" "$HOME/.aider/AGENTS.md" "Aider AGENTS.md"
+if [ ! -f "$HOME/.aider.conf.yml" ] && [ "$CHECK_ONLY" -eq 0 ]; then
+    cat <<EOF > "$HOME/.aider.conf.yml"
+# Aider global configuration
+read:
+  - ~/.config/ai/AGENTS.md
+EOF
+    echo "   📄 Created ~/.aider.conf.yml pointing to ~/.config/ai/AGENTS.md"
+fi
+
+# ------------------------------------------------------------------------------
+# 7. Cline / Roo Code
+# ------------------------------------------------------------------------------
+echo ""
+echo "🤖 7. Cline"
+link_target "$AGENTS_SRC" "$HOME/.cline/AGENTS.md" "Cline AGENTS.md"
+link_target "$RULES_SRC" "$HOME/.cline/rules" "Cline Rules"
+link_target "$SKILLS_SRC" "$HOME/.cline/skills" "Cline Skills"
+
+# ------------------------------------------------------------------------------
+# 8. Kilo
+# ------------------------------------------------------------------------------
+echo ""
+echo "⚡ 8. Kilo"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/kilo/AGENTS.md" "Kilo AGENTS.md"
+link_target "$RULES_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/kilo/rules" "Kilo Rules"
+link_target "$SKILLS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/kilo/skills" "Kilo Skills"
+
+# ------------------------------------------------------------------------------
+# 9. OpenCode
+# ------------------------------------------------------------------------------
+echo ""
+echo "📂 9. OpenCode"
+link_target "$AGENTS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/AGENTS.md" "OpenCode AGENTS.md"
+link_target "$RULES_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/rules" "OpenCode Rules"
+link_target "$SKILLS_SRC" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills" "OpenCode Skills"
+
+echo ""
+echo "=================================================================="
+echo "✨ All AI tools successfully synchronized with $AI_BASE!"
+echo "=================================================================="
