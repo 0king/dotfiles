@@ -27,3 +27,24 @@ The configuration is customized to provide an intuitive **Copy**, **Cut**, and *
 3. **Paste & Cut Keymaps** — [`lua/config/keymaps.lua`](lua/config/keymaps.lua)
    - **Paste (`p`, `P`, `gp`, `gP`)**: Mapped in normal and visual modes to paste from the system clipboard (`"+p` / `"+P`) by default, while continuing to respect explicitly specified registers (such as `"ap`).
    - **Cut (`c`, `cc`, `C`)**: Mapped to true Cut (`"+d`, `"+dd`, `"+D`) in normal and visual modes to remove text from the buffer and copy it directly to the system clipboard, remaining in Normal mode.
+
+---
+
+## Command Palette (`legendary.nvim`)
+
+The configuration integrates [legendary.nvim](https://github.com/mrjones2014/legendary.nvim) backed by `sqlite.lua` frecency sorting, providing a unified fuzzy-finder across Neovim keymaps, commands, functions, and autocmds.
+
+### Shortcuts
+
+| Shortcut | Mode | Action | Description |
+| :--- | :--- | :--- | :--- |
+| `<leader>p` | Normal (`n`) | `<cmd>CommandPalette<cr>` | Fuzzy-find all keymaps, commands & autocmds |
+| `Alt + X` (`<A-x>`) | Normal (`n`), Visual (`x`), Insert (`i`) | `<cmd>CommandPalette<cr>` | Fast palette launcher (accessible directly in insert mode) |
+
+### Design Notes & Terminal Compatibility
+- **Why `Alt + X` instead of `Ctrl + Shift + P`**: Standard GUI command palette keybindings (`Ctrl + Shift + P`) conflict with terminal emulator defaults:
+  - **Kitty**: Uses `kitty_mod + p` (`Ctrl + Shift + P`) as a multi-key chord prefix for hints kittens (`kitty_mod+p>...`).
+  - **WezTerm**: Binds `Ctrl + Shift + P` to WezTerm's native command palette (`ActivateCommandPalette`).
+  - **Ghostty & Windows Terminal**: Frequently bind `Ctrl + Shift + P` to terminal-level actions.
+- Using **`Alt + X`** (the classic universal command launcher shortcut) and **`<leader>p`** ensures zero collisions with terminal emulator shortcuts or shell environments, preserves all default terminal behaviors, and provides instant access even while actively typing in Insert mode.
+
