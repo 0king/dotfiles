@@ -1,0 +1,1361 @@
+#!/usr/bin/env python3
+"""gnome_change-monitor-layout - interactive workaround for GNOME Super+P / Settings Join/Mirror bug.
+
+Bug: Super+P (org.gnome.mutter.keybindings switch-monitor) and
+Settings > Displays > Join/Mirror forget the previous horizontal layout
+(e.g. built-in left + external right) and swap positions. Settings keeps
+primary correctly, Super+P sometimes also swaps primary.
+
+This script bypasses mutter's create_linear() path and uses
+org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig directly, remembering
+x/y positions AND primary in ~/.config/gnome_change-monitor-layout/profiles.json.
+
+Usage:
+  gnome_change-monitor-layout              # interactive menu (terminal)
+  gnome_change-monitor-layout --join       # restore saved extend layout (or build builtin-left, external-right)
+  gnome_change-monitor-layout --mirror
+  gnome_change-monitor-layout --builtin-only
+  gnome_change-monitor-layout --external-only
+  gnome_change-monitor-layout --status [--json]
+  gnome_change-monitor-layout --save       # save current extend as preferred join
+  gnome_change-monitor-layout --clear-profile  # delete saved profile for current monitor set
+  gnome_change-monitor-layout --list-modes
+  gnome_change-monitor-layout --dry-run --join  # verify only (method=0), no change
+  gnome_change-monitor-layout --temporary --join # method=1, no monitors.xml write
+  default method is 2 (persistent, writes monitors.xml).
+
+Requires: GNOME Wayland/X11 with Mutter DisplayConfig, python3-gi (Gio).
+No extra pip deps. fzf optional, plain stdin menu is default.
+
+Exit codes: 0 ok, 1 runtime/display/profile error, 2 usage error, 130 interrupted.
+"""
+import argparse
+import json
+import math
+import os
+import shutil
+import sys
+import tempfile
+import time
+import traceback
+from pathlib import Path
+
+try:
+    import gi
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+except Exception as e:  # pragma: no cover
+    print(f"missing python3-gi (Gio): {e}", file=sys.stderr)
+    print("install with: sudo apt install python3-gi", file=sys.stderr)
+    sys.exit(1)
+
+BUS = "org.gnome.Mutter.DisplayConfig"
+OBJ_PATH = "/org/gnome/Mutter/DisplayConfig"
+IFACE = "org.gnome.Mutter.DisplayConfig"
+
+try:
+    _cfg_base = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+except Exception:
+    _cfg_base = Path("/tmp") / f".config-{os.getuid()}"
+CONFIG_DIR = _cfg_base / "gnome_change-monitor-layout"
+PROFILE_FILE = CONFIG_DIR / "profiles.json"
+
+DBUS_TIMEOUT_MS = 15000
+VALID_TRANSFORMS = set(range(8))
+# Mutter logical coordinates are int32; keep a sane window to catch corrupt profiles.
+COORD_MIN, COORD_MAX = -16384, 16384
+SCALE_MIN, SCALE_MAX = 0.5, 4.0
+
+VERBOSE = False
+
+
+# ---------------------------------------------------------------- errors/log
+
+class DisplayError(RuntimeError):
+    pass
+
+
+class ProfileError(RuntimeError):
+    pass
+
+
+def eprint(*a, **kw):
+    print(*a, file=sys.stderr, **kw)
+
+
+def vprint(*a, **kw):
+    if VERBOSE:
+        print(*a, file=sys.stderr, **kw)
+
+
+def warn(msg):
+    eprint(f"warning: {msg}")
+
+
+def fail(msg, code=1):
+    eprint(f"error: {msg}")
+    return code
+
+
+def friendly_dbus_error(e):
+    s = str(e)
+    low = s.lower()
+    if "serial" in low or "changed" in low or "out of date" in low or "stale" in low:
+        return ("monitors changed while applying (stale serial). "
+                "Monitors were hot-plugged or Settings changed them concurrently. "
+                f"Retry. Detail: {s}")
+    if "invalid" in low and "arg" in low:
+        return (f"mutter rejected the configuration as invalid: {s}. "
+                "Run with --dry-run --verbose and check --list-modes output.")
+    if "access" in low or "denied" in low or "permission" in low:
+        return f"permission denied by mutter: {s}"
+    if "no such" in low or "service unknown" in low or "cannot autolaunch" in low:
+        return (f"D-Bus DisplayConfig service not reachable: {s}. "
+                "Are you inside a GNOME session (Wayland/X11 with mutter)? "
+                "SSH sessions need the user bus (see `echo $DBUS_SESSION_BUS_ADDRESS`).")
+    if "timeout" in low or "timed out" in low:
+        return f"D-Bus call timed out: {s}"
+    return s
+
+
+# ---------------------------------------------------------------- dbus
+
+def get_proxy():
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    except GLib.Error as e:
+        raise DisplayError(
+            f"cannot connect to session bus: {friendly_dbus_error(e)}")
+    except Exception as e:
+        raise DisplayError(f"cannot connect to session bus: {e}")
+    if bus is None:
+        raise DisplayError("cannot connect to session bus (got None). "
+                           "Is DBUS_SESSION_BUS_ADDRESS set? Are you in a GNOME session?")
+    try:
+        proxy = Gio.DBusProxy.new_sync(
+            bus, Gio.DBusProxyFlags.NONE, None, BUS, OBJ_PATH, IFACE, None)
+    except GLib.Error as e:
+        raise DisplayError(f"DisplayConfig proxy failed: {friendly_dbus_error(e)}")
+    if proxy is None:
+        raise DisplayError("DisplayConfig proxy is None")
+    return proxy
+
+
+def check_apply_allowed(proxy):
+    """Best-effort check of ApplyMonitorsConfigAllowed property. Returns None if unknown."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        p = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE, None,
+                                   BUS, OBJ_PATH,
+                                   "org.freedesktop.DBus.Properties", None)
+        v = p.call_sync("Get", GLib.Variant("(ss)", (IFACE, "ApplyMonitorsConfigAllowed")),
+                        Gio.DBusCallFlags.NONE, 5000, None)
+        inner = v.unpack()[0]
+        # inner is a GLib.Variant wrapping a bool
+        try:
+            return bool(inner.get_boolean())
+        except Exception:
+            return bool(inner)
+    except Exception as e:
+        vprint(f"ApplyMonitorsConfigAllowed check skipped: {e}")
+        return None
+
+
+def get_state(proxy):
+    try:
+        res = proxy.call_sync("GetCurrentState", None, Gio.DBusCallFlags.NONE,
+                              DBUS_TIMEOUT_MS, None)
+    except GLib.Error as e:
+        raise DisplayError(f"GetCurrentState failed: {friendly_dbus_error(e)}")
+    except Exception as e:
+        raise DisplayError(f"GetCurrentState failed: {e}")
+    try:
+        unpacked = res.unpack()
+    except Exception as e:
+        raise DisplayError(f"cannot unpack GetCurrentState response: {e}")
+    if not isinstance(unpacked, (list, tuple)) or len(unpacked) != 4:
+        raise DisplayError(f"unexpected GetCurrentState shape: {type(unpacked)} len={len(unpacked) if hasattr(unpacked, '__len__') else '?'}")
+    serial, monitors, logical, props = unpacked
+    try:
+        serial = int(serial)
+    except Exception:
+        raise DisplayError(f"invalid serial in GetCurrentState: {serial!r}")
+    if not isinstance(monitors, (list, tuple)):
+        raise DisplayError("GetCurrentState: monitors is not a list")
+    if not isinstance(logical, (list, tuple)):
+        raise DisplayError("GetCurrentState: logical_monitors is not a list")
+    if not isinstance(props, dict):
+        raise DisplayError("GetCurrentState: properties is not a dict")
+    return serial, list(monitors), list(logical), dict(props)
+
+
+# ---------------------------------------------------------------- parsing
+
+def _as_bool(v, default=False):
+    try:
+        return bool(v)
+    except Exception:
+        return default
+
+
+def _valid_scale(s):
+    try:
+        f = float(s)
+    except Exception:
+        return False
+    return math.isfinite(f) and SCALE_MIN <= f <= SCALE_MAX
+
+
+def _valid_transform(t):
+    try:
+        return int(t) in VALID_TRANSFORMS
+    except Exception:
+        return False
+
+
+def parse_phys(monitors):
+    info = {}
+    for idx, entry in enumerate(monitors):
+        try:
+            if not isinstance(entry, (list, tuple)) or len(entry) != 3:
+                warn(f"skipping malformed physical monitor #{idx}: wrong shape")
+                continue
+            minfo, modes, mprops = entry
+            if not isinstance(minfo, (list, tuple)) or len(minfo) != 4:
+                warn(f"skipping malformed monitor spec #{idx}")
+                continue
+            conn, vendor, product, mserial = (str(x) if x is not None else "" for x in minfo)
+            if not conn:
+                warn(f"skipping monitor #{idx} with empty connector")
+                continue
+            if conn in info:
+                warn(f"duplicate connector '{conn}' in GetCurrentState; keeping first")
+                continue
+            mprops = dict(mprops) if isinstance(mprops, dict) else {}
+            is_builtin = _as_bool(mprops.get("is-builtin", False))
+            try:
+                display_name = str(mprops.get("display-name", conn))
+            except Exception:
+                display_name = conn
+            mode_by_id = {}
+            current = preferred = None
+            if not isinstance(modes, (list, tuple)):
+                warn(f"monitor '{conn}': modes not a list, treating as no modes")
+                modes = []
+            for m in modes:
+                try:
+                    if not isinstance(m, (list, tuple)) or len(m) != 7:
+                        continue
+                    mid, w, h, refresh, _pref_scale, _scales, mp = m
+                    mid = str(mid)
+                    w, h = int(w), int(h)
+                    refresh = float(refresh)
+                    if not mid or w <= 0 or h <= 0 or not math.isfinite(refresh) or refresh <= 0:
+                        continue
+                    mode_by_id[mid] = {"w": w, "h": h, "refresh": refresh,
+                                       "props": dict(mp) if isinstance(mp, dict) else {}}
+                    mpd = mode_by_id[mid]["props"]
+                    if mpd.get("is-current") and current is None:
+                        current = mid
+                    if mpd.get("is-preferred") and preferred is None:
+                        preferred = mid
+                except Exception as e:
+                    vprint(f"skipping bad mode on '{conn}': {e}")
+                    continue
+            if not mode_by_id:
+                warn(f"monitor '{conn}' has no usable modes; it cannot be enabled")
+            info[conn] = {
+                "vendor": vendor, "product": product, "serial": mserial,
+                "is_builtin": is_builtin, "display_name": display_name,
+                "modes": mode_by_id, "current_mode": current,
+                "preferred_mode": preferred, "props": mprops,
+            }
+        except Exception as e:
+            warn(f"skipping monitor #{idx}: {e}")
+            continue
+    if not info:
+        raise DisplayError("no usable monitors reported by mutter (empty GetCurrentState monitors). "
+                           "Check cables / `journalctl --user -u gnome-shell` / try replugging.")
+    return info
+
+
+def parse_logical(logical):
+    out = []
+    for idx, lm in enumerate(logical):
+        try:
+            if not isinstance(lm, (list, tuple)) or len(lm) != 7:
+                warn(f"skipping malformed logical monitor #{idx}")
+                continue
+            x, y, scale, transform, primary, mons, lprops = lm
+            try:
+                x, y = int(x), int(y)
+            except Exception:
+                warn(f"logical #{idx}: bad coordinates, skipping")
+                continue
+            if not (COORD_MIN <= x <= COORD_MAX and COORD_MIN <= y <= COORD_MAX):
+                warn(f"logical #{idx}: coordinates ({x},{y}) out of range, clamping skipped -> skipping entry")
+                continue
+            try:
+                scale = float(scale)
+            except Exception:
+                scale = 1.0
+            if not _valid_scale(scale):
+                warn(f"logical #{idx}: invalid scale {scale!r}, using 1.0")
+                scale = 1.0
+            try:
+                transform = int(transform)
+            except Exception:
+                transform = 0
+            if transform not in VALID_TRANSFORMS:
+                warn(f"logical #{idx}: invalid transform {transform!r}, using 0")
+                transform = 0
+            primary = bool(primary)
+            if not isinstance(mons, (list, tuple)):
+                warn(f"logical #{idx}: monitors not a list, skipping")
+                continue
+            conns = []
+            for m in mons:
+                try:
+                    c = str(m[0]) if len(m) > 0 else ""
+                except Exception:
+                    c = ""
+                if c:
+                    conns.append(c)
+            if not conns:
+                warn(f"logical #{idx}: no connectors, skipping")
+                continue
+            out.append({"x": x, "y": y, "scale": scale, "transform": transform,
+                        "primary": primary, "connectors": conns,
+                        "raw_mons": list(mons),
+                        "props": dict(lprops) if isinstance(lprops, dict) else {}})
+        except Exception as e:
+            warn(f"skipping logical #{idx}: {e}")
+            continue
+    return out
+
+
+# ---------------------------------------------------------------- profiles
+
+def load_profiles():
+    if not PROFILE_FILE.exists():
+        return {}
+    try:
+        text = PROFILE_FILE.read_text()
+    except OSError as e:
+        raise ProfileError(f"cannot read {PROFILE_FILE}: {e}")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        backup_corrupt(text, f"json-error-{e}")
+        warn(f"profiles file corrupt ({e}); backed up and starting fresh")
+        return {}
+    if not isinstance(data, dict):
+        backup_corrupt(text, "not-a-dict")
+        warn("profiles file was not a JSON object; backed up and starting fresh")
+        return {}
+    clean = {}
+    for key, entry in data.items():
+        try:
+            if not isinstance(key, str) or not key:
+                continue
+            sane = sanitize_profile_entry(entry)
+            if sane is not None:
+                clean[key] = sane
+            else:
+                warn(f"dropping invalid profile '{key}'")
+        except Exception as e:
+            warn(f"dropping profile '{key}': {e}")
+    if len(clean) != len(data):
+        vprint("some profiles were pruned as invalid")
+    return clean
+
+
+def sanitize_profile_entry(entry):
+    if not isinstance(entry, dict):
+        return None
+    logical = entry.get("logical")
+    if not isinstance(logical, list) or not logical:
+        return None
+    sane_logical = []
+    for slm in logical:
+        if not isinstance(slm, dict):
+            return None
+        try:
+            x, y = int(slm.get("x", 0)), int(slm.get("y", 0))
+            scale = float(slm.get("scale", 1.0))
+            transform = int(slm.get("transform", 0))
+            primary = bool(slm.get("primary", False))
+        except Exception:
+            return None
+        if not (COORD_MIN <= x <= COORD_MAX and COORD_MIN <= y <= COORD_MAX):
+            return None
+        if not _valid_scale(scale) or not _valid_transform(transform):
+            return None
+        mons = slm.get("monitors")
+        if not isinstance(mons, list) or not mons:
+            return None
+        sane_mons = []
+        for sm in mons:
+            if not isinstance(sm, dict):
+                return None
+            c = sm.get("connector")
+            mode = sm.get("mode", "")
+            if not isinstance(c, str) or not c:
+                return None
+            if not isinstance(mode, str):
+                mode = str(mode)
+            sane_mons.append({"connector": c, "mode": mode})
+        sane_logical.append({"x": x, "y": y, "scale": scale,
+                             "transform": transform, "primary": primary,
+                             "monitors": sane_mons})
+    # exactly one primary required; do not silently invent one here (caller fixes with warning)
+    return {"saved_at": str(entry.get("saved_at", "")),
+            "layout_mode": 1, "logical": sane_logical}
+
+
+def backup_corrupt(text, reason):
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        dest = CONFIG_DIR / f"profiles.json.corrupt-{ts}-{os.getpid()}"
+        dest.write_text(text)
+        eprint(f"backed up corrupt profiles to {dest} ({reason})")
+    except Exception as e:
+        eprint(f"could not back up corrupt profiles file: {e}")
+
+
+def save_profiles(data):
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ProfileError(f"cannot create {CONFIG_DIR}: {e}")
+    # validate JSON-serializable
+    try:
+        payload = json.dumps(data, indent=2)
+    except (TypeError, ValueError) as e:
+        raise ProfileError(f"cannot serialize profiles: {e}")
+    tmp = None
+    try:
+        fd, tmppath = tempfile.mkstemp(dir=str(CONFIG_DIR), prefix=".profiles.", suffix=".tmp")
+        tmp = tmppath
+        with os.fdopen(fd, "w") as f:
+            f.write(payload)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmppath, PROFILE_FILE)
+        tmp = None
+    except OSError as e:
+        raise ProfileError(f"cannot write {PROFILE_FILE}: {e}")
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+    return PROFILE_FILE
+
+
+def profile_key(connectors):
+    if not connectors:
+        return ""
+    return "+".join(sorted(str(c) for c in connectors))
+
+
+# ---------------------------------------------------------------- modes
+
+def resolve_mode(phys_info, desired_mid):
+    modes = phys_info.get("modes") or {}
+    if not modes:
+        raise DisplayError(f"monitor '{phys_info.get('display_name', '?')}' has no usable modes")
+    if isinstance(desired_mid, str) and desired_mid in modes:
+        return desired_mid
+    desired_wh = None
+    if isinstance(desired_mid, str) and "x" in desired_mid and "@" in desired_mid:
+        try:
+            wh, _ = desired_mid.split("@", 1)
+            w, h = wh.split("x", 1)
+            desired_wh = (int(w), int(h))
+        except Exception:
+            desired_wh = None
+    if desired_wh:
+        cands = [(mid, m) for mid, m in modes.items() if (m["w"], m["h"]) == desired_wh]
+        if cands:
+            cands.sort(key=lambda kv: kv[1]["refresh"], reverse=True)
+            return cands[0][0]
+        warn(f"saved mode {desired_mid} not present; same size {desired_wh[0]}x{desired_wh[1]} unavailable, using current/preferred")
+    for cand in (phys_info.get("current_mode"), phys_info.get("preferred_mode")):
+        if isinstance(cand, str) and cand in modes:
+            return cand
+    best = sorted(modes.items(), key=lambda kv: (kv[1]["w"] * kv[1]["h"], kv[1]["refresh"]), reverse=True)[0][0]
+    return best
+
+
+def logical_width(phys_info, mode_id, scale):
+    m = (phys_info.get("modes") or {}).get(mode_id)
+    if not m:
+        return 1920
+    try:
+        s = float(scale)
+    except Exception:
+        s = 1.0
+    if not math.isfinite(s) or s <= 0:
+        s = 1.0
+    return max(1, round(m["w"] / s))
+
+
+def current_primary_connector(logical_parsed):
+    for lm in logical_parsed:
+        if lm.get("primary") and lm.get("connectors"):
+            return lm["connectors"][0]
+    return None
+
+
+# ---------------------------------------------------------------- validation
+
+def validate_payload(payload, phys, require_all=True):
+    errors = []
+    if not isinstance(payload, list) or not payload:
+        return ["payload is empty"]
+    seen = set()
+    primaries = 0
+    all_conns = set(phys.keys())
+    for i, lm in enumerate(payload):
+        if not isinstance(lm, (list, tuple)) or len(lm) != 6:
+            errors.append(f"logical #{i}: wrong shape")
+            continue
+        x, y, scale, transform, primary, mons = lm
+        try:
+            x, y = int(x), int(y)
+        except Exception:
+            errors.append(f"logical #{i}: bad coordinates")
+            continue
+        if not (COORD_MIN <= x <= COORD_MAX and COORD_MIN <= y <= COORD_MAX):
+            errors.append(f"logical #{i}: coordinates out of range")
+        try:
+            scale = float(scale)
+        except Exception:
+            errors.append(f"logical #{i}: bad scale")
+            continue
+        if not _valid_scale(scale):
+            errors.append(f"logical #{i}: scale {scale} out of range [{SCALE_MIN},{SCALE_MAX}]")
+        try:
+            transform = int(transform)
+        except Exception:
+            errors.append(f"logical #{i}: bad transform")
+            continue
+        if transform not in VALID_TRANSFORMS:
+            errors.append(f"logical #{i}: transform {transform} invalid (0-7)")
+        if bool(primary):
+            primaries += 1
+        if not isinstance(mons, (list, tuple)) or not mons:
+            errors.append(f"logical #{i}: no monitors")
+            continue
+        for m in mons:
+            if not isinstance(m, (list, tuple)) or len(m) != 3:
+                errors.append(f"logical #{i}: bad monitor entry shape")
+                continue
+            c, mid, _props = m
+            if not isinstance(c, str) or not c:
+                errors.append(f"logical #{i}: empty connector")
+                continue
+            if c in seen:
+                errors.append(f"duplicate connector '{c}'")
+                continue
+            seen.add(c)
+            if c not in phys:
+                errors.append(f"unknown connector '{c}' (unplugged?)")
+                continue
+            if not isinstance(mid, str) or mid not in (phys[c].get("modes") or {}):
+                errors.append(f"connector '{c}': unknown mode '{mid}'")
+    if primaries != 1:
+        errors.append(f"must have exactly one primary, found {primaries}")
+    if require_all and seen != all_conns:
+        errors.append(f"must cover all monitors {sorted(all_conns)}, got {sorted(seen)} "
+                      "(monitor hot-plugged/removed since profile was saved?)")
+    if not require_all and not seen:
+        errors.append("no monitors selected")
+    # overlap check (same x,y with same scale could still be mirror, which is 1 logical; >1 logical sharing x,y is suspicious)
+    if len(payload) > 1:
+        coords = [(lm[0], lm[1]) for lm in payload]
+        if len(set(coords)) != len(coords):
+            errors.append("overlapping logical positions (two logical monitors share x,y); use --mirror for mirroring")
+    return errors
+
+
+# ---------------------------------------------------------------- builders
+
+def build_join(phys, logical_parsed, profiles):
+    if not phys:
+        raise DisplayError("no monitors connected")
+    all_conns = sorted(phys.keys())
+    # single monitor: join == enable it
+    if len(all_conns) == 1:
+        c = all_conns[0]
+        try:
+            mid = resolve_mode(phys[c], phys[c].get("current_mode") or phys[c].get("preferred_mode"))
+        except DisplayError as e:
+            raise DisplayError(f"cannot join single monitor '{c}': {e}")
+        scale = 1.0
+        for lm in logical_parsed:
+            if c in lm.get("connectors", []):
+                scale = lm.get("scale", 1.0)
+                break
+        return [[0, 0, float(scale), 0, True, [[c, mid, {}]]]], "single monitor (nothing to join)"
+    key = profile_key(all_conns)
+    saved = profiles.get(key) if key else None
+    if saved and isinstance(saved.get("logical"), list):
+        payload = []
+        ok = True
+        saved_conns = set()
+        for slm in saved["logical"]:
+            mons = slm.get("monitors", [])
+            if not mons:
+                ok = False
+                break
+            new_mons = []
+            for sm in mons:
+                c = sm.get("connector", "")
+                saved_conns.add(c)
+                if c not in phys:
+                    ok = False
+                    break
+                try:
+                    mid = resolve_mode(phys[c], sm.get("mode"))
+                except DisplayError as e:
+                    warn(f"profile mode unusable for '{c}': {e}")
+                    ok = False
+                    break
+                new_mons.append([c, mid, {}])
+            if not ok:
+                break
+            payload.append([int(slm.get("x", 0)), int(slm.get("y", 0)),
+                            float(slm.get("scale", 1.0)), int(slm.get("transform", 0)),
+                            bool(slm.get("primary", False)), new_mons])
+        if ok and saved_conns == set(all_conns) and payload:
+            primaries = [p for p in payload if p[4]]
+            if len(primaries) != 1:
+                warn(f"saved profile '{key}' has {len(primaries)} primaries; fixing to first logical")
+                for p in payload:
+                    p[4] = False
+                payload[0][4] = True
+            errs = validate_payload(payload, phys, require_all=True)
+            if not errs:
+                return payload, f"restored saved profile '{key}'"
+            warn(f"saved profile '{key}' invalid ({'; '.join(errs)}); using linear fallback")
+        elif ok:
+            warn(f"saved profile '{key}' covers {sorted(saved_conns)}, current set is {all_conns}; using linear fallback")
+    # fallback linear: builtin(s) left, externals right, preserve current primary
+    builtin = sorted([c for c in all_conns if phys[c]["is_builtin"]])
+    external = sorted([c for c in all_conns if not phys[c]["is_builtin"]])
+    ordered = builtin + external
+    cur_primary = current_primary_connector(logical_parsed)
+    if cur_primary not in ordered:
+        cur_primary = external[0] if external else ordered[0]
+        vprint(f"primary '{current_primary_connector(logical_parsed)}' gone; using '{cur_primary}'")
+    conn_scale, conn_transform = {}, {}
+    for lm in logical_parsed:
+        for c in lm.get("connectors", []):
+            conn_scale[c] = lm.get("scale", 1.0)
+            conn_transform[c] = lm.get("transform", 0)
+    x = 0
+    payload = []
+    for c in ordered:
+        scale = float(conn_scale.get(c, 1.0))
+        if not _valid_scale(scale):
+            scale = 1.0
+        transform = int(conn_transform.get(c, 0))
+        if transform not in VALID_TRANSFORMS:
+            transform = 0
+        try:
+            mid = resolve_mode(phys[c], phys[c].get("current_mode") or phys[c].get("preferred_mode"))
+        except DisplayError as e:
+            raise DisplayError(f"cannot enable '{c}': {e}")
+        w = logical_width(phys[c], mid, scale)
+        payload.append([x, 0, scale, transform, (c == cur_primary), [[c, mid, {}]]])
+        x += w
+    errs = validate_payload(payload, phys, require_all=True)
+    if errs:
+        raise DisplayError(f"internal error building join layout: {'; '.join(errs)}")
+    return payload, "built linear fallback (builtin left, external right, primary preserved)"
+
+
+def build_mirror(phys, logical_parsed):
+    all_conns = sorted(phys.keys())
+    if not all_conns:
+        raise DisplayError("no monitors connected")
+    if len(all_conns) == 1:
+        c = all_conns[0]
+        mid = resolve_mode(phys[c], phys[c].get("current_mode") or phys[c].get("preferred_mode"))
+        scale = 1.0
+        for lm in logical_parsed:
+            if c in lm.get("connectors", []):
+                scale = lm.get("scale", 1.0)
+                break
+        return [[0, 0, float(scale), 0, True, [[c, mid, {}]]]], "single monitor (mirror trivial)"
+    sets = []
+    per_conn_sizes = {}
+    for c in all_conns:
+        modes = phys[c].get("modes") or {}
+        if not modes:
+            raise DisplayError(f"monitor '{c}' has no usable modes, cannot mirror")
+        s = set((m["w"], m["h"]) for m in modes.values())
+        per_conn_sizes[c] = sorted(s)
+        sets.append(s)
+    common = set.intersection(*sets) if sets else set()
+    if not common:
+        detail = "; ".join(f"{c}: {per_conn_sizes[c][:5]}" for c in all_conns)
+        raise DisplayError(f"no common resolution for mirror. Available sizes: {detail}. "
+                           "Use --join or single-output modes instead.")
+    cur_sizes = set()
+    for c in all_conns:
+        mid = phys[c].get("current_mode")
+        m = (phys[c].get("modes") or {}).get(mid, None) if isinstance(mid, str) else None
+        if m:
+            cur_sizes.add((m["w"], m["h"]))
+    common_cur = common & cur_sizes
+    wh = sorted(common_cur or common, key=lambda t: t[0] * t[1], reverse=True)[0]
+    mons = []
+    for c in all_conns:
+        cur = phys[c].get("current_mode")
+        mcur = (phys[c].get("modes") or {}).get(cur) if isinstance(cur, str) else None
+        if mcur and (mcur["w"], mcur["h"]) == wh:
+            mons.append([c, cur, {}])
+            continue
+        cands = [(mid, m) for mid, m in phys[c]["modes"].items() if (m["w"], m["h"]) == wh]
+        if not cands:
+            raise DisplayError(f"monitor '{c}' lost mode {wh[0]}x{wh[1]} during mirror build")
+        cands.sort(key=lambda kv: kv[1]["refresh"], reverse=True)
+        mons.append([c, cands[0][0], {}])
+    scale = 1.0
+    for lm in logical_parsed:
+        if lm.get("primary"):
+            try:
+                scale = float(lm.get("scale", 1.0))
+            except Exception:
+                scale = 1.0
+            break
+    if not _valid_scale(scale):
+        scale = 1.0
+    payload = [[0, 0, float(scale), 0, True, mons]]
+    errs = validate_payload(payload, phys, require_all=True)
+    if errs:
+        raise DisplayError(f"internal error building mirror layout: {'; '.join(errs)}")
+    return payload, f"mirror {wh[0]}x{wh[1]} on {len(mons)} monitors"
+
+
+def build_single_group(phys, logical_parsed, only_builtin):
+    if not phys:
+        raise DisplayError("no monitors connected")
+    if only_builtin:
+        wanted = sorted([c for c, v in phys.items() if v.get("is_builtin")])
+        label = "built-in only"
+        missing_hint = "no built-in (laptop panel) detected. Available: " + ", ".join(sorted(phys)) + ". Use --external-only on desktops."
+    else:
+        wanted = sorted([c for c, v in phys.items() if not v.get("is_builtin")])
+        label = "external only"
+        missing_hint = "no external monitors detected (only built-in present). Use --builtin-only or --join."
+    if not wanted:
+        raise DisplayError(missing_hint)
+    for c in list(wanted):
+        if not (phys[c].get("modes")):
+            raise DisplayError(f"monitor '{c}' has no usable modes, cannot enable {label}")
+    # preserve x-order from saved profile if usable
+    try:
+        profiles = load_profiles()
+    except ProfileError as e:
+        warn(f"ignoring profiles for ordering: {e}")
+        profiles = {}
+    key = profile_key(sorted(phys.keys()))
+    saved = profiles.get(key) if key else None
+    if saved:
+        try:
+            order = []
+            for slm in saved.get("logical", []):
+                for sm in slm.get("monitors", []):
+                    c = sm.get("connector", "")
+                    if c in wanted and c not in order:
+                        order.append(c)
+            for c in wanted:
+                if c not in order:
+                    order.append(c)
+            wanted = order
+        except Exception as e:
+            warn(f"ignoring saved ordering: {e}")
+    conn_scale, conn_transform = {}, {}
+    for lm in logical_parsed:
+        for c in lm.get("connectors", []):
+            conn_scale[c] = lm.get("scale", 1.0)
+            conn_transform[c] = lm.get("transform", 0)
+    cur_primary = current_primary_connector(logical_parsed)
+    if cur_primary not in wanted:
+        cur_primary = wanted[0]
+    x = 0
+    payload = []
+    for c in wanted:
+        scale = conn_scale.get(c, 1.0)
+        try:
+            scale = float(scale)
+        except Exception:
+            scale = 1.0
+        if not _valid_scale(scale):
+            scale = 1.0
+        transform = conn_transform.get(c, 0)
+        try:
+            transform = int(transform)
+        except Exception:
+            transform = 0
+        if transform not in VALID_TRANSFORMS:
+            transform = 0
+        mid = resolve_mode(phys[c], phys[c].get("current_mode") or phys[c].get("preferred_mode"))
+        w = logical_width(phys[c], mid, scale)
+        payload.append([x, 0, scale, transform, (c == cur_primary), [[c, mid, {}]]])
+        x += w
+    errs = validate_payload(payload, phys, require_all=False)
+    # for single-group, must not include unwanted monitors
+    included = {m[0] for lm in payload for m in lm[5]}
+    if set(included) != set(wanted):
+        errs.append("internal ordering error")
+    if errs:
+        raise DisplayError(f"internal error building {label}: {'; '.join(errs)}")
+    return payload, label
+
+
+# ---------------------------------------------------------------- apply
+
+def apply_payload(proxy, serial, payload, method, verify_first=True):
+    if method not in (0, 1, 2):
+        raise DisplayError(f"invalid method {method} (must be 0,1,2)")
+    if verify_first and method in (1, 2):
+        try:
+            params = GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (int(serial), 0, payload, {}))
+            proxy.call_sync("ApplyMonitorsConfig", params, Gio.DBusCallFlags.NONE, DBUS_TIMEOUT_MS, None)
+        except GLib.Error as e:
+            raise DisplayError(f"pre-verify rejected the layout (nothing was changed): {friendly_dbus_error(e)}")
+    try:
+        params = GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (int(serial), int(method), payload, {}))
+    except Exception as e:
+        raise DisplayError(f"cannot encode D-Bus payload (internal type error): {e}")
+    try:
+        proxy.call_sync("ApplyMonitorsConfig", params, Gio.DBusCallFlags.NONE, DBUS_TIMEOUT_MS, None)
+    except GLib.Error as e:
+        msg = friendly_dbus_error(e)
+        low = str(e).lower()
+        if method in (1, 2) and ("serial" in low or "changed" in low or "stale" in low):
+            raise DisplayError(f"{msg} [STALE_SERIAL]")
+        raise DisplayError(msg)
+
+
+# ---------------------------------------------------------------- save
+
+def maybe_save_current_as_profile(phys, logical_parsed, props, strict=False):
+    """Save full extend layout. Returns key, or None if not in savable state.
+    If strict=True, write/load failures raise ProfileError instead of warn+None
+    (used for explicit `--save` so the user sees permission/disk errors)."""
+    all_conns = set(phys.keys())
+    if len(logical_parsed) < 2:
+        return None
+    enabled = set()
+    for lm in logical_parsed:
+        conns = lm.get("connectors", [])
+        enabled.update(conns)
+        if len(conns) != 1:
+            return None  # mirrored or single
+        if not _valid_scale(lm.get("scale", 1.0)) or lm.get("transform", 0) not in VALID_TRANSFORMS:
+            return None
+    if enabled != all_conns:
+        return None  # not all outputs enabled -> not a full join layout
+    primaries = sum(1 for lm in logical_parsed if lm.get("primary"))
+    if primaries != 1:
+        vprint(f"not auto-saving: {primaries} primaries")
+        return None
+    # sanity: coordinates finite and non-overlapping
+    coords = [(lm["x"], lm["y"]) for lm in logical_parsed]
+    if len(set(coords)) != len(coords):
+        vprint("not auto-saving: overlapping positions")
+        return None
+    key = profile_key(sorted(all_conns))
+    if not key:
+        return None
+    try:
+        profiles = load_profiles()
+    except ProfileError as e:
+        if strict:
+            raise
+        warn(f"cannot load profiles for auto-save: {e}")
+        return None
+    entry = {"saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "layout_mode": 1, "logical": []}
+    for lm in logical_parsed:
+        c = lm["connectors"][0]
+        mid = phys[c].get("current_mode") or phys[c].get("preferred_mode") or ""
+        if not isinstance(mid, str) or mid not in (phys[c].get("modes") or {}):
+            vprint(f"not auto-saving: monitor '{c}' has no current mode yet")
+            return None
+        entry["logical"].append({"x": lm["x"], "y": lm["y"], "scale": lm["scale"],
+                                 "transform": lm["transform"], "primary": lm["primary"],
+                                 "monitors": [{"connector": c, "mode": mid}]})
+    profiles[key] = entry
+    try:
+        save_profiles(profiles)
+    except ProfileError as e:
+        if strict:
+            raise
+        warn(f"auto-save failed: {e}")
+        return None
+    return key
+
+
+# ---------------------------------------------------------------- ui helpers
+
+def print_status(phys, logical_parsed, props, as_json=False):
+    if as_json:
+        out = {"physical": {}, "logical": [], "properties": {},
+               "profile_key": profile_key(sorted(phys.keys())), "profile": None}
+        for c in sorted(phys):
+            v = phys[c]
+            out["physical"][c] = {"builtin": v["is_builtin"], "display": v["display_name"],
+                                  "current": v["current_mode"], "preferred": v["preferred_mode"],
+                                  "n_modes": len(v["modes"])}
+        for lm in logical_parsed:
+            out["logical"].append({"x": lm["x"], "y": lm["y"], "scale": lm["scale"],
+                                   "transform": lm["transform"], "primary": lm["primary"],
+                                   "connectors": lm["connectors"]})
+        for k in ("layout-mode", "supports-changing-layout-mode"):
+            try:
+                out["properties"][k] = props.get(k, None)
+            except Exception:
+                pass
+        try:
+            out["profile"] = load_profiles().get(out["profile_key"])
+        except Exception:
+            out["profile"] = None
+        print(json.dumps(out, indent=2))
+        return
+    lm = props.get("layout-mode", "?")
+    sc = props.get("supports-changing-layout-mode", "?")
+    print(f"layout-mode: {lm}  supports-changing: {sc}")
+    print(f"physical ({len(phys)}):")
+    for c in sorted(phys):
+        v = phys[c]
+        kind = "builtin" if v["is_builtin"] else "external"
+        n = len(v["modes"])
+        print(f"  {c} [{kind}] {v['display_name']} current={v['current_mode']} preferred={v['preferred_mode']} ({n} modes)")
+        if not v["modes"]:
+            print("    ! no usable modes")
+    if not logical_parsed:
+        print("logical (0): no enabled monitors!")
+    else:
+        print(f"logical ({len(logical_parsed)}):")
+        for i, x in enumerate(logical_parsed):
+            flag = " PRIMARY" if x["primary"] else ""
+            print(f"  {i}: ({x['x']},{x['y']}) scale={x['scale']} {x['connectors']}{flag}")
+        nprim = sum(1 for x in logical_parsed if x["primary"])
+        if nprim != 1:
+            print(f"  ! {nprim} primaries (expected 1)")
+    try:
+        profiles = load_profiles()
+    except ProfileError as e:
+        print(f"profiles unreadable: {e}")
+        return
+    key = profile_key(sorted(phys.keys()))
+    if key in profiles:
+        print(f"saved profile '{key}':")
+        try:
+            for slm in profiles[key]["logical"]:
+                mons = [(m["connector"], m.get("mode")) for m in slm["monitors"]]
+                p = " PRIMARY" if slm.get("primary") else ""
+                print(f"  ({slm['x']},{slm['y']}) {mons}{p}")
+        except Exception as e:
+            print(f"  (unreadable profile content: {e})")
+    else:
+        print(f"no saved profile for '{key}' (use --save while in join)")
+
+
+def print_modes(phys):
+    for c in sorted(phys):
+        v = phys[c]
+        kind = "builtin" if v["is_builtin"] else "external"
+        print(f"{c} [{kind}] {v['display_name']}:")
+        modes = v.get("modes") or {}
+        if not modes:
+            print("  (no modes)")
+            continue
+        cur, pref = v.get("current_mode"), v.get("preferred_mode")
+        for mid, m in sorted(modes.items(), key=lambda kv: (kv[1]["w"] * kv[1]["h"], kv[1]["refresh"])):
+            flags = []
+            if mid == cur:
+                flags.append("current")
+            if mid == pref:
+                flags.append("preferred")
+            print(f"  {mid}  {m['w']}x{m['h']}@{m['refresh']:.3f}  {' '.join(flags)}")
+
+
+def interactive_choice(prompt, options):
+    import subprocess
+    labels = [f"{k}: {lab}" for k, lab in options]
+    if sys.stdin.isatty() and shutil.which("fzf"):
+        try:
+            p = subprocess.run(["fzf", "--prompt", prompt + " ", "--height=40%", "--reverse"],
+                               input="\n".join(labels),
+                               capture_output=True, text=True, timeout=120)
+            if p.returncode == 0 and p.stdout.strip():
+                return p.stdout.strip().split(":")[0].strip()
+            # 130/1 = cancelled/empty -> treat as quit
+            if p.returncode in (1, 130):
+                return "q"
+        except subprocess.TimeoutExpired:
+            warn("fzf timed out; falling back to numbered prompt")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            vprint(f"fzf failed ({e}); falling back to numbered prompt")
+    if not sys.stdin.isatty():
+        # Piped automation (e.g. `echo 1 | script -i`): accept a single line if present,
+        # otherwise fail fast instead of hanging on input().
+        try:
+            import select
+            r, _, _ = select.select([sys.stdin], [], [], 0.2)
+            if r:
+                line = sys.stdin.readline()
+                if line and line.strip():
+                    vprint(f"non-TTY piped choice: {line.strip()}")
+                    return line.strip().split(":")[0].strip().lower()
+        except Exception as e:
+            vprint(f"non-TTY stdin probe failed: {e}")
+        raise DisplayError("interactive menu needs a TTY (stdin is not a terminal). "
+                           "Use --join/--mirror/--builtin-only/--external-only/--status instead, "
+                           "or pipe a choice like `echo 1 | gnome_change-monitor-layout -i`.")
+    print(prompt)
+    for k, lab in options:
+        print(f"  {k}) {lab}")
+    try:
+        return input("choice> ").strip().lower()
+    except EOFError:
+        return "q"
+    except KeyboardInterrupt:
+        print()
+        return "q"
+
+
+# ---------------------------------------------------------------- main
+
+def build_parser():
+    ap = argparse.ArgumentParser(description="Interactive monitor layout switcher (Super+P replacement that remembers positions+primary).")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--join", "--extend", dest="join", action="store_true", help="join/extend: restore saved layout")
+    g.add_argument("--mirror", action="store_true", help="mirror all monitors")
+    g.add_argument("--builtin-only", "--builtin", dest="builtin_only", action="store_true", help="built-in display only")
+    g.add_argument("--external-only", "--external", dest="external_only", action="store_true", help="external display(s) only")
+    g.add_argument("--status", action="store_true", help="show current + saved layout and exit")
+    g.add_argument("--save", action="store_true", help="save current extend layout as preferred and exit")
+    g.add_argument("--clear-profile", action="store_true", help="delete saved profile for current monitor set and exit")
+    g.add_argument("--list-modes", action="store_true", help="list connectors and available modes and exit")
+    ap.add_argument("--json", action="store_true", help="with --status: machine-readable JSON output")
+    ap.add_argument("--dry-run", action="store_true", help="verify only (method=0), print payload, no change")
+    ap.add_argument("--temporary", action="store_true", help="use method=1 temporary (no monitors.xml write)")
+    ap.add_argument("--method", type=int, choices=[0, 1, 2], default=None, help="override D-Bus method (0 verify,1 temp,2 persistent)")
+    ap.add_argument("--no-verify", action="store_true", help="skip pre-verify before apply (faster, less safe)")
+    ap.add_argument("--interactive", "-i", action="store_true", help="force interactive menu")
+    ap.add_argument("--verbose", "-v", action="store_true", help="debug output to stderr")
+    return ap
+
+
+def main(argv=None):
+    global VERBOSE
+    ap = build_parser()
+    try:
+        args = ap.parse_args(argv)
+    except SystemExit as e:
+        return int(e.code) if isinstance(e.code, int) else 2
+    VERBOSE = bool(args.verbose)
+
+    # consistent method resolution: explicit --method wins, then --dry-run, then --temporary, default persistent
+    if args.temporary and args.method is not None and args.method != 1:
+        warn("--temporary ignored because --method was given explicitly")
+    if args.dry_run and args.method is not None and args.method != 0:
+        warn("--dry-run forces method=0; ignoring --method")
+    if args.dry_run and args.temporary:
+        warn("--dry-run forces method=0 (verify only); ignoring --temporary")
+    if args.no_verify and args.dry_run:
+        warn("--no-verify has no effect with --dry-run (verify-only mode)")
+    method = 2
+    if args.temporary:
+        method = 1
+    if args.method is not None:
+        method = args.method
+    if args.dry_run:
+        method = 0
+
+    if args.json and not args.status:
+        eprint("--json only works with --status")
+        return 2
+
+    try:
+        proxy = get_proxy()
+    except DisplayError as e:
+        return fail(e, 1)
+
+    try:
+        serial, monitors, logical, props = get_state(proxy)
+    except DisplayError as e:
+        return fail(e, 1)
+    try:
+        phys = parse_phys(monitors)
+        lpar = parse_logical(logical)
+    except DisplayError as e:
+        return fail(e, 1)
+
+    if not lpar:
+        warn("no enabled logical monitors reported; all outputs appear disabled")
+
+    # read-only informational commands first (no auto-save side effects)
+    if args.list_modes:
+        print_modes(phys)
+        return 0
+
+    if args.status:
+        try:
+            print_status(phys, lpar, props, as_json=args.json)
+        except BrokenPipeError:
+            try:
+                sys.stdout.close()
+            except Exception:
+                pass
+            return 0
+        except ProfileError as e:
+            return fail(f"cannot load profiles: {e}", 1)
+        return 0
+
+    if args.clear_profile:
+        key = profile_key(sorted(phys.keys()))
+        if not key:
+            return fail("no monitors detected", 1)
+        try:
+            profiles = load_profiles()
+        except ProfileError as e:
+            return fail(f"cannot load profiles: {e}", 1)
+        if key not in profiles:
+            print(f"no saved profile for '{key}'; nothing to clear")
+            return 0
+        del profiles[key]
+        try:
+            save_profiles(profiles)
+        except ProfileError as e:
+            return fail(f"cannot write profiles: {e}", 1)
+        print(f"cleared profile '{key}'")
+        return 0
+
+    if args.save:
+        try:
+            key = maybe_save_current_as_profile(phys, lpar, props, strict=True)
+        except ProfileError as e:
+            return fail(f"cannot save profile: {e}", 1)
+        if key:
+            print(f"saved current join layout as profile '{key}' -> {PROFILE_FILE}")
+            return 0
+        eprint("not in join/extend state (need >=2 single-monitor logical monitors covering all outputs); nothing saved")
+        try:
+            print_status(phys, lpar, props)
+        except Exception:
+            pass
+        return 1
+
+    # auto-save good extend layouts silently (never let a save failure break switching)
+    if not args.dry_run:
+        try:
+            maybe_save_current_as_profile(phys, lpar, props)
+        except Exception as e:
+            warn(f"auto-save skipped: {e}")
+
+    action = None
+    require_all = True
+    if args.join:
+        action = "join"
+    elif args.mirror:
+        action = "mirror"
+    elif args.builtin_only:
+        action = "builtin"
+    elif args.external_only:
+        action = "external"
+
+    if action is None and (args.interactive or (argv is None and len(sys.argv) == 1) or (argv is not None and len(argv) == 0)):
+        try:
+            print_status(phys, lpar, props)
+        except BrokenPipeError:
+            return 0
+        print()
+        try:
+            choice = interactive_choice("Select layout:", [
+                ("1", "Join / Extend (restore saved positions + primary)"),
+                ("2", "Mirror"),
+                ("3", "Built-in only"),
+                ("4", "External only"),
+                ("5", "Save current as preferred join"),
+                ("6", "Status (refresh)"),
+                ("q", "Quit"),
+            ])
+        except DisplayError as e:
+            return fail(e, 1)
+        mapping = {"1": "join", "join": "join", "extend": "join",
+                   "2": "mirror", "mirror": "mirror",
+                   "3": "builtin", "builtin": "builtin", "builtin-only": "builtin",
+                   "4": "external", "external": "external", "external-only": "external"}
+        if choice in ("5", "save"):
+            try:
+                key = maybe_save_current_as_profile(phys, lpar, props, strict=True)
+            except ProfileError as e:
+                return fail(f"cannot save: {e}", 1)
+            if key:
+                print(f"saved as '{key}'")
+                return 0
+            eprint("nothing to save (not in join state)")
+            return 1
+        if choice in ("6", "status", "status (refresh)", ""):
+            return 0
+        if choice in ("q", "quit", "7", "0", "exit", "cancel"):
+            return 0
+        action = mapping.get(choice.strip().lower(), "")
+        if not action:
+            eprint(f"unknown choice '{choice}'")
+            return 2
+
+    if action is None:
+        ap.print_help()
+        return 2
+
+    # re-fetch serial right before apply (serial may have changed since menu)
+    try:
+        serial, monitors, logical, props = get_state(proxy)
+        phys = parse_phys(monitors)
+        lpar = parse_logical(logical)
+    except DisplayError as e:
+        return fail(f"monitors changed before apply, aborting: {e}", 1)
+
+    try:
+        profiles = load_profiles()
+    except ProfileError as e:
+        return fail(f"cannot load profiles: {e}", 1)
+
+    try:
+        if action == "join":
+            payload, how = build_join(phys, lpar, profiles)
+            require_all = True
+        elif action == "mirror":
+            payload, how = build_mirror(phys, lpar)
+            require_all = True
+        elif action == "builtin":
+            payload, how = build_single_group(phys, lpar, only_builtin=True)
+            require_all = False
+        elif action == "external":
+            payload, how = build_single_group(phys, lpar, only_builtin=False)
+            require_all = False
+        else:
+            return fail(f"unknown action {action}", 2)
+    except (DisplayError, ProfileError) as e:
+        return fail(e, 1)
+
+    print(f"action: {action} ({how})  method={method}  monitors={len(payload)} logical")
+    for lm in payload:
+        try:
+            print(f"  ({lm[0]},{lm[1]}) scale={lm[2]} primary={lm[4]} {[(m[0], m[1]) for m in lm[5]]}")
+        except Exception:
+            print(f"  {lm}")
+    if method == 0:
+        print("dry-run: verifying only...")
+
+    try:
+        apply_with_retry(proxy, payload, phys, method,
+                         require_all=require_all, verify_first=(not args.no_verify))
+    except DisplayError as e:
+        # if apply failed after verify, suggest diagnostics
+        if method != 0:
+            eprint("hint: run with --dry-run --verbose and --list-modes to see rejected mode/layout")
+        return fail(e, 1)
+    except GLib.Error as e:
+        return fail(f"D-Bus error: {friendly_dbus_error(e)}", 1)
+    except Exception as e:
+        if VERBOSE:
+            traceback.print_exc()
+        return fail(f"unexpected error during apply: {e}", 1)
+
+    if method == 0:
+        print("verify OK (no change made)")
+    elif method == 1:
+        print("applied temporary (will not survive reboot / will not update monitors.xml)")
+    else:
+        print(f"applied persistent; profile dir: {CONFIG_DIR}")
+        try:
+            s2, m2, l2, p2 = get_state(proxy)
+            maybe_save_current_as_profile(parse_phys(m2), parse_logical(l2), p2)
+        except Exception as e:
+            warn(f"post-apply auto-save skipped: {e}")
+    return 0
+
+
+# ---------------------------------------------------------------- compat
+# apply_payload kept for backward-compat callers; validates nothing itself.
+
+def apply_payload(proxy, serial, payload, method, verify_first=True):
+    if method not in (0, 1, 2):
+        raise DisplayError(f"invalid method {method} (must be 0,1,2)")
+    if verify_first and method in (1, 2):
+        try:
+            params = GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (int(serial), 0, payload, {}))
+            proxy.call_sync("ApplyMonitorsConfig", params, Gio.DBusCallFlags.NONE, DBUS_TIMEOUT_MS, None)
+        except GLib.Error as e:
+            raise DisplayError(f"pre-verify rejected the layout (nothing was changed): {friendly_dbus_error(e)}")
+    try:
+        params = GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (int(serial), int(method), payload, {}))
+    except Exception as e:
+        raise DisplayError(f"cannot encode D-Bus payload (internal type error): {e}")
+    try:
+        proxy.call_sync("ApplyMonitorsConfig", params, Gio.DBusCallFlags.NONE, DBUS_TIMEOUT_MS, None)
+    except GLib.Error as e:
+        msg = friendly_dbus_error(e)
+        low = str(e).lower()
+        if method in (1, 2) and ("serial" in low or "changed" in low or "stale" in low):
+            raise DisplayError(f"{msg} [STALE_SERIAL]")
+        raise DisplayError(msg)
+
+
+def apply_with_retry(proxy, payload, phys, method, require_all=True, verify_first=True):
+    errors = validate_payload(payload, phys, require_all=require_all)
+    if errors:
+        raise DisplayError("refusing to apply invalid layout: " + "; ".join(errors))
+    allowed = check_apply_allowed(proxy)
+    if allowed is False:
+        raise DisplayError("mutter reports ApplyMonitorsConfigAllowed=false (kiosk / locked-down session?). "
+                           "Use Settings > Displays instead.")
+    serial = get_state(proxy)[0]
+    try:
+        apply_payload(proxy, serial, payload, method, verify_first=verify_first)
+        return
+    except DisplayError as e:
+        if "[STALE_SERIAL]" not in str(e) or method not in (1, 2):
+            raise
+        warn("monitors changed during apply; refetching serial and retrying once...")
+        serial2, monitors2, _logical2, _props2 = get_state(proxy)
+        phys2 = parse_phys(monitors2)
+        errs2 = validate_payload(payload, phys2, require_all=require_all)
+        if errs2:
+            raise DisplayError("monitors changed; saved layout no longer fits: " + "; ".join(errs2))
+        # second and final attempt (no further retry to avoid loops)
+        apply_payload(proxy, serial2, payload, method, verify_first=True)
+        return
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        eprint("\ninterrupted")
+        sys.exit(130)
+    except BrokenPipeError:
+        try:
+            sys.stdout.close()
+            sys.stderr.close()
+        except Exception:
+            pass
+        sys.exit(0)
