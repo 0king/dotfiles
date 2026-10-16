@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# chezmoi_check-unmanaged.sh: Detect & Prompt for Untracked Files in Managed Dirs
+# chezmoi_check-unmanaged.sh: Detect & Prompt for New Untracked Files in Managed Dirs
 #
-# Scans directories that already contain files managed by chezmoi (e.g. ~/.local/bin,
+# Scans directories containing files managed by chezmoi (e.g. ~/.local/bin,
 # ~/.config/nvim, ~/.config/zsh, etc., excluding $HOME root files).
-# Detects unmanaged files and interactively prompts whether to:
+#
+# Respects the status quo: tracks known unmanaged files in a state baseline file
+# (~/.local/state/chezmoi/known_unmanaged.txt). Existing unmanaged files are never
+# prompted. You are ONLY alerted when a genuinely NEW file appears.
+#
+# Interactive actions:
 #   [y] Add to chezmoi
-#   [n] Skip (leave unmanaged)
+#   [n] Skip (remember as known unmanaged, default on Enter)
 #   [i] Ignore (append to .chezmoiignore)
 #   [a] Add all remaining
-#   [q] Quit prompt
+#   [q] Quit prompt (leave unhandled for next run)
 # ==============================================================================
 
 set -euo pipefail
@@ -40,22 +45,27 @@ show_help() {
 ${BOLD}Usage:${RESET} chezmoi_check-unmanaged.sh [OPTIONS] [PATHS...]
 
 ${BOLD}Description:${RESET}
-  Detects unmanaged/new files located in directories that are already managed
+  Detects NEW unmanaged files located in directories that are already managed
   by chezmoi (such as ~/.local/bin, ~/.config/nvim, etc.).
-  When run interactively, prompts whether each file should be tracked in chezmoi,
-  ignored in .chezmoiignore, or skipped.
+  
+  Respects the status quo: maintains a baseline of known unmanaged files in
+  ~/.local/state/chezmoi/known_unmanaged.txt. Only new files not present in the
+  baseline will trigger a prompt.
 
 ${BOLD}Options:${RESET}
-  -c, --check-only    List unmanaged files without interactive prompting
-  -s, --status        Run 'chezmoi status' before checking for unmanaged files
-  -h, --help          Show this help message
+  -c, --check-only        List new unmanaged files without interactive prompting
+  -s, --status            Run 'chezmoi status' before checking for unmanaged files
+  -a, --all               Inspect all unmanaged files, ignoring the baseline
+      --snapshot          Update/reset baseline with all current unmanaged files
+      --reset-baseline    Alias for --snapshot
+  -h, --help              Show this help message
 
 ${BOLD}Interactive Actions:${RESET}
   [y]es    Add target file to chezmoi tracking (chezmoi add)
-  [n]o     Skip target file for now (leave unmanaged) [default]
+  [n]o     Skip target file (remember as known unmanaged, default on Enter)
   [i]gnore Append target file to .chezmoiignore
-  [a]ll    Add this file and all subsequent untracked files
-  [q]uit   Exit prompt immediately
+  [a]ll    Add this file and all subsequent untracked files to chezmoi
+  [q]uit   Exit prompt immediately (unhandled files will prompt on next run)
   [?]help  Show prompt options
 
 EOF
@@ -124,6 +134,8 @@ add_to_ignore() {
 main() {
     local CHECK_ONLY=0
     local RUN_STATUS=0
+    local SHOW_ALL=0
+    local SNAPSHOT_ONLY=0
     local -a TARGET_PATHS=()
 
     for arg in "$@"; do
@@ -137,6 +149,12 @@ main() {
                 ;;
             -s|--status)
                 RUN_STATUS=1
+                ;;
+            -a|--all)
+                SHOW_ALL=1
+                ;;
+            --snapshot|--reset-baseline)
+                SNAPSHOT_ONLY=1
                 ;;
             -*)
                 # Ignore unrecognized flags (e.g. passed from chezmoi status -v)
@@ -172,23 +190,93 @@ main() {
         exit 0
     fi
 
+    # Query current unmanaged files from chezmoi
     local -a raw_unmanaged=()
     mapfile -t raw_unmanaged < <(command chezmoi unmanaged --include=files,symlinks "${SCAN_DIRS[@]}" 2>/dev/null || true)
 
-    local -a unmanaged_files=()
+    local -A current_unmanaged_map=()
     for item in "${raw_unmanaged[@]}"; do
         [ -z "$item" ] && continue
-        unmanaged_files+=("$item")
+        current_unmanaged_map["$item"]=1
     done
 
-    local count="${#unmanaged_files[@]}"
+    # Baseline state file path
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/chezmoi"
+    local state_file="$state_dir/known_unmanaged.txt"
+    mkdir -p "$state_dir"
+
+    # Handle manual snapshot request
+    if (( SNAPSHOT_ONLY )); then
+        local tmp_file
+        tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
+        for item in "${!current_unmanaged_map[@]}"; do
+            echo "$item"
+        done | sort > "$tmp_file"
+        mv -f "$tmp_file" "$state_file"
+        local count="${#current_unmanaged_map[@]}"
+        echo -e "${GREEN}📸 Baseline updated with ${count} unmanaged entries:${RESET} $state_file"
+        exit 0
+    fi
+
+    # Read known unmanaged baseline
+    local -A known_unmanaged_map=()
+    local baseline_initialized=1
+
+    if [ ! -f "$state_file" ]; then
+        # Initial run: automatically snapshot existing unmanaged files to respect status quo
+        local tmp_file
+        tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
+        for item in "${!current_unmanaged_map[@]}"; do
+            echo "$item"
+        done | sort > "$tmp_file"
+        mv -f "$tmp_file" "$state_file"
+        baseline_initialized=0
+    else
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
+            [ -z "$line" ] && continue
+            [[ "$line" == "#"* ]] && continue
+            known_unmanaged_map["$line"]=1
+        done < "$state_file"
+    fi
+
+    # If this was the first run, exit quietly without nagging about existing files
+    if (( ! baseline_initialized )); then
+        exit 0
+    fi
+
+    # Filter for genuinely new files (not in baseline), or all if --all requested
+    local -a files_to_prompt=()
+    for item in "${!current_unmanaged_map[@]}"; do
+        if (( SHOW_ALL )) || [[ -z "${known_unmanaged_map[$item]:-}" ]]; then
+            files_to_prompt+=("$item")
+        fi
+    done
+
+    # Clean up stale entries in baseline that no longer exist on disk or are now managed
+    if (( ${#TARGET_PATHS[@]} == 0 )); then
+        local tmp_prune
+        tmp_prune="$(mktemp "${state_file}.tmp.XXXXXX")"
+        for item in "${!known_unmanaged_map[@]}"; do
+            if [[ -n "${current_unmanaged_map[$item]:-}" ]]; then
+                echo "$item"
+            fi
+        done | sort > "$tmp_prune"
+        mv -f "$tmp_prune" "$state_file"
+    fi
+
+    local count="${#files_to_prompt[@]}"
     if (( count == 0 )); then
         exit 0
     fi
 
+    # Sort files alphabetically for clean display
+    mapfile -t files_to_prompt < <(for f in "${files_to_prompt[@]}"; do echo "$f"; done | sort)
+
     echo ""
-    echo -e "${YELLOW}${BOLD}❓ Untracked file(s) in managed directories (${count}):${RESET}"
-    for f in "${unmanaged_files[@]}"; do
+    echo -e "${YELLOW}${BOLD}❓ New untracked file(s) in managed directories (${count}):${RESET}"
+    for f in "${files_to_prompt[@]}"; do
         echo -e "   ${CYAN}?${RESET}  ~/${f}"
     done
     echo ""
@@ -205,7 +293,7 @@ main() {
     local add_all=0
 
     while (( i < count )); do
-        local file="${unmanaged_files[i]}"
+        local file="${files_to_prompt[i]}"
 
         if (( add_all )); then
             command chezmoi add "$HOME/$file"
@@ -235,11 +323,18 @@ main() {
                 (( i++ ))
                 ;;
             n|N|no|NO|"")
-                echo -e "   ${DIM}⏩ Skipped ~/$file${RESET}"
+                # Acknowledged: remember as known unmanaged so it won't prompt again
+                if ! grep -Fxq "$file" "$state_file" 2>/dev/null; then
+                    echo "$file" >> "$state_file"
+                fi
+                echo -e "   ${DIM}⏩ Skipped ~/$file (remembered as unmanaged)${RESET}"
                 (( i++ ))
                 ;;
             i|I|ignore|IGNORE)
                 add_to_ignore "$file"
+                if ! grep -Fxq "$file" "$state_file" 2>/dev/null; then
+                    echo "$file" >> "$state_file"
+                fi
                 echo -e "   ${BLUE}🙈 Ignored $file (added to .chezmoiignore)${RESET}"
                 (( i++ ))
                 ;;
@@ -257,10 +352,10 @@ main() {
                 echo ""
                 echo -e "${BOLD}Options:${RESET}"
                 echo -e "  ${GREEN}y${RESET} - yes, add this file to chezmoi tracking"
-                echo -e "  ${YELLOW}n${RESET} - no, skip this file (leave unmanaged for now) [default]"
+                echo -e "  ${YELLOW}n${RESET} - no, skip this file (remembered as unmanaged, won't ask again) [default]"
                 echo -e "  ${BLUE}i${RESET} - ignore, append to .chezmoiignore so it is no longer reported"
-                echo -e "  ${CYAN}a${RESET} - all, add this file and all remaining untracked files"
-                echo -e "  ${RED}q${RESET} - quit, stop prompting"
+                echo -e "  ${CYAN}a${RESET} - all, add this file and all remaining untracked files to chezmoi"
+                echo -e "  ${RED}q${RESET} - quit, stop prompting (unhandled files will prompt on next run)"
                 echo -e "  ${BOLD}?${RESET} - show this help"
                 echo ""
                 ;;
