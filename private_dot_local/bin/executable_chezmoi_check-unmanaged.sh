@@ -216,10 +216,12 @@ main() {
 
         printf "%s" "${BOLD}Add ~/$file to chezmoi?${RESET} [y/N/i/a/q/?] "
         local reply=""
-        if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+        if [ -t 0 ]; then
+            read -r reply || break
+        elif [ -e /dev/tty ] && [ -r /dev/tty ]; then
             read -r reply < /dev/tty || break
         else
-            read -r reply || break
+            break
         fi
 
         # Trim leading and trailing whitespace
