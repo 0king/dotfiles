@@ -155,6 +155,12 @@ if [ ! -f "$HOME/.aider.conf.yml" ] && [ "$CHECK_ONLY" -eq 0 ]; then
 # Aider global configuration
 read:
   - ~/.config/ai/AGENTS.md
+
+## Specify the model to use for the main chat
+model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+
+## Use colors suitable for a dark terminal background (default: False)
+dark-mode: true
 EOF
     echo "   📄 Created ~/.aider.conf.yml pointing to ~/.config/ai/AGENTS.md"
 fi

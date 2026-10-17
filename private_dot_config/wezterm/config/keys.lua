@@ -117,11 +117,72 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "x", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "X", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 
+	-- Action: Smart Paste (paste whichever clipboard has the latest data)
+	local last_cb_content = ""
+	local last_pr_content = ""
+	local last_cb_time = 0
+	local last_pr_time = 0
+
+	local smart_paste = wezterm.action_callback(function(window, pane)
+		local is_wayland = os.getenv("WAYLAND_DISPLAY") ~= nil
+		local cb_text = ""
+		local pr_text = ""
+
+		if is_wayland then
+			local ok_cb, out_cb = wezterm.run_child_process({ "wl-paste", "--no-newline" })
+			if ok_cb and out_cb then
+				cb_text = out_cb
+			end
+			local ok_pr, out_pr = wezterm.run_child_process({ "wl-paste", "--primary", "--no-newline" })
+			if ok_pr and out_pr then
+				pr_text = out_pr
+			end
+		elseif os.getenv("DISPLAY") ~= nil then
+			local ok_cb, out_cb = wezterm.run_child_process({ "xclip", "-selection", "clipboard", "-o" })
+			if ok_cb and out_cb then
+				cb_text = out_cb
+			end
+			local ok_pr, out_pr = wezterm.run_child_process({ "xclip", "-selection", "primary", "-o" })
+			if ok_pr and out_pr then
+				pr_text = out_pr
+			end
+		end
+
+		local now = os.time()
+		if cb_text ~= "" and cb_text ~= last_cb_content then
+			last_cb_content = cb_text
+			last_cb_time = now
+		end
+		if pr_text ~= "" and pr_text ~= last_pr_content then
+			last_pr_content = pr_text
+			last_pr_time = now
+		end
+
+		local text_to_paste = ""
+		if cb_text ~= "" and pr_text ~= "" then
+			if last_pr_time > last_cb_time then
+				text_to_paste = pr_text
+			else
+				text_to_paste = cb_text
+			end
+		elseif cb_text ~= "" then
+			text_to_paste = cb_text
+		elseif pr_text ~= "" then
+			text_to_paste = pr_text
+		end
+
+		if text_to_paste ~= "" then
+			pane:send_paste(text_to_paste)
+		else
+			-- Fallback to native WezTerm action if external tools are absent or returned empty
+			window:perform_action(act.PasteFrom("Clipboard"), pane)
+		end
+	end)
+
 	-- Unified Copy & Paste
 	table.insert(config.keys, { key = "c", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") })
 	table.insert(config.keys, { key = "C", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") })
 	table.insert(config.keys, { key = "v", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") })
-	table.insert(config.keys, { key = "V", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") })
 	table.insert(config.keys, { key = "Insert", mods = "SHIFT", action = act.PasteFrom("PrimarySelection") })
 	table.insert(config.keys, { key = "Insert", mods = "CTRL", action = act.CopyTo("Clipboard") })
 
@@ -132,6 +193,12 @@ function M.apply_to_config(config)
 	-- Register in Command Palette (Ctrl + Shift + P)
 	wezterm.on("augment-command-palette", function(window, pane)
 		return {
+			{
+				brief = "Paste: Smart paste (latest between Clipboard & Primary)",
+				doc = "Pastes text from whichever buffer (Clipboard or Primary Selection) has newer data",
+				icon = "md_content_paste",
+				action = smart_paste,
+			},
 			{
 				brief = "Select All: Copy entire scrollback to clipboard",
 				doc = "Copies all text from current pane's scrollback history to clipboard",
