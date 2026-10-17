@@ -1,0 +1,2 @@
+map f LinkHints.activateOpenInNewTab
+map F LinkHints.activateOpen

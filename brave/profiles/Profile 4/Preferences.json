@@ -1,0 +1,3524 @@
+{
+  "accessibility": {
+    "captions": {
+      "headless_caption_enabled": false
+    }
+  },
+  "apps": {
+    "shortcuts_arch": "",
+    "shortcuts_os_version": "",
+    "shortcuts_version": 0
+  },
+  "bookmark": {
+    "storage_computation_last_update": "13436524121213144"
+  },
+  "brave": {
+    "accelerators": {
+      "33000": [
+        "BrowserBack",
+        "Alt+ArrowLeft",
+        "AltGr+ArrowLeft"
+      ],
+      "33001": [
+        "BrowserForward",
+        "Alt+ArrowRight",
+        "AltGr+ArrowRight"
+      ],
+      "33002": [
+        "Control+KeyR",
+        "F5",
+        "BrowserRefresh"
+      ],
+      "33003": [
+        "BrowserHome",
+        "Alt+Home"
+      ],
+      "33007": [
+        "Control+Shift+KeyR",
+        "Control+F5",
+        "Shift+F5",
+        "Control+BrowserRefresh",
+        "Shift+BrowserRefresh"
+      ],
+      "34000": [
+        "Control+KeyN"
+      ],
+      "34001": [
+        "Control+Shift+KeyN"
+      ],
+      "34012": [
+        "Control+Shift+KeyW",
+        "Alt+F4"
+      ],
+      "34014": [
+        "AppNew",
+        "Control+KeyT"
+      ],
+      "34015": [
+        "Control+KeyW",
+        "Control+F4",
+        "AppClose"
+      ],
+      "34016": [
+        "Control+PageDown"
+      ],
+      "34017": [
+        "Control+PageUp"
+      ],
+      "34018": [
+        "Control+Digit1",
+        "Control+Numpad1",
+        "Alt+Digit1",
+        "Alt+Numpad1"
+      ],
+      "34019": [
+        "Control+Digit2",
+        "Control+Numpad2",
+        "Alt+Digit2",
+        "Alt+Numpad2"
+      ],
+      "34020": [
+        "Control+Digit3",
+        "Control+Numpad3",
+        "Alt+Digit3",
+        "Alt+Numpad3"
+      ],
+      "34021": [
+        "Control+Digit4",
+        "Control+Numpad4",
+        "Alt+Digit4",
+        "Alt+Numpad4"
+      ],
+      "34022": [
+        "Control+Digit5",
+        "Control+Numpad5",
+        "Alt+Digit5",
+        "Alt+Numpad5"
+      ],
+      "34023": [
+        "Control+Digit6",
+        "Control+Numpad6",
+        "Alt+Digit6",
+        "Alt+Numpad6"
+      ],
+      "34024": [
+        "Control+Digit7",
+        "Control+Numpad7",
+        "Alt+Digit7",
+        "Alt+Numpad7"
+      ],
+      "34025": [
+        "Control+Digit8",
+        "Control+Numpad8",
+        "Alt+Digit8",
+        "Alt+Numpad8"
+      ],
+      "34026": [
+        "Control+Digit9",
+        "Control+Numpad9",
+        "Alt+Digit9",
+        "Alt+Numpad9"
+      ],
+      "34028": [
+        "Control+Shift+KeyT"
+      ],
+      "34030": [
+        "F11"
+      ],
+      "34032": [
+        "Control+Shift+PageDown"
+      ],
+      "34033": [
+        "Control+Shift+PageUp"
+      ],
+      "34057": [
+        "Control+Alt+KeyT"
+      ],
+      "34061": [
+        "Control+Shift+KeyL"
+      ],
+      "34062": [
+        "Control+Tab"
+      ],
+      "34063": [
+        "Control+Shift+Tab"
+      ],
+      "34100": [
+        "Alt+Shift+KeyC"
+      ],
+      "34101": [
+        "Alt+Shift+KeyP"
+      ],
+      "34102": [
+        "Alt+Shift+KeyX"
+      ],
+      "34103": [
+        "Alt+Shift+KeyZ"
+      ],
+      "34104": [
+        "Alt+Shift+KeyW"
+      ],
+      "35000": [
+        "Control+KeyD"
+      ],
+      "35001": [
+        "Control+Shift+KeyD"
+      ],
+      "35002": [
+        "Control+KeyU"
+      ],
+      "35003": [
+        "Control+KeyP"
+      ],
+      "35004": [
+        "Control+KeyS"
+      ],
+      "35007": [
+        "Control+Shift+KeyP"
+      ],
+      "35031": [
+        "Control+Shift+KeyS"
+      ],
+      "37000": [
+        "Control+KeyF"
+      ],
+      "37001": [
+        "Control+KeyG",
+        "F3"
+      ],
+      "37002": [
+        "Control+Shift+KeyG",
+        "Shift+F3"
+      ],
+      "37003": [
+        "Escape"
+      ],
+      "38001": [
+        "Control+Equal",
+        "Control+NumpadAdd",
+        "Control+Shift+Equal"
+      ],
+      "38002": [
+        "Control+Digit0",
+        "Control+Numpad0"
+      ],
+      "38003": [
+        "Control+Minus",
+        "Control+NumpadSubtract",
+        "Control+Shift+Minus"
+      ],
+      "39000": [
+        "Alt+Shift+KeyT"
+      ],
+      "39001": [
+        "Control+KeyL",
+        "Alt+KeyD"
+      ],
+      "39002": [
+        "BrowserSearch",
+        "Control+KeyE",
+        "Control+KeyK"
+      ],
+      "39003": [
+        "F10",
+        "AltGr",
+        "Alt"
+      ],
+      "39004": [
+        "F6"
+      ],
+      "39005": [
+        "Shift+F6"
+      ],
+      "39006": [
+        "Alt+Shift+KeyB"
+      ],
+      "39007": [
+        "Alt+Shift+KeyA"
+      ],
+      "39009": [
+        "Control+F6"
+      ],
+      "40000": [
+        "Control+KeyO"
+      ],
+      "40004": [
+        "Control+Shift+KeyI"
+      ],
+      "40005": [
+        "Control+Shift+KeyJ"
+      ],
+      "40009": [
+        "BrowserFavorites",
+        "Control+Shift+KeyB"
+      ],
+      "40010": [
+        "Control+KeyH"
+      ],
+      "40011": [
+        "Control+Shift+KeyO"
+      ],
+      "40012": [
+        "Control+KeyJ"
+      ],
+      "40013": [
+        "Control+Shift+Delete"
+      ],
+      "40019": [
+        "F1"
+      ],
+      "40021": [
+        "Alt+KeyE",
+        "Alt+KeyF"
+      ],
+      "40023": [
+        "Control+Shift+KeyC"
+      ],
+      "40134": [
+        "Control+Shift+KeyM"
+      ],
+      "40237": [
+        "F12"
+      ],
+      "40260": [
+        "F7"
+      ],
+      "40286": [
+        "Shift+Escape"
+      ],
+      "40303": [
+        "Alt+Shift+KeyR"
+      ],
+      "52500": [
+        "Control+Shift+KeyA"
+      ],
+      "56003": [
+        "Alt+Shift+KeyN"
+      ],
+      "56041": [
+        "Control+KeyM"
+      ],
+      "56044": [
+        "Control+KeyB"
+      ],
+      "56301": [
+        "Control+Space"
+      ]
+    },
+    "brave_search": {
+      "migrated-ntp-chat-from-search": true
+    },
+    "commander": {
+      "command_frecencies": {
+        "Close other tabs": {
+          "last_visit": 1790365497402.693,
+          "visit_count": 2
+        }
+      }
+    },
+    "cosmetic_filtering_migration": true,
+    "dark_mode_migrated": true,
+    "default_accelerators": {
+      "33000": [
+        "BrowserBack",
+        "Alt+ArrowLeft",
+        "AltGr+ArrowLeft"
+      ],
+      "33001": [
+        "BrowserForward",
+        "Alt+ArrowRight",
+        "AltGr+ArrowRight"
+      ],
+      "33002": [
+        "Control+KeyR",
+        "F5",
+        "BrowserRefresh"
+      ],
+      "33003": [
+        "BrowserHome",
+        "Alt+Home"
+      ],
+      "33007": [
+        "Control+Shift+KeyR",
+        "Control+F5",
+        "Shift+F5",
+        "Control+BrowserRefresh",
+        "Shift+BrowserRefresh"
+      ],
+      "34000": [
+        "Control+KeyN"
+      ],
+      "34001": [
+        "Control+Shift+KeyN"
+      ],
+      "34012": [
+        "Control+Shift+KeyW",
+        "Alt+F4"
+      ],
+      "34014": [
+        "AppNew",
+        "Control+KeyT"
+      ],
+      "34015": [
+        "Control+KeyW",
+        "Control+F4",
+        "AppClose"
+      ],
+      "34016": [
+        "Control+PageDown"
+      ],
+      "34017": [
+        "Control+PageUp"
+      ],
+      "34018": [
+        "Control+Digit1",
+        "Control+Numpad1",
+        "Alt+Digit1",
+        "Alt+Numpad1"
+      ],
+      "34019": [
+        "Control+Digit2",
+        "Control+Numpad2",
+        "Alt+Digit2",
+        "Alt+Numpad2"
+      ],
+      "34020": [
+        "Control+Digit3",
+        "Control+Numpad3",
+        "Alt+Digit3",
+        "Alt+Numpad3"
+      ],
+      "34021": [
+        "Control+Digit4",
+        "Control+Numpad4",
+        "Alt+Digit4",
+        "Alt+Numpad4"
+      ],
+      "34022": [
+        "Control+Digit5",
+        "Control+Numpad5",
+        "Alt+Digit5",
+        "Alt+Numpad5"
+      ],
+      "34023": [
+        "Control+Digit6",
+        "Control+Numpad6",
+        "Alt+Digit6",
+        "Alt+Numpad6"
+      ],
+      "34024": [
+        "Control+Digit7",
+        "Control+Numpad7",
+        "Alt+Digit7",
+        "Alt+Numpad7"
+      ],
+      "34025": [
+        "Control+Digit8",
+        "Control+Numpad8",
+        "Alt+Digit8",
+        "Alt+Numpad8"
+      ],
+      "34026": [
+        "Control+Digit9",
+        "Control+Numpad9",
+        "Alt+Digit9",
+        "Alt+Numpad9"
+      ],
+      "34028": [
+        "Control+Shift+KeyT"
+      ],
+      "34030": [
+        "F11"
+      ],
+      "34032": [
+        "Control+Shift+PageDown"
+      ],
+      "34033": [
+        "Control+Shift+PageUp"
+      ],
+      "34057": [
+        "Control+Alt+KeyT"
+      ],
+      "34061": [
+        "Control+Shift+KeyL"
+      ],
+      "34062": [
+        "Control+Tab"
+      ],
+      "34063": [
+        "Control+Shift+Tab"
+      ],
+      "34100": [
+        "Alt+Shift+KeyC"
+      ],
+      "34101": [
+        "Alt+Shift+KeyP"
+      ],
+      "34102": [
+        "Alt+Shift+KeyX"
+      ],
+      "34103": [
+        "Alt+Shift+KeyZ"
+      ],
+      "34104": [
+        "Alt+Shift+KeyW"
+      ],
+      "35000": [
+        "Control+KeyD"
+      ],
+      "35001": [
+        "Control+Shift+KeyD"
+      ],
+      "35002": [
+        "Control+KeyU"
+      ],
+      "35003": [
+        "Control+KeyP"
+      ],
+      "35004": [
+        "Control+KeyS"
+      ],
+      "35007": [
+        "Control+Shift+KeyP"
+      ],
+      "35031": [
+        "Control+Shift+KeyS"
+      ],
+      "37000": [
+        "Control+KeyF"
+      ],
+      "37001": [
+        "Control+KeyG",
+        "F3"
+      ],
+      "37002": [
+        "Control+Shift+KeyG",
+        "Shift+F3"
+      ],
+      "37003": [
+        "Escape"
+      ],
+      "38001": [
+        "Control+Equal",
+        "Control+NumpadAdd",
+        "Control+Shift+Equal"
+      ],
+      "38002": [
+        "Control+Digit0",
+        "Control+Numpad0"
+      ],
+      "38003": [
+        "Control+Minus",
+        "Control+NumpadSubtract",
+        "Control+Shift+Minus"
+      ],
+      "39000": [
+        "Alt+Shift+KeyT"
+      ],
+      "39001": [
+        "Control+KeyL",
+        "Alt+KeyD"
+      ],
+      "39002": [
+        "BrowserSearch",
+        "Control+KeyE",
+        "Control+KeyK"
+      ],
+      "39003": [
+        "F10",
+        "Alt",
+        "Alt",
+        "AltGr"
+      ],
+      "39004": [
+        "F6"
+      ],
+      "39005": [
+        "Shift+F6"
+      ],
+      "39006": [
+        "Alt+Shift+KeyB"
+      ],
+      "39007": [
+        "Alt+Shift+KeyA"
+      ],
+      "39009": [
+        "Control+F6"
+      ],
+      "40000": [
+        "Control+KeyO"
+      ],
+      "40004": [
+        "Control+Shift+KeyI"
+      ],
+      "40005": [
+        "Control+Shift+KeyJ"
+      ],
+      "40009": [
+        "BrowserFavorites",
+        "Control+Shift+KeyB"
+      ],
+      "40010": [
+        "Control+KeyH"
+      ],
+      "40011": [
+        "Control+Shift+KeyO"
+      ],
+      "40012": [
+        "Control+KeyJ"
+      ],
+      "40013": [
+        "Control+Shift+Delete"
+      ],
+      "40019": [
+        "F1"
+      ],
+      "40021": [
+        "Alt+KeyE",
+        "Alt+KeyF"
+      ],
+      "40023": [
+        "Control+Shift+KeyC"
+      ],
+      "40134": [
+        "Control+Shift+KeyM"
+      ],
+      "40237": [
+        "F12"
+      ],
+      "40260": [
+        "F7"
+      ],
+      "40286": [
+        "Shift+Escape"
+      ],
+      "40303": [
+        "Alt+Shift+KeyR"
+      ],
+      "52500": [
+        "Control+Shift+KeyA"
+      ],
+      "56003": [
+        "Alt+Shift+KeyN"
+      ],
+      "56041": [
+        "Control+KeyM"
+      ],
+      "56044": [
+        "Control+KeyB"
+      ],
+      "56301": [
+        "Control+Space"
+      ]
+    },
+    "default_private_search_provider_data": {
+      "alternate_urls": [],
+      "contextual_search_url": "",
+      "created_from_play_api": false,
+      "date_created": "0",
+      "doodle_url": "",
+      "enforced_by_policy": false,
+      "favicon_url": "https://cdn.search.brave.com/serp/favicon.ico",
+      "featured_by_policy": false,
+      "id": "0",
+      "image_search_branding_label": "",
+      "image_translate_source_language_param_key": "",
+      "image_translate_target_language_param_key": "",
+      "image_translate_url": "",
+      "image_url": "",
+      "image_url_post_params": "",
+      "input_encodings": [
+        "UTF-8"
+      ],
+      "is_active": 0,
+      "keyword": ":br",
+      "last_modified": "0",
+      "last_visited": "0",
+      "logo_url": "",
+      "new_tab_url": "",
+      "originating_url": "",
+      "policy_origin": 0,
+      "preconnect_to_search_url": false,
+      "prefetch_likely_navigations": false,
+      "prepopulate_id": 550,
+      "safe_for_autoreplace": true,
+      "search_intent_params": [],
+      "search_url_post_params": "",
+      "send_x_geo_header": false,
+      "short_name": "Brave",
+      "starter_pack_id": 0,
+      "suggestions_url": "https://search.brave.com/api/suggest?q={searchTerms}&rich=true&rich_verticals=true&source=desktop",
+      "suggestions_url_post_params": "",
+      "synced_guid": "485bf7d3-0215-45af-87dc-538868000550",
+      "url": "https://search.brave.com/search?q={searchTerms}&source=desktop",
+      "usage_count": 0
+    },
+    "default_private_search_provider_guid": "485bf7d3-0215-45af-87dc-538868000550",
+    "enable_media_router_on_restart": false,
+    "enable_window_closing_confirm": false,
+    "https_upgrade_settings_migrated": false,
+    "migrated_search_default_in_jp": true,
+    "mru_cycling_enabled": true,
+    "new_tab_page": {
+      "p3a_new_tabs_created_daily": [
+        {
+          "day": 1791886659.057929,
+          "value": 1.0
+        }
+      ]
+    },
+    "search": {
+      "default_version": 33
+    },
+    "shields_settings_version": 4,
+    "sidebar": {
+      "last_used_built_in_item_type": 3
+    },
+    "stats": {
+      "ads_blocked": "12199",
+      "bandwidth_saved_bytes": "104638916",
+      "daily_saving_predictions_bytes": [
+        {
+          "day": 1791829800.0,
+          "value": 319903.0
+        },
+        {
+          "day": 1791743400.0,
+          "value": 0.0
+        },
+        {
+          "day": 1791657000.0,
+          "value": 482154.0
+        },
+        {
+          "day": 1791570600.0,
+          "value": 0.0
+        },
+        {
+          "day": 1791484200.0,
+          "value": 0.0
+        },
+        {
+          "day": 1791397800.0,
+          "value": 0.0
+        },
+        {
+          "day": 1791311400.0,
+          "value": 1724606.0
+        }
+      ]
+    },
+    "web_view_rounded_corners": false,
+    "weekly_storage": {
+      "search_count": [
+        {
+          "day": 1790447400.0,
+          "value": 1.0
+        },
+        {
+          "day": 1790361000.0,
+          "value": 0.0
+        },
+        {
+          "day": 1790274600.0,
+          "value": 0.0
+        },
+        {
+          "day": 1790188200.0,
+          "value": 0.0
+        },
+        {
+          "day": 1790101800.0,
+          "value": 0.0
+        },
+        {
+          "day": 1790015400.0,
+          "value": 1.0
+        },
+        {
+          "day": 1789929000.0,
+          "value": 0.0
+        }
+      ]
+    }
+  },
+  "brave_shields": {
+    "p3a_ads_allow_domain_count": 0,
+    "p3a_ads_standard_domain_count": 0,
+    "p3a_ads_strict_domain_count": 0,
+    "p3a_first_reported_revision": 4,
+    "p3a_fp_allow_domain_count": 0,
+    "p3a_fp_standard_domain_count": 0,
+    "p3a_fp_strict_domain_count": 0
+  },
+  "browser": {
+    "app_window_placement": {
+      "_crx_olpfmaakjajianfmacdcildcjacleoem": {
+        "bottom": 1079,
+        "left": 0,
+        "maximized": false,
+        "right": 1050,
+        "top": 0,
+        "work_area_bottom": 1080,
+        "work_area_left": 1920,
+        "work_area_right": 3840,
+        "work_area_top": 0
+      }
+    },
+    "enable_spellchecking": false,
+    "theme": {
+      "color_variant2": 1,
+      "user_color2": -4385188
+    },
+    "window_placement": {
+      "bottom": 1079,
+      "left": 0,
+      "maximized": false,
+      "right": 1356,
+      "top": 0,
+      "work_area_bottom": 1080,
+      "work_area_left": 1920,
+      "work_area_right": 3840,
+      "work_area_top": 0
+    }
+  },
+  "countryid_at_install": 21843,
+  "default_apps_install_state": 3,
+  "default_search_provider": {
+    "guid": "485bf7d3-0215-45af-87dc-538868000550",
+    "reset_occurred": false
+  },
+  "default_search_provider_data": {
+    "mirrored_template_url_data": {
+      "alternate_urls": [],
+      "contextual_search_url": "",
+      "created_from_play_api": false,
+      "date_created": "0",
+      "doodle_url": "",
+      "enforced_by_policy": false,
+      "favicon_url": "https://cdn.search.brave.com/serp/v3/_app/immutable/assets/favicon.CVXAaejQ.svg",
+      "featured_by_policy": false,
+      "id": "2",
+      "image_search_branding_label": "",
+      "image_translate_source_language_param_key": "",
+      "image_translate_target_language_param_key": "",
+      "image_translate_url": "",
+      "image_url": "",
+      "image_url_post_params": "",
+      "input_encodings": [
+        "UTF-8"
+      ],
+      "is_active": 0,
+      "keyword": ":br",
+      "last_modified": "0",
+      "last_visited": "13435820456844719",
+      "logo_url": "",
+      "new_tab_url": "",
+      "originating_url": "",
+      "policy_origin": 0,
+      "preconnect_to_search_url": false,
+      "prefetch_likely_navigations": false,
+      "prepopulate_id": 550,
+      "safe_for_autoreplace": true,
+      "search_intent_params": [],
+      "search_url_post_params": "",
+      "send_x_geo_header": false,
+      "short_name": "Brave",
+      "starter_pack_id": 0,
+      "suggestions_url": "https://search.brave.com/api/suggest?q={searchTerms}&rich=true&rich_verticals=true&source=desktop",
+      "suggestions_url_post_params": "",
+      "synced_guid": "485bf7d3-0215-45af-87dc-538868000550",
+      "url": "https://search.brave.com/search?q={searchTerms}&source=desktop",
+      "usage_count": 0
+    },
+    "template_url_data": {
+      "alternate_urls": [],
+      "contextual_search_url": "",
+      "created_from_play_api": false,
+      "date_created": "0",
+      "doodle_url": "",
+      "enforced_by_policy": false,
+      "favicon_url": "https://cdn.search.brave.com/serp/v3/_app/immutable/assets/favicon.CVXAaejQ.svg",
+      "featured_by_policy": false,
+      "id": "2",
+      "image_search_branding_label": "",
+      "image_translate_source_language_param_key": "",
+      "image_translate_target_language_param_key": "",
+      "image_translate_url": "",
+      "image_url": "",
+      "image_url_post_params": "",
+      "input_encodings": [
+        "UTF-8"
+      ],
+      "is_active": 0,
+      "keyword": ":br",
+      "last_modified": "0",
+      "last_visited": "13435820456844719",
+      "logo_url": "",
+      "new_tab_url": "",
+      "originating_url": "",
+      "policy_origin": 0,
+      "preconnect_to_search_url": false,
+      "prefetch_likely_navigations": false,
+      "prepopulate_id": 550,
+      "safe_for_autoreplace": true,
+      "search_intent_params": [],
+      "search_url_post_params": "",
+      "send_x_geo_header": false,
+      "short_name": "Brave",
+      "starter_pack_id": 0,
+      "suggestions_url": "https://search.brave.com/api/suggest?q={searchTerms}&rich=true&rich_verticals=true&source=desktop",
+      "suggestions_url_post_params": "",
+      "synced_guid": "485bf7d3-0215-45af-87dc-538868000550",
+      "url": "https://search.brave.com/search?q={searchTerms}&source=desktop",
+      "usage_count": 0
+    }
+  },
+  "download": {
+    "prompt_for_download": false
+  },
+  "download_bubble": {
+    "partial_view_impressions": 1
+  },
+  "dual_layer_user_pref_store": {
+    "user_selected_sync_types": []
+  },
+  "enterprise": {
+    "promotion_eligibility": 0
+  },
+  "enterprise_profile_guid": "dc41d8a3-a153-4481-9484-238e6d35cbe8",
+  "ephemeral_storage": {
+    "first_party_storage_origins_to_cleanup": []
+  },
+  "extensions": {
+    "alerts": {
+      "initialized": true
+    },
+    "chrome_url_overrides": {
+      "newtab": [
+        {
+          "active": false,
+          "entry": "chrome-extension://jnhiookaaldadiimlgncedhkpmhlmmip/newtab.html"
+        }
+      ]
+    },
+    "commands": {
+      "linux:Alt+0": {
+        "command_name": "hot-tab-0",
+        "extension": "maomempcdmkfcjgeabecfpkebghcigac",
+        "global": false
+      },
+      "linux:Alt+A": {
+        "command_name": "_execute_action",
+        "extension": "maomempcdmkfcjgeabecfpkebghcigac",
+        "global": false
+      },
+      "linux:Alt+S": {
+        "command_name": "open-tabXpert",
+        "extension": "maomempcdmkfcjgeabecfpkebghcigac",
+        "global": false
+      },
+      "linux:Alt+Shift+K": {
+        "command_name": "_execute_action",
+        "extension": "gpibgniomobngodpnikhheifblbpbbah",
+        "global": false
+      },
+      "linux:Alt+T": {
+        "command_name": "_execute_action",
+        "extension": "jnhiookaaldadiimlgncedhkpmhlmmip",
+        "global": false
+      },
+      "linux:Alt+U": {
+        "command_name": "open_tabme",
+        "extension": "jnhiookaaldadiimlgncedhkpmhlmmip",
+        "global": false
+      },
+      "linux:Alt+Y": {
+        "command_name": "toggle_sidebar",
+        "extension": "jnhiookaaldadiimlgncedhkpmhlmmip",
+        "global": false
+      },
+      "linux:Ctrl+Period": {
+        "command_name": "execute_side_panel",
+        "extension": "ldgfbffkinooeloadekpmfoklnobpien",
+        "global": false
+      }
+    },
+    "enterprise_promotion": {
+      "expiration_time": "13434289507783280"
+    },
+    "last_chrome_version": "155.1.97.56",
+    "pinned_extensions": [
+      "ldgfbffkinooeloadekpmfoklnobpien",
+      "hfjbmagddngcpeloejdejnfgbamkjaeg",
+      "gpibgniomobngodpnikhheifblbpbbah",
+      "edacconmaakjimmfgnblocblbcdcpbko"
+    ],
+    "settings": {
+      "dbepggeogbaibhgnhhndojpepiihcmeb": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "bookmarks",
+            "history",
+            "notifications",
+            "sessions",
+            "storage",
+            "tabs",
+            "webNavigation",
+            "favicon",
+            "search",
+            "scripting"
+          ],
+          "explicit_host": [
+            "<all_urls>"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "<all_urls>",
+            "file:///",
+            "file:///*/"
+          ]
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434203228958170",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "bookmarks",
+            "history",
+            "notifications",
+            "sessions",
+            "storage",
+            "tabs",
+            "webNavigation",
+            "favicon",
+            "search",
+            "scripting"
+          ],
+          "explicit_host": [
+            "<all_urls>"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "<all_urls>",
+            "file:///",
+            "file:///*/"
+          ]
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "install_time_for_action_metric": "13434203228964653",
+        "last_update_time": "13434203228958170",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "16": "icons/action_disabled_16.png",
+              "32": "icons/action_disabled_32.png"
+            },
+            "default_popup": "pages/action.html"
+          },
+          "background": {
+            "service_worker": "background_scripts/main.js",
+            "type": "module"
+          },
+          "content_scripts": [
+            {
+              "all_frames": true,
+              "css": [
+                "content_scripts/vimium.css"
+              ],
+              "js": [
+                "lib/types.js",
+                "lib/utils.js",
+                "lib/keyboard_utils.js",
+                "lib/dom_utils.js",
+                "lib/rect.js",
+                "lib/handler_stack.js",
+                "lib/settings.js",
+                "lib/find_mode_history.js",
+                "content_scripts/mode.js",
+                "content_scripts/ui_component.js",
+                "content_scripts/link_hints.js",
+                "content_scripts/vomnibar.js",
+                "content_scripts/scroller.js",
+                "content_scripts/marks.js",
+                "content_scripts/mode_insert.js",
+                "content_scripts/mode_find.js",
+                "content_scripts/mode_key_handler.js",
+                "content_scripts/mode_visual.js",
+                "content_scripts/hud.js",
+                "content_scripts/mode_normal.js",
+                "content_scripts/vimium_frontend.js"
+              ],
+              "match_about_blank": true,
+              "matches": [
+                "<all_urls>"
+              ],
+              "run_at": "document_start"
+            },
+            {
+              "all_frames": true,
+              "css": [
+                "content_scripts/file_urls.css"
+              ],
+              "matches": [
+                "file:///",
+                "file:///*/"
+              ],
+              "run_at": "document_start"
+            }
+          ],
+          "description": "The Hacker's Browser. Vimium provides keyboard shortcuts for navigation and control in the spirit of Vim.",
+          "host_permissions": [
+            "<all_urls>"
+          ],
+          "icons": {
+            "128": "icons/icon128.png",
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png"
+          },
+          "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCavizCZ9EnBGbtcRmMErcaxD2WUHJ9ME8IYGQhUBlFgIvchJjAO8koyak3AM95dqu3sOLdtIYD+75T82V1Wl5fLnHAeij2/IWL2VViTHeZhXZl1+rD9sRDaEYd7aZetpJ29+XXfhVphKArCCfwbYCtoJhTIr6S6DYsXuRevoV0EwIDAQAB",
+          "manifest_version": 3,
+          "minimum_chrome_version": "117.0",
+          "name": "Vimium",
+          "options_ui": {
+            "browser_style": false,
+            "open_in_tab": true,
+            "page": "pages/options.html"
+          },
+          "permissions": [
+            "tabs",
+            "bookmarks",
+            "history",
+            "storage",
+            "sessions",
+            "notifications",
+            "scripting",
+            "favicon",
+            "webNavigation",
+            "search"
+          ],
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "2.4.2",
+          "web_accessible_resources": [
+            {
+              "matches": [
+                "<all_urls>"
+              ],
+              "resources": [
+                "pages/vomnibar_page.html",
+                "content_scripts/vimium.css",
+                "pages/hud_page.html",
+                "pages/help_dialog_page.html",
+                "pages/doc_search_completion.html",
+                "pages/command_listing.html",
+                "resources/tlds.txt",
+                "_favicon/*"
+              ]
+            }
+          ]
+        },
+        "needs_sync": true,
+        "path": "dbepggeogbaibhgnhhndojpepiihcmeb/2.4.2_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "storage_session_access_level": 2,
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "edacconmaakjimmfgnblocblbcdcpbko": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "alarms",
+            "storage",
+            "tabs",
+            "unlimitedStorage"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          },
+          "clear-item-selections": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "save-session": {
+            "suggested_key": "",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [],
+        "first_install_time": "13434254617417821",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "alarms",
+            "storage",
+            "tabs",
+            "unlimitedStorage"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_update_time": "13434254617417821",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "19": "assets/logo-19.png",
+              "38": "assets/logo-38.png"
+            }
+          },
+          "background": {
+            "service_worker": "background.bundle.js",
+            "type": "module"
+          },
+          "commands": {
+            "clear-item-selections": {
+              "description": "Clear selection"
+            },
+            "save-session": {
+              "description": "Save tabs"
+            }
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "Save and restore sessions, manage tabs and bookmarks, and stay organized with a powerful and trusted privacy-first session manager.",
+          "icons": {
+            "128": "assets/logo-128.png",
+            "16": "assets/logo-16.png",
+            "32": "assets/logo-32.png",
+            "48": "assets/logo-48.png"
+          },
+          "incognito": "spanning",
+          "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC3VAERhYnBzageN9f5j9V/kwVPdTyArpjMwVqfj1Rsp3wn+2lyGStXJRyhCFeXyy/TC8VJqB3Apur+Qstt4qgrR0pnFp+gk32HHdKy1gw8xW7o1tJxSk8FlK9z17sDwdVsH3B8VbnEE2t1A8Bl9v8f2fQJw6KQ1o2RJI0wk/uNWQIDAQAB",
+          "manifest_version": 3,
+          "minimum_chrome_version": "109",
+          "name": "Session Buddy - Tab & Bookmark Manager",
+          "optional_host_permissions": [
+            "file:///*"
+          ],
+          "permissions": [
+            "tabs",
+            "unlimitedStorage",
+            "storage",
+            "alarms"
+          ],
+          "short_name": "Session Buddy",
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "4.1.2"
+        },
+        "needs_sync": true,
+        "path": "edacconmaakjimmfgnblocblbcdcpbko/4.1.2_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "gpibgniomobngodpnikhheifblbpbbah": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "storage",
+            "tabs",
+            "favicon",
+            "tabGroups"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "suggested_key": "Alt+Shift+K",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434254207420789",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "storage",
+            "tabs",
+            "favicon",
+            "tabGroups"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_update_time": "13434639262703089",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": "icons/icon128.png",
+            "default_popup": "index.html",
+            "default_title": "Tab Keeper - Chrome Tab Manager & Sync Tool"
+          },
+          "background": {
+            "service_worker": "background.js",
+            "type": "module"
+          },
+          "commands": {
+            "_execute_action": {
+              "description": "Open Tab Keeper",
+              "suggested_key": {
+                "default": "Alt+Shift+K"
+              }
+            }
+          },
+          "description": "Save your Chrome windows, tabs and tab groups as sessions, then sync them across desktops. No account or email needed.",
+          "icons": {
+            "128": "icons/icon128.png",
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png",
+            "48": "icons/icon48.png"
+          },
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy5/tszEOIBE50LiVfjEsg8EeNR93jJJoXCDWWGBaSHTliEXbWSofh+vW7EJipSdfKftmceU8xFNPZszCz4+kCZaXGU9jJK63gJmBR54Hp9RGEfuP7eYvLy4N1wFl0ccwxhjweIMrUUlYmVXgxHdHiF8w+N2jKvKXbmztewxtq3O1QHN9Y8PXg6JHyfckLixorm3CEA/vhdvW9v4yb2BxYq4IgJj1mkQirZrwCHxl4Al/QpTNGZaID3nbVImNOhY6KiJgPRhkNYn6qLkh8RVq+Ik6jUkZHJW8tXxV8y+workDnt3VaO+zEGmLJIHekxeo02ndPMGHksoQHiyOnczSFQIDAQAB",
+          "manifest_version": 3,
+          "name": "Tab Keeper - Chrome Tab Manager & Sync Tool",
+          "optional_permissions": [
+            "tabGroups"
+          ],
+          "permissions": [
+            "tabs",
+            "storage",
+            "favicon"
+          ],
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "1.9.0"
+        },
+        "needs_sync": true,
+        "path": "gpibgniomobngodpnikhheifblbpbbah/1.9.0_0",
+        "pending_on_installed_event_dispatch_info": {
+          "previous_version": "1.8.0"
+        },
+        "preferences": {},
+        "regular_only_preferences": {},
+        "runtime_granted_permissions": {
+          "api": [
+            "tabGroups"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "hfjbmagddngcpeloejdejnfgbamkjaeg": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "bookmarks",
+            "clipboardRead",
+            "clipboardWrite",
+            "history",
+            "notifications",
+            "sessions",
+            "storage",
+            "tabs",
+            "webNavigation",
+            "favicon",
+            "search",
+            "tabGroups",
+            "scripting",
+            "offscreen"
+          ],
+          "explicit_host": [
+            "<all_urls>"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "<all_urls>"
+          ]
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          },
+          "createTab": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "goBack": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "goForward": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "previousTab": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "quickNext": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "reloadTab": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "userCustomized1": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "userCustomized2": {
+            "suggested_key": "",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "first_install_time": "13434203240051148",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "bookmarks",
+            "clipboardRead",
+            "clipboardWrite",
+            "history",
+            "notifications",
+            "sessions",
+            "storage",
+            "tabs",
+            "webNavigation",
+            "favicon",
+            "search",
+            "tabGroups",
+            "scripting",
+            "offscreen"
+          ],
+          "explicit_host": [
+            "<all_urls>",
+            "chrome://*/*",
+            "chrome://new-tab-page/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "<all_urls>"
+          ]
+        },
+        "has_started_service_worker": true,
+        "incognito": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_update_time": "13434203240051148",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "19": "icons/enabled_19.png",
+              "38": "icons/enabled_38.png"
+            },
+            "default_popup": "pages/action.html",
+            "default_title": "Vimium C - All by Keyboard\n\nAs configured, here's no active state"
+          },
+          "author": "gdh1995@qq.com",
+          "background": {
+            "service_worker": "background/worker.js",
+            "type": "module"
+          },
+          "commands": {
+            "createTab": {
+              "description": "Create new tab"
+            },
+            "goBack": {
+              "description": "Go back in history"
+            },
+            "goForward": {
+              "description": "Go forward in history"
+            },
+            "previousTab": {
+              "description": "Go one tab left"
+            },
+            "quickNext": {
+              "description": "Go one tab right"
+            },
+            "reloadTab": {
+              "description": "Reload tab"
+            },
+            "userCustomized1": {
+              "description": "Custom shortcut 1"
+            },
+            "userCustomized2": {
+              "description": "Custom shortcut 2"
+            }
+          },
+          "content_scripts": [
+            {
+              "all_frames": true,
+              "js": [
+                "content/vimium-c.js"
+              ],
+              "match_about_blank": true,
+              "match_origin_as_fallback": true,
+              "matches": [
+                "<all_urls>"
+              ],
+              "run_at": "document_start"
+            }
+          ],
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "A keyboard shortcut tool for keyboard-based page navigation and browser tab operations with an advanced omnibar and global shortcuts",
+          "homepage_url": "https://github.com/gdh1995/vimium-c",
+          "host_permissions": [
+            "<all_urls>"
+          ],
+          "icons": {
+            "128": "icons/icon128.png",
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png",
+            "48": "icons/icon48.png"
+          },
+          "incognito": "spanning",
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnaZQnkvrHvNlwXPnSfavEya+9sPtVgBR2hWLsNvwdv6+zHRGr/qhqEbtof1v7gDXzpC5+Dr4kOay6aflw5CaFzA1zyVJySAjpb0RkVh774kp9msRpjyb39obSIWAIB76PTwawEAE+K1f26jXDbTC2gEBe4OWk5KW9u9+KoTmeKLHo73ScR1jFcFaOTbrhwHtIDqj00vpIfrSAofpLIq1gP//Og+FoOT4dF107fwlVfDJuu171svuT68wmcKStl6OANxcnXCXE6OWbeZcjMehcQH41wzTtDugmt0o8w+hJ2WVugwWWmGmE8qSiwo9QYZTJW+5EvMcmNZWUmPbTLGkGQIDAQAB",
+          "manifest_version": 3,
+          "minimum_chrome_version": "102",
+          "name": "Vimium C - All by Keyboard",
+          "offline_enabled": true,
+          "omnibox": {
+            "keyword": "v"
+          },
+          "optional_host_permissions": [
+            "chrome://*/*",
+            "chrome://new-tab-page/*"
+          ],
+          "optional_permissions": [
+            "bookmarks",
+            "downloads",
+            "downloads.shelf",
+            "contentSettings"
+          ],
+          "options_ui": {
+            "open_in_tab": true,
+            "page": "pages/options.html"
+          },
+          "permissions": [
+            "clipboardRead",
+            "clipboardWrite",
+            "favicon",
+            "history",
+            "notifications",
+            "offscreen",
+            "scripting",
+            "search",
+            "sessions",
+            "storage",
+            "tabGroups",
+            "tabs",
+            "webNavigation"
+          ],
+          "short_name": "Vimium C",
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "2.12.2",
+          "version_name": "2.12.2",
+          "web_accessible_resources": [
+            {
+              "matches": [
+                "<all_urls>",
+                "chrome-extension://*/*"
+              ],
+              "resources": [
+                "content/*",
+                "front/vomnibar*",
+                "lib/*"
+              ],
+              "use_dynamic_url": false
+            }
+          ]
+        },
+        "needs_sync": true,
+        "newAllowFileAccess": true,
+        "path": "hfjbmagddngcpeloejdejnfgbamkjaeg/2.12.2_0",
+        "persistent_script_url_patterns": [
+          "<all_urls>"
+        ],
+        "preferences": {},
+        "regular_only_preferences": {},
+        "runtime_granted_permissions": {
+          "api": [
+            "bookmarks"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "hhfefdiablijkjnbkmdfbopiimjilchh": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "contextMenus",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "tabGroups"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434254950668605",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "contextMenus",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "tabGroups"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_update_time": "13434254950668605",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": "assets/images/icon-browser-action.png",
+            "default_popup": "index.html#popup",
+            "default_title": "Smart Sessions"
+          },
+          "author": "Serge Russo <contact@sergerusso.com>",
+          "background": {
+            "service_worker": "./assets/js/service-worker/service-worker.js",
+            "type": "module"
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "Save & restore your browser sessions. Auto saving, multiple sessions and more.",
+          "icons": {
+            "128": "assets/images/icon-128.png",
+            "16": "assets/images/icon-small-16.png",
+            "48": "assets/images/icon-48.png"
+          },
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzuM28vx+XJH3uhTXUKqKixII3/K3U03jO8IWHasVTNrgpljx2OOS75UGUAm+DxEcAFjQUjMCa7/WcTQY3Ph5Ky5Br5n70WXiPCTFMupCz/m3qTRiBH0VKGyPSIl++vjNaZuRqCyI7lv7veYIdzxRDRLoxUCj3xkvaF8fZIJtAi5ejGGiYJ37aaspKAqYhIJicd9KZ24KsxLYJghLFVu284tmzgeXRtYPdOaSrdELrKcyT+yEI2m7eEEjFdoVLcPzTkEMtzBnl/RPcv/8hNekUmMv6zkq1oErzsg4MUXgaI/Q8vBCs8sj9U5UeCwrHds3+aWVRCI+CobHqAIZb0XvgQIDAQAB",
+          "manifest_version": 3,
+          "minimum_chrome_version": "99",
+          "name": "Smart Sessions - Tab Manager",
+          "permissions": [
+            "tabs",
+            "storage",
+            "unlimitedStorage",
+            "contextMenus",
+            "tabGroups"
+          ],
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "1.8.1"
+        },
+        "needs_sync": true,
+        "path": "hhfefdiablijkjnbkmdfbopiimjilchh/1.8.1_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "iaiomicjabeggjcfkbimgmglanimpnae": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "alarms",
+            "downloads",
+            "identity",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "offscreen"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "suggested_key": "Ctrl+Shift+L"
+          },
+          "exportSessions": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "saveAllWindow": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "saveCurrentWindow": {
+            "suggested_key": "",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434254888560118",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "alarms",
+            "downloads",
+            "identity",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "offscreen"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "install_time_for_action_metric": "13434254888568640",
+        "last_update_time": "13434254888560118",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "16": "icons/icon_min.png",
+              "64": "icons/icon.png"
+            },
+            "default_popup": "popup/index.html"
+          },
+          "background": {
+            "service_worker": "background/background.js",
+            "type": "module"
+          },
+          "commands": {
+            "_execute_action": {
+              "description": "Open toolbar popup",
+              "suggested_key": {
+                "default": "Ctrl+Shift+L"
+              }
+            },
+            "exportSessions": {
+              "description": "Export all sessions"
+            },
+            "saveAllWindow": {
+              "description": "Save session (all windows)"
+            },
+            "saveCurrentWindow": {
+              "description": "Save session (only current window)"
+            }
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "Save and restore the state of windows and tabs. It also supports automatic saving.",
+          "icons": {
+            "16": "icons/icon_min.png",
+            "64": "icons/icon.png"
+          },
+          "incognito": "spanning",
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy60oYIXWa4in4/72i5ofLcj/ShUHGcYrYpqiGrAoOD8HHd7zR7/s1zfRTIhId52Gd7xrkWnTBWyWUR9dpeQ8Nc0HXhqS2joW9lrWt59asnPoA3016VmLo+4mlE63y63gBX18kASnq7FCfsq+VnX2I3553vaG7XSzVGhauxCzGEZSZXkkVOvA78hjWqwPZOuWt5LKmJgAiHojN9lldwtaBKBJtbCsHKp3UpsaZc8zM77gNGhi2qZvPsU1I4Kfn+QPEFOnSaK7qjGxGvwTmpY2BeUG9DMomUsfmjD+jGRV4hnTdh9BjBAR/XVp3jY6W+hvKq56j6gc81Z/s+ShWHJUjwIDAQAB",
+          "manifest_version": 3,
+          "name": "Tab Session Manager",
+          "optional_host_permissions": [
+            "https://www.googleapis.com/*"
+          ],
+          "optional_permissions": [
+            "tabGroups"
+          ],
+          "options_ui": {
+            "open_in_tab": true,
+            "page": "options/index.html"
+          },
+          "permissions": [
+            "storage",
+            "unlimitedStorage",
+            "tabs",
+            "downloads",
+            "identity",
+            "alarms",
+            "offscreen"
+          ],
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "7.4.0"
+        },
+        "needs_sync": true,
+        "path": "iaiomicjabeggjcfkbimgmglanimpnae/7.4.0_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "igeehkedfibbnhbfponhjjplpkeomghi": {},
+      "jnhiookaaldadiimlgncedhkpmhlmmip": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "bookmarks",
+            "history",
+            "storage",
+            "tabs",
+            "newTabPageOverride",
+            "tabGroups",
+            "sidePanel"
+          ],
+          "explicit_host": [
+            "https://gettabme.com/*",
+            "https://staging.gettabme.com/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "suggested_key": "Alt+T",
+            "was_assigned": true
+          },
+          "open_tabme": {
+            "suggested_key": "Alt+U",
+            "was_assigned": true
+          },
+          "toggle_sidebar": {
+            "suggested_key": "Alt+Y",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434254356033383",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "bookmarks",
+            "history",
+            "storage",
+            "tabs",
+            "newTabPageOverride",
+            "tabGroups",
+            "sidePanel"
+          ],
+          "explicit_host": [
+            "https://gettabme.com/*",
+            "https://staging.gettabme.com/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "install_time_for_action_metric": "13434254356049086",
+        "last_update_time": "13434254356033383",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": "icon_48.png",
+            "default_popup": "popup.html",
+            "default_title": "Open Tabme"
+          },
+          "author": "support@gettabme.com",
+          "background": {
+            "service_worker": "js/background.js"
+          },
+          "chrome_url_overrides": {
+            "newtab": "newtab.html"
+          },
+          "commands": {
+            "_execute_action": {
+              "description": "Toggle popup panel",
+              "suggested_key": {
+                "default": "Alt+T"
+              }
+            },
+            "open_tabme": {
+              "description": "Open Tabme dashboard",
+              "suggested_key": {
+                "default": "Alt+U"
+              }
+            },
+            "toggle_sidebar": {
+              "description": "Toggle sidebar panel",
+              "suggested_key": {
+                "default": "Alt+Y"
+              }
+            }
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "The easiest way to save, organize & sync your tabs.",
+          "host_permissions": [
+            "https://staging.gettabme.com/*",
+            "https://gettabme.com/*"
+          ],
+          "icons": {
+            "128": "icon_128.png",
+            "16": "icon_16.png",
+            "32": "icon_32.png",
+            "48": "icon_48.png"
+          },
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj0vsHVuIis9Th9O60t8jw0O+Y64l5kyMEefHj40pnl6pVAAX7+/bembk3QDBsEb1YrgaiKA4ZCeJaNL5zYNXmlIHbOZCV3+MTcXLQfyem4dUW1uhm7VPZWjd4KFx6aM+X7qgq467wMUPvrcbJRN1jFL6UA8mr/qYCBFqxxlnYjNLHtViPFXCUcdgSazXhLbs5bq0vYCtVSkecPEap0HES11QM0kbZO+xS3PXQCC6NzeXUoZ/yylaYzYOuNI0DI3v2aFb8vDDE4enp8kzF0I0B1VN+KDtKM0ov/651t7cKy/SgxQF0paxi7JVPXVL8KaoaFk6aQSYMISrzxHzjG/ihwIDAQAB",
+          "manifest_version": 3,
+          "name": "Tabme \u2014 Tab & Bookmark Manager | Save, Organize & Sync Tabs",
+          "optional_host_permissions": [
+            "<all_urls>"
+          ],
+          "optional_permissions": [
+            "sessions",
+            "scripting"
+          ],
+          "permissions": [
+            "bookmarks",
+            "storage",
+            "history",
+            "tabs",
+            "tabGroups",
+            "sidePanel"
+          ],
+          "short_name": "Tabme",
+          "side_panel": {
+            "default_path": "sidepanel.html"
+          },
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "1.60.0",
+          "web_accessible_resources": [
+            {
+              "matches": [
+                "<all_urls>"
+              ],
+              "resources": [
+                "/newtab.html",
+                "/inlineapp.html",
+                "/js/*.js",
+                "/static/*",
+                "/fonts.css",
+                "/style-common.css",
+                "/style.css",
+                "/canvas.css",
+                "/icon_32.png"
+              ]
+            }
+          ]
+        },
+        "needs_sync": true,
+        "open_side_panel_on_icon_click": false,
+        "path": "jnhiookaaldadiimlgncedhkpmhlmmip/1.60.0_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "uninstall_url": "https://gettabme.com/extension-uninstalled?deviceId=0aed9b05-52b5-4147-91a9-0e5c6e92f5ab&version=1.60.0&tabmeType=newtab",
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "ldgfbffkinooeloadekpmfoklnobpien": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "activeTab",
+            "contextMenus",
+            "storage",
+            "tabs",
+            "scripting",
+            "sidePanel"
+          ],
+          "explicit_host": [
+            "*://*/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          },
+          "execute_side_panel": {
+            "suggested_key": "Ctrl+Period",
+            "was_assigned": true
+          },
+          "open_raindrop_web": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "save_page": {
+            "suggested_key": "Ctrl+Shift+S"
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [],
+        "first_install_time": "13434203113980203",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "activeTab",
+            "contextMenus",
+            "storage",
+            "tabs",
+            "scripting",
+            "sidePanel"
+          ],
+          "explicit_host": [
+            "*://*/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_update_time": "13434203113980203",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "16": "assets/action_chrome_16.png",
+              "24": "assets/action_chrome_24.png",
+              "32": "assets/action_chrome_32.png"
+            },
+            "default_popup": "index.html?action"
+          },
+          "author": "Mussabekov Rustem",
+          "background": {
+            "service_worker": "background.js"
+          },
+          "commands": {
+            "_execute_action": {},
+            "execute_side_panel": {
+              "description": "Open sidebar",
+              "suggested_key": {
+                "default": "Ctrl+Period"
+              }
+            },
+            "open_raindrop_web": {
+              "description": "Open Raindrop.io website"
+            },
+            "save_page": {
+              "description": "Bookmark / Save highlights",
+              "suggested_key": {
+                "default": "Ctrl+Shift+S"
+              }
+            }
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "All-in-one bookmark manager",
+          "homepage_url": "https://app.raindrop.io",
+          "host_permissions": [],
+          "icons": {
+            "128": "assets/icon_128.png",
+            "16": "assets/icon_16.png",
+            "32": "assets/icon_32.png",
+            "48": "assets/icon_48.png"
+          },
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhcGaQeOT/1tYUGcFtjvmL5cl6hkjmRte1B/i6bmbr3Xn/E8DHLE79qnPxjGKAQ7DMGO3paXg+CGMlG/1NaVNW8XeGdSaGICb8tr9ubOQrHokrn7oYvf7x51GzYoXmRmlTeX/Kl/Wy9sWA45YiwqXTDTLQDAUSdLM3OGU2IWpAGxdvQ7YMRjs37IHIJCoob79Vjd69mXrX9HTcNFjwSDvhznabgBInqBdPpupbRevHByad0aFOgWlWFEnspZx6LXJ5wPDDo0DxB4jKjBlf7dKt1wNdVuCIkFlLafjrGsVOPC8tVll5A9REuBWWcWp84HsT112OhMF+HSKtqr/dFuRgwIDAQAB",
+          "manifest_version": 3,
+          "name": "Raindrop.io",
+          "omnibox": {
+            "keyword": "rd"
+          },
+          "optional_host_permissions": [
+            "*://*/*"
+          ],
+          "optional_permissions": [
+            "tabs"
+          ],
+          "permissions": [
+            "contextMenus",
+            "activeTab",
+            "scripting",
+            "storage",
+            "sidePanel"
+          ],
+          "short_name": "Raindrop.io",
+          "side_panel": {
+            "default_path": "sidepanel.html"
+          },
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "6.8.2",
+          "version_name": "5.8.2"
+        },
+        "needs_sync": true,
+        "omnibox_default_suggestion": {
+          "content": "",
+          "description": "Search",
+          "descriptionStyles": []
+        },
+        "path": "ldgfbffkinooeloadekpmfoklnobpien/6.8.2_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "runtime_granted_permissions": {
+          "api": [
+            "tabs"
+          ],
+          "explicit_host": [
+            "*://*/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "maomempcdmkfcjgeabecfpkebghcigac": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "contextMenus",
+            "gcm",
+            "idle",
+            "notifications",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "favicon",
+            "tabGroups",
+            "offscreen",
+            "sidePanel"
+          ],
+          "explicit_host": [
+            "https://*.tabxpert.com/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "suggested_key": "Alt+A",
+            "was_assigned": true
+          },
+          "activate-previous-tab": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "activate-profile": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "attach-tags": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "bookmark-tab": {
+            "suggested_key": "Alt+D"
+          },
+          "close-session": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-0": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-1": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-2": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-3": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-4": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-5": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-6": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-7": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-8": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-bookmark-9": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-0": {
+            "suggested_key": "Alt+0",
+            "was_assigned": true
+          },
+          "hot-tab-1": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-2": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-3": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-4": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-5": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-6": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-7": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-8": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "hot-tab-9": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "open-tabXpert": {
+            "suggested_key": "Alt+S",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434254911936377",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "contextMenus",
+            "gcm",
+            "idle",
+            "notifications",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "favicon",
+            "tabGroups",
+            "offscreen",
+            "sidePanel"
+          ],
+          "explicit_host": [
+            "https://*.tabxpert.com/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_update_time": "13435710648173343",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": "icon48.png",
+            "default_title": "TabXpert"
+          },
+          "background": {
+            "service_worker": "worker.js",
+            "type": "module"
+          },
+          "commands": {
+            "_execute_action": {
+              "suggested_key": {
+                "default": "Alt+A"
+              }
+            },
+            "activate-previous-tab": {
+              "description": "Activate previous tab"
+            },
+            "activate-profile": {
+              "description": "Activate profile"
+            },
+            "attach-tags": {
+              "description": "Attach tags"
+            },
+            "bookmark-tab": {
+              "description": "Bookmark tab",
+              "suggested_key": {
+                "default": "Alt+D"
+              }
+            },
+            "close-session": {
+              "description": "Close session"
+            },
+            "hot-bookmark-0": {
+              "description": "Hot Bookmark 0"
+            },
+            "hot-bookmark-1": {
+              "description": "Hot Bookmark 1"
+            },
+            "hot-bookmark-2": {
+              "description": "Hot Bookmark 2"
+            },
+            "hot-bookmark-3": {
+              "description": "Hot Bookmark 3"
+            },
+            "hot-bookmark-4": {
+              "description": "Hot Bookmark 4"
+            },
+            "hot-bookmark-5": {
+              "description": "Hot Bookmark 5"
+            },
+            "hot-bookmark-6": {
+              "description": "Hot Bookmark 6"
+            },
+            "hot-bookmark-7": {
+              "description": "Hot Bookmark 7"
+            },
+            "hot-bookmark-8": {
+              "description": "Hot Bookmark 8"
+            },
+            "hot-bookmark-9": {
+              "description": "Hot Bookmark 9"
+            },
+            "hot-tab-0": {
+              "description": "Hot Tab Return",
+              "suggested_key": {
+                "default": "Alt+0"
+              }
+            },
+            "hot-tab-1": {
+              "description": "Hot Tab 1"
+            },
+            "hot-tab-2": {
+              "description": "Hot Tab 2"
+            },
+            "hot-tab-3": {
+              "description": "Hot Tab 3"
+            },
+            "hot-tab-4": {
+              "description": "Hot Tab 4"
+            },
+            "hot-tab-5": {
+              "description": "Hot Tab 5"
+            },
+            "hot-tab-6": {
+              "description": "Hot Tab 6"
+            },
+            "hot-tab-7": {
+              "description": "Hot Tab 7"
+            },
+            "hot-tab-8": {
+              "description": "Hot Tab 8"
+            },
+            "hot-tab-9": {
+              "description": "Hot Tab 9"
+            },
+            "open-tabXpert": {
+              "description": "Secondary UI",
+              "suggested_key": {
+                "default": "Alt+S"
+              }
+            }
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "Auto-saved sessions. Tab groups support. Cloud sync.",
+          "externally_connectable": {
+            "ids": [
+              "nkfakgojbofednincdpkocfgmnlckmjp",
+              "dkphncekablkpgbgnhdkibfhdmofdoma"
+            ],
+            "matches": [
+              "https://*.tabxpert.com/*"
+            ]
+          },
+          "homepage_url": "https://tabxpert.com",
+          "host_permissions": [
+            "https://*.tabxpert.com/*"
+          ],
+          "icons": {
+            "128": "icon128.png",
+            "16": "icon16.png",
+            "48": "icon48.png"
+          },
+          "incognito": "spanning",
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqyz6DnFvt2Irb9yIvkcvRq8BDULA/m3bveMNiYSN9FuEahARj1LYj6RNx0/xH+i1s5HqDXZyA+AkIKmBLnxo3E/4BE7uVKyh/k5XUA1vjGIJd1ZO3QssEKQbR7CWBexaKlcP+u7mstjkMDv0tm3QAfJZ2ZzfljXJYFb8rGviA5mr7fwvQ+keZloW2w+tmThezmjR2A/kCKjiAetizrleW0f/V1PIqCTmzY0gxM0rJCWGQeR5QH7mX+4CnMjfiVUOtBeDlNLB+aINCt7bQzIETwn0sobYtoRZJ+TCv6Qpipclr1p40JaHO/v+naX6nrklghYWbsBkA40wTssaiXNMtwIDAQAB",
+          "manifest_version": 3,
+          "minimum_chrome_version": "122",
+          "name": "Tab manager & session manager TabXpert",
+          "optional_host_permissions": [
+            "file:///*"
+          ],
+          "optional_permissions": [
+            "history",
+            "bookmarks",
+            "clipboardWrite",
+            "downloads"
+          ],
+          "options_ui": {
+            "open_in_tab": true,
+            "page": "options.html"
+          },
+          "permissions": [
+            "tabs",
+            "storage",
+            "favicon",
+            "offscreen",
+            "sidePanel",
+            "contextMenus",
+            "notifications",
+            "unlimitedStorage",
+            "tabGroups",
+            "idle",
+            "gcm"
+          ],
+          "short_name": "TabXpert",
+          "side_panel": {
+            "default_path": "sidepanel.html"
+          },
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "4.2.2"
+        },
+        "needs_sync": true,
+        "path": "maomempcdmkfcjgeabecfpkebghcigac/4.2.2_0",
+        "pending_on_installed_event_dispatch_info": {
+          "previous_version": "4.2.1"
+        },
+        "preferences": {},
+        "regular_only_preferences": {},
+        "uninstall_url": "https://forms.gle/gnz97ttaTLbJXGGp8",
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "mhjfbmdgcfjbbpaeojofohoefgiehjai": {
+        "account_extension_type": 0,
+        "active_permissions": {
+          "api": [
+            "contentSettings",
+            "fileSystem",
+            "fileSystem.write",
+            "metricsPrivate",
+            "tabs",
+            "resourcesPrivate",
+            "pdfViewerPrivate"
+          ],
+          "explicit_host": [
+            "chrome://brave-resources/*",
+            "chrome://resources/*",
+            "chrome://webui-test/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "commands": {},
+        "content_settings": [],
+        "creation_flags": 1,
+        "disable_reasons": [],
+        "first_install_time": "13434200096079979",
+        "from_webstore": false,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_loaded_browser_version": "155.1.97.56",
+        "last_update_time": "13436524121187647",
+        "location": 5,
+        "manifest": {
+          "description": "",
+          "incognito": "split",
+          "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDN6hM0rsDYGbzQPQfOygqlRtQgKUXMfnSjhIBL7LnReAVBEd7ZmKtyN2qmSasMl4HZpMhVe2rPWVVwBDl6iyNE/Kok6E6v6V3vCLGsOpQAuuNVye/3QxzIldzG/jQAdWZiyXReRVapOhZtLjGfywCvlWq7Sl/e3sbc0vWybSDI2QIDAQAB",
+          "manifest_version": 2,
+          "mime_types": [
+            "application/pdf",
+            "text/pdf"
+          ],
+          "mime_types_handler": "index.html",
+          "name": "Chrome PDF Viewer",
+          "offline_enabled": true,
+          "permissions": [
+            "chrome://brave-resources/",
+            "chrome://resources/",
+            "chrome://webui-test/",
+            "contentSettings",
+            "metricsPrivate",
+            "pdfViewerPrivate",
+            "resourcesPrivate",
+            "tabs",
+            {
+              "fileSystem": [
+                "write"
+              ]
+            }
+          ],
+          "version": "1",
+          "web_accessible_resources": [
+            "pdf_embedder.css"
+          ]
+        },
+        "path": "/opt/brave.com/brave-origin/resources/pdf",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false
+      },
+      "mkfjjmjmnplabnplceaekkjcmdddokee": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "storage",
+            "tabs",
+            "favicon"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [
+          1
+        ],
+        "first_install_time": "13434254930773188",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "storage",
+            "tabs",
+            "favicon"
+          ],
+          "explicit_host": [],
+          "manifest_permissions": [],
+          "scriptable_host": []
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "install_time_for_action_metric": "13434254930780695",
+        "last_update_time": "13434254930773188",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "16": "img/ext_icons/16.png",
+              "32": "img/ext_icons/32.png",
+              "48": "img/ext_icons/48.png"
+            },
+            "default_popup": "popup.html"
+          },
+          "author": "Mykhailo Onikiienko",
+          "background": {
+            "service_worker": "js/background.js"
+          },
+          "current_locale": "en_US",
+          "default_locale": "en",
+          "description": "Session manager and tabs saver. With sync",
+          "icons": {
+            "128": "img/ext_icons/128.png",
+            "16": "img/ext_icons/16.png",
+            "32": "img/ext_icons/32.png",
+            "48": "img/ext_icons/48.png"
+          },
+          "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCP/rwAsM82q7Wu666+ipBC2b42WVY/KJcKDOjJtXZlqtXaIDTKr6jHqh7i0uwxkkbNoQ1yQdsE2kpLerWtblllMXsr7nbDn2pfeCDzFg3DI9zNBlYyWwpDEFrdVSjrj5iBq5jZMpRS4OvxV3caCr7TDtviwv8vOcp65q/LVDirnwIDAQAB",
+          "manifest_version": 3,
+          "name": "TabHamster",
+          "options_page": "options.html",
+          "permissions": [
+            "storage",
+            "tabs",
+            "favicon"
+          ],
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "0.3.0"
+        },
+        "needs_sync": true,
+        "path": "mkfjjmjmnplabnplceaekkjcmdddokee/0.3.0_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      },
+      "mnojpmjdmbbfmejpflffifhffcmidifd": {
+        "account_extension_type": 0,
+        "active_permissions": {
+          "api": [
+            "activeTab",
+            "alarms",
+            "contentSettings",
+            "contextMenus",
+            "cookies",
+            "history",
+            "management",
+            "settingsPrivate",
+            "storage",
+            "tabs",
+            "unlimitedStorage",
+            "webNavigation",
+            "webRequest",
+            "webRequestBlocking"
+          ],
+          "explicit_host": [
+            "*://*/*",
+            "<all_urls>",
+            "chrome://favicon/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "https://chrome.google.com/webstore/*",
+            "https://chromewebstore.google.com/*"
+          ]
+        },
+        "commands": {},
+        "content_settings": [],
+        "creation_flags": 1,
+        "disable_reasons": [],
+        "first_install_time": "13434200096081512",
+        "from_webstore": false,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "last_loaded_browser_version": "155.1.97.56",
+        "last_update_time": "13436524121188894",
+        "location": 5,
+        "manifest": {
+          "content_scripts": [
+            {
+              "all_frames": true,
+              "js": [
+                "out/webstore.bundle.js"
+              ],
+              "matches": [
+                "https://chrome.google.com/webstore/*",
+                "https://chromewebstore.google.com/*"
+              ],
+              "run_at": "document_start"
+            }
+          ],
+          "default_locale": "en_US",
+          "description": "__MSG_appName__",
+          "icons": {
+            "128": "assets/img/icon-128.png",
+            "16": "assets/img/icon-16.png",
+            "256": "assets/img/icon-256.png",
+            "32": "assets/img/icon-32.png",
+            "48": "assets/img/icon-48.png",
+            "64": "assets/img/icon-64.png"
+          },
+          "incognito": "split",
+          "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAupOLMy5Fd4dCSOtjcApsAQOnuBdTs+OvBVt/3P93noIrf068x0xXkvxbn+fpigcqfNamiJ5CjGyfx9zAIs7zcHwbxjOw0Uih4SllfgtK+svNTeE0r5atMWE0xR489BvsqNuPSxYJUmW28JqhaSZ4SabYrRx114KcU6ko7hkjyPkjQa3P+chStJjIKYgu5tWBiMJp5QVLelKoM+xkY6S7efvJ8AfajxCViLGyDQPDviGr2D0VvIBob0D1ZmAoTvYOWafcNCaqaejPDybFtuLFX3pZBqfyOCyyzGhucyCmfBXJALKbhjRAqN5glNsUmGhhPK87TuGATQfVuZtenMvXMQIDAQAB",
+          "manifest_version": 2,
+          "name": "Brave",
+          "permissions": [
+            "activeTab",
+            "alarms",
+            "contentSettings",
+            "contextMenus",
+            "cookies",
+            "history",
+            "management",
+            "settingsPrivate",
+            "storage",
+            "tabs",
+            "webNavigation",
+            "webRequest",
+            "*://*/*",
+            "chrome://favicon/*",
+            "webDiscovery",
+            "webRequestBlocking",
+            "unlimitedStorage",
+            "<all_urls>"
+          ],
+          "version": "1.0.0"
+        },
+        "path": "/opt/brave.com/brave-origin/resources/brave_extension",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false
+      },
+      "ponfpcnoihfmfllpaingbgckeeldkhle": {
+        "account_extension_type": 0,
+        "active_bit": false,
+        "active_permissions": {
+          "api": [
+            "storage"
+          ],
+          "explicit_host": [
+            "*://www.youtube-nocookie.com/*",
+            "*://www.youtube.com/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "*://www.youtube-nocookie.com/embed/*",
+            "*://www.youtube-nocookie.com/pop-up-player/*",
+            "*://www.youtube.com/*",
+            "*://www.youtube.com/embed/*",
+            "*://www.youtube.com/live_chat*",
+            "*://www.youtube.com/shorts/*"
+          ]
+        },
+        "allowlist": 1,
+        "commands": {
+          "_execute_action": {
+            "was_assigned": true
+          },
+          "c000-options-page": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c020-theme-youtube-dark": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c025-theme-enhanced-dark": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c030-theme-youtube-deep-dark": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c040-theme-youtube-deep-dark-custom": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c050-theme-custom-theme": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c060-focus-video-player": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c070-toggle-loop": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c080-stop-video": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c090-reverse-playlist": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c100-toggle-volume-booster": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c130-toggle-annotations": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c140-toggle-cinema-mode": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c150-toggle-player-size": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c160-center-video-player": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c170-pop-up-player": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c180-decrease-speed": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c190-increase-speed": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c200-default-speed": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c210-normal-speed": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c220-toggle-video-filters": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c230-flip-horizontally": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c240-flip-vertically": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c250-take-screenshot": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c260-keyboard-shortcuts": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c270-custom-script": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c280-picture-in-picture": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c290-quality-highres": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c300-quality-hd2880": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c310-quality-hd2160": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c320-quality-hd1440": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c330-quality-hd1080": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c340-quality-hd720": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c350-quality-large": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c360-quality-medium": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c370-quality-small": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c380-quality-tiny": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c390-quality-auto": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c400-comments-visibility": {
+            "suggested_key": "",
+            "was_assigned": true
+          },
+          "c410-related-videos-visibility": {
+            "suggested_key": "",
+            "was_assigned": true
+          }
+        },
+        "content_settings": [],
+        "creation_flags": 9,
+        "disable_reasons": [],
+        "first_install_time": "13434203171388461",
+        "from_webstore": true,
+        "granted_permissions": {
+          "api": [
+            "storage"
+          ],
+          "explicit_host": [
+            "*://www.youtube-nocookie.com/*",
+            "*://www.youtube.com/*"
+          ],
+          "manifest_permissions": [],
+          "scriptable_host": [
+            "*://www.youtube-nocookie.com/embed/*",
+            "*://www.youtube-nocookie.com/pop-up-player/*",
+            "*://www.youtube.com/*",
+            "*://www.youtube.com/embed/*",
+            "*://www.youtube.com/live_chat*",
+            "*://www.youtube.com/shorts/*"
+          ]
+        },
+        "has_started_service_worker": true,
+        "incognito_content_settings": [],
+        "incognito_preferences": {},
+        "install_time_for_action_metric": "13434203171397608",
+        "last_update_time": "13434203171388461",
+        "location": 1,
+        "manifest": {
+          "action": {
+            "default_icon": {
+              "16": "img/icons/16.png",
+              "24": "img/icons/24.png",
+              "32": "img/icons/32.png"
+            },
+            "default_title": "Enhancer for YouTube\u2122"
+          },
+          "background": {
+            "service_worker": "js/service-worker.js"
+          },
+          "commands": {
+            "c000-options-page": {
+              "description": "Open the options page"
+            },
+            "c020-theme-youtube-dark": {
+              "description": "Theme: YouTube\u2122 (Dark)"
+            },
+            "c025-theme-enhanced-dark": {
+              "description": "Theme: Enhancer for YouTube\u2122"
+            },
+            "c030-theme-youtube-deep-dark": {
+              "description": "Theme: YouTube-DeepDark"
+            },
+            "c040-theme-youtube-deep-dark-custom": {
+              "description": "Theme: YouTube-DeepDark (Custom)"
+            },
+            "c050-theme-custom-theme": {
+              "description": "Theme: Custom theme"
+            },
+            "c060-focus-video-player": {
+              "description": "Set focus on the video player"
+            },
+            "c070-toggle-loop": {
+              "description": "Toggle the loop mode"
+            },
+            "c080-stop-video": {
+              "description": "Stop the video"
+            },
+            "c090-reverse-playlist": {
+              "description": "Reverse the playlist order"
+            },
+            "c100-toggle-volume-booster": {
+              "description": "Toggle the volume booster"
+            },
+            "c130-toggle-annotations": {
+              "description": "Toggle info cards and end screens visibility"
+            },
+            "c140-toggle-cinema-mode": {
+              "description": "Toggle the cinema mode"
+            },
+            "c150-toggle-player-size": {
+              "description": "Expand or shrink the video player"
+            },
+            "c160-center-video-player": {
+              "description": "Center the video player within the viewport"
+            },
+            "c170-pop-up-player": {
+              "description": "Watch with the pop-up player"
+            },
+            "c180-decrease-speed": {
+              "description": "Decrease the playback speed"
+            },
+            "c190-increase-speed": {
+              "description": "Increase the playback speed"
+            },
+            "c200-default-speed": {
+              "description": "Select the default playback speed"
+            },
+            "c210-normal-speed": {
+              "description": "Select the normal playback speed"
+            },
+            "c220-toggle-video-filters": {
+              "description": "Toggle the video filters"
+            },
+            "c230-flip-horizontally": {
+              "description": "Flip the video horizontally"
+            },
+            "c240-flip-vertically": {
+              "description": "Flip the video vertically"
+            },
+            "c250-take-screenshot": {
+              "description": "Take a screenshot of the video"
+            },
+            "c260-keyboard-shortcuts": {
+              "description": "Display all the keyboard shortcuts for YouTube"
+            },
+            "c270-custom-script": {
+              "description": "Execute the custom script"
+            },
+            "c280-picture-in-picture": {
+              "description": "Toggle the Picture-in-Picture mode"
+            },
+            "c290-quality-highres": {
+              "description": "Select the playback quality \u201c4320p\u201d"
+            },
+            "c300-quality-hd2880": {
+              "description": "Select the playback quality \u201c2880p\u201d"
+            },
+            "c310-quality-hd2160": {
+              "description": "Select the playback quality \u201c2160p\u201d"
+            },
+            "c320-quality-hd1440": {
+              "description": "Select the playback quality \u201c1440p\u201d"
+            },
+            "c330-quality-hd1080": {
+              "description": "Select the playback quality \u201c1080p\u201d"
+            },
+            "c340-quality-hd720": {
+              "description": "Select the playback quality \u201c720p\u201d"
+            },
+            "c350-quality-large": {
+              "description": "Select the playback quality \u201c480p\u201d"
+            },
+            "c360-quality-medium": {
+              "description": "Select the playback quality \u201c360p\u201d"
+            },
+            "c370-quality-small": {
+              "description": "Select the playback quality \u201c240p\u201d"
+            },
+            "c380-quality-tiny": {
+              "description": "Select the playback quality \u201c144p\u201d"
+            },
+            "c390-quality-auto": {
+              "description": "Select the playback quality \u201cAuto\u201d"
+            },
+            "c400-comments-visibility": {
+              "description": "Toggle comments visibility"
+            },
+            "c410-related-videos-visibility": {
+              "description": "Toggle related videos visibility"
+            }
+          },
+          "content_scripts": [
+            {
+              "css": [
+                "css/youtube.css"
+              ],
+              "exclude_matches": [
+                "*://www.youtube.com/embed/*"
+              ],
+              "js": [
+                "js/youtube-main.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/*"
+              ],
+              "run_at": "document_start",
+              "world": "MAIN"
+            },
+            {
+              "exclude_matches": [
+                "*://www.youtube.com/embed/*"
+              ],
+              "js": [
+                "js/config.js",
+                "js/youtube-isolated.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/*"
+              ],
+              "run_at": "document_start",
+              "world": "ISOLATED"
+            },
+            {
+              "all_frames": true,
+              "js": [
+                "js/embed-main.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/embed/*",
+                "*://www.youtube-nocookie.com/embed/*"
+              ],
+              "run_at": "document_start",
+              "world": "MAIN"
+            },
+            {
+              "all_frames": true,
+              "js": [
+                "js/config.js",
+                "js/embed-isolated.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/embed/*",
+                "*://www.youtube-nocookie.com/embed/*"
+              ],
+              "run_at": "document_start",
+              "world": "ISOLATED"
+            },
+            {
+              "all_frames": true,
+              "js": [
+                "js/live-chat-main.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/live_chat*"
+              ],
+              "run_at": "document_start",
+              "world": "MAIN"
+            },
+            {
+              "all_frames": true,
+              "js": [
+                "js/config.js",
+                "js/live-chat-isolated.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/live_chat*"
+              ],
+              "run_at": "document_start",
+              "world": "ISOLATED"
+            },
+            {
+              "css": [
+                "css/pop-up-player.css"
+              ],
+              "js": [
+                "js/pop-up-player-isolated.js"
+              ],
+              "matches": [
+                "*://www.youtube-nocookie.com/pop-up-player/*"
+              ],
+              "run_at": "document_end",
+              "world": "ISOLATED"
+            },
+            {
+              "js": [
+                "js/config.js",
+                "js/shorts-isolated.js"
+              ],
+              "matches": [
+                "*://www.youtube.com/shorts/*"
+              ],
+              "run_at": "document_start",
+              "world": "ISOLATED"
+            }
+          ],
+          "current_locale": "en_US",
+          "default_locale": "en_US",
+          "description": "Take control of YouTube and boost your user experience!",
+          "host_permissions": [
+            "*://www.youtube.com/*",
+            "*://www.youtube-nocookie.com/*"
+          ],
+          "icons": {
+            "128": "img/icons/128.png",
+            "16": "img/icons/16.png",
+            "19": "img/icons/19.png",
+            "24": "img/icons/24.png",
+            "32": "img/icons/32.png",
+            "38": "img/icons/38.png",
+            "48": "img/icons/48.png",
+            "64": "img/icons/64.png",
+            "96": "img/icons/96.png"
+          },
+          "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCrJipzcs6r7wrOrIhajflr37G10c+X+VAhhAWTJdL9icUUzFYS91ZcvNKyLqWRSI1j9sQJLK4m4gLYL1nHMZp1Zc/Eeer97b+TRuyQbapxu6ui/6APYHydWPHektVFbrsWdWM/sUzobEsYpYfWvwAiXDjFbwxodGNgC94wYIff1QIDAQAB",
+          "manifest_version": 3,
+          "minimum_chrome_version": "128.0.0.0",
+          "name": "Enhancer for YouTube\u2122",
+          "options_page": "html/options.html",
+          "permissions": [
+            "storage"
+          ],
+          "update_url": "https://clients2.google.com/service/update2/crx",
+          "version": "3.0.19",
+          "web_accessible_resources": [
+            {
+              "matches": [
+                "*://www.youtube.com/*",
+                "*://www.youtube-nocookie.com/*"
+              ],
+              "resources": [
+                "_locales/*/messages.json",
+                "css/themes/*",
+                "vendor/*"
+              ]
+            }
+          ]
+        },
+        "needs_sync": true,
+        "path": "ponfpcnoihfmfllpaingbgckeeldkhle/3.0.19_0",
+        "preferences": {},
+        "regular_only_preferences": {},
+        "uninstall_url": "https://www.mrfdev.com/event?n=uninstall&b=chrome&e=enhancer-for-youtube&v=3.0.19",
+        "was_installed_by_default": false,
+        "was_installed_by_oem": false,
+        "was_pinned_by_default": false,
+        "withholding_permissions": false
+      }
+    },
+    "theme": {
+      "id": "user_color_theme_id"
+    }
+  },
+  "gcm": {
+    "product_category_for_subtypes": "com.braveorigin.linux",
+    "push_messaging_unsubscribed_entries_list": []
+  },
+  "https_upgrade_navigations": {
+    "2026-09-29": 10,
+    "2026-10-02": 40,
+    "2026-10-03": 20,
+    "2026-10-04": 30,
+    "2026-10-05": 20,
+    "2026-10-07": 120,
+    "2026-10-13": 10
+  },
+  "in_product_help": {
+    "new_badge": {
+      "ComposeNudge": {
+        "feature_enabled_time": "13434200096084207",
+        "show_count": 0,
+        "used_count": 0
+      },
+      "ComposeProactiveNudge": {
+        "feature_enabled_time": "13434200096084212",
+        "show_count": 0,
+        "used_count": 0
+      },
+      "GlicAppMenuNewBadge": {
+        "feature_enabled_time": "13434200096084221",
+        "show_count": 0,
+        "used_count": 0
+      },
+      "GlicContextMenu": {
+        "feature_enabled_time": "13434200096084200",
+        "show_count": 0,
+        "used_count": 0
+      },
+      "GlicKeyboardShortcutNewBadge": {
+        "feature_enabled_time": "13434200096084216",
+        "show_count": 0,
+        "used_count": 0
+      },
+      "VerticalTabsNewBadge": {
+        "feature_enabled_time": "13434200096084185",
+        "show_count": 0,
+        "used_count": 0
+      }
+    },
+    "policy_last_heavyweight_promo_time": "13436361091534223",
+    "recent_session_enabled_time": "13434200096084236",
+    "recent_session_start_times": [
+      "13436524121207060",
+      "13436360251951546",
+      "13436147209934058",
+      "13435806301881509",
+      "13435710635504025",
+      "13435607881370826",
+      "13435528953866373",
+      "13435443831085038",
+      "13435232253538912",
+      "13435181351746902",
+      "13434918063675298",
+      "13434838508471960",
+      "13434639252744912",
+      "13434542891516482",
+      "13434484965253023",
+      "13434456690655645",
+      "13434426856921928",
+      "13434250001452114",
+      "13434200096084236"
+    ],
+    "session_last_active_time": "13436537724136469",
+    "session_number": 20,
+    "session_start_time": "13436524121207060",
+    "snoozed_feature": {
+      "IPH_GMCSaveVideoFrame": {
+        "first_show_time": "13436361091534230",
+        "is_dismissed": true,
+        "last_dismissed_by": 0,
+        "last_show_time": "13436361091534230",
+        "last_snooze_time": "0",
+        "promo_index": 0,
+        "show_count": 1,
+        "shown_for_apps": [],
+        "snooze_count": 0
+      }
+    }
+  },
+  "intl": {
+    "selected_languages": "en-US,en"
+  },
+  "language_model_counters": {
+    "af": 1,
+    "en": 428,
+    "hi": 11,
+    "hi-Latn": 1,
+    "mr": 1
+  },
+  "media": {
+    "device_id_salt": "EB039A34879BC2F9E4CFFAE1274408C2",
+    "engagement": {
+      "schema_version": 5
+    }
+  },
+  "media_router": {
+    "enable_media_router": false,
+    "receiver_id_hash_token": "+l2RHdO5zborTyOgXUrpZ/8OyG7DYlmNTuBUUbE+iK0HU77IGzGWAfQXvuDeKILAboABqA1+ApE0Ct7x4SWFFQ=="
+  },
+  "ntp": {
+    "num_personal_suggestions": 7
+  },
+  "omnibox": {
+    "shown_count_history_scope_promo": 1
+  },
+  "partition": {
+    "per_host_zoom_levels": {
+      "x": {
+        "news.ycombinator.com": {
+          "last_modified": "13434203530011127",
+          "zoom_level": 1.2239010857415449
+        }
+      }
+    }
+  },
+  "pinned_tabs": [],
+  "privacy_sandbox": {
+    "first_party_sets_data_access_allowed_initialized": true,
+    "first_party_sets_enabled": false
+  },
+  "profile": {
+    "avatar_index": 26,
+    "background_password_check": {
+      "check_fri_weight": 9,
+      "check_interval": "864000000000",
+      "check_mon_weight": 4,
+      "check_sat_weight": 4,
+      "check_sun_weight": 4,
+      "check_thu_weight": 9,
+      "check_tue_weight": 9,
+      "check_wed_weight": 9,
+      "next_check_time": "13437400529888234"
+    },
+    "content_settings": {
+      "exceptions": {},
+      "permission_actions": {
+        "notifications": [
+          {
+            "action": 1,
+            "prompt_disposition": 1,
+            "time": "13434205081431043"
+          }
+        ]
+      },
+      "pref_version": 1
+    },
+    "created_by_version": "153.1.95.102",
+    "creation_time": "13434200096021400",
+    "default_content_setting_values": {
+      "has_migrated_local_network_access": true
+    },
+    "exit_type": "Normal",
+    "family_member_role": "not_in_family",
+    "last_engagement_time": "13436495321447851",
+    "last_time_obsolete_http_credentials_removed": 1789726556.076311,
+    "last_time_password_store_metrics_reported": 1792050551.18164,
+    "managed": {
+      "locally_parent_approved_extensions": {},
+      "locally_parent_approved_extensions_migration_state": 1
+    },
+    "managed_user_id": "",
+    "name": "Person 1",
+    "password_hash_data_list": [
+      {
+        "hash": "djExKNKnCIV18/pO1qH7h5yRWg==",
+        "is_gaia": "djExtrDqbTCqOwfCTX/TX87wLA==",
+        "last_signin": 1789728705.96576,
+        "salt_length": "djEx/qPqiSL8KqyCfnGPw1sCBy3D8qP2ynLU6c6N09R5ADU=",
+        "username": "djExCdwItjrVayO2RMHWPA7UShGZg6Ho8/V+BgK4vJJ5JLA="
+      }
+    ],
+    "safety_hub_menu_notifications": {
+      "extensions": {
+        "isCurrentlyActive": false,
+        "result": {
+          "timestamp": "13434288343916810",
+          "triggeringExtensions": []
+        }
+      },
+      "passwords": {
+        "isCurrentlyActive": false,
+        "result": {
+          "passwordCheckOrigins": [],
+          "timestamp": "13434268579604637"
+        }
+      },
+      "safe-browsing": {
+        "isCurrentlyActive": false,
+        "onlyShowAfterTime": "13434289492912907",
+        "result": {
+          "safeBrowsingStatus": 1,
+          "timestamp": "13434288343916560"
+        }
+      },
+      "unused-site-permissions": {
+        "isCurrentlyActive": false,
+        "result": {
+          "permissions": [],
+          "timestamp": "13434268579432740"
+        }
+      }
+    },
+    "were_old_google_logins_removed": true
+  },
+  "profile_network_context_service": {
+    "http_cache_finch_experiment_groups": "None None None None"
+  },
+  "safebrowsing": {
+    "event_timestamps": {},
+    "metrics_last_log_time": "13436524121",
+    "scout_reporting_enabled_when_deprecated": false
+  },
+  "safety_hub": {
+    "unused_site_permissions_revocation": {
+      "migration_completed": true
+    }
+  },
+  "saved_tab_groups": {
+    "did_enable_shared_tab_groups_in_last_session": false,
+    "specifics_to_data_migration": true
+  },
+  "schedule_to_flush_to_disk": "13436524121172152",
+  "settings": {
+    "force_google_safesearch": false
+  },
+  "site_search_settings": {
+    "overridden_keywords": []
+  },
+  "spellcheck": {
+    "dictionaries": [
+      "en-US"
+    ],
+    "dictionary": "",
+    "use_spelling_service": false
+  },
+  "syncing_theme_prefs_migrated_to_non_syncing": true,
+  "tab_search": {
+    "pinned_to_tabstrip": false
+  },
+  "toolbar": {
+    "pinned_cast_migration_complete": true,
+    "pinned_chrome_labs_migration_complete": true
+  },
+  "translate_allowlists": {
+    "ja": "en",
+    "ko": "en",
+    "zh-CN": "en",
+    "zh-TW": "en"
+  },
+  "vertical_tabs": {
+    "collapsed_state": false,
+    "uncollapsed_width": 240
+  },
+  "web_app_install_metrics": {
+    "olpfmaakjajianfmacdcildcjacleoem": {
+      "install_source": 0,
+      "install_timestamp": "13434204097964471"
+    }
+  },
+  "web_apps": {
+    "daily_metrics": {
+      "https://www.youtube.com/?feature=ytca": {
+        "background_duration_sec": 0,
+        "captures_links": false,
+        "effective_display_mode": 2,
+        "foreground_duration_sec": 0,
+        "installed": false,
+        "num_sessions": 0,
+        "promotable": true
+      }
+    },
+    "daily_metrics_date": "13436303400000000",
+    "did_migrate_default_chrome_apps": [
+      "MigrateDefaultChromeAppToWebAppsGSuite",
+      "MigrateDefaultChromeAppToWebAppsNonGSuite"
+    ],
+    "last_preinstall_synchronize_version": "155"
+  }
+}

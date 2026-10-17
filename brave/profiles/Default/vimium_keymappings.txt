@@ -1,0 +1,20 @@
+# Insert your preferred key mappings here.
+map F LinkHints.activateMode
+map f LinkHints.activateModeToOpenInNewTab
+map h LinkHints.activateMode action=hover
+map \u003Ca-i> LinkHints.activateMode action=focus
+map c LinkHints.activateMode action=copy-text
+
+map h goBack
+map l goForward
+
+map o Vomnibar.activateInNewTab
+map O Vomnibar.activate
+map b Vomnibar.activateBookmarksInNewTab
+map B Vomnibar.activateBookmarks
+
+# move tab alt+,
+map \u003Ca-,> moveTabLeft count=99
+map \u003Ca-.> moveTabRight count=99
+map \u003Ca-k> nextTab
+map \u003Ca-j> previousTab

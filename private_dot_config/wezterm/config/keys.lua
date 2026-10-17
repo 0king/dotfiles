@@ -193,34 +193,126 @@ function M.apply_to_config(config)
 	-- Register in Command Palette (Ctrl + Shift + P)
 	wezterm.on("augment-command-palette", function(window, pane)
 		return {
+			-- Pane - All Select
 			{
-				brief = "Paste: Smart paste (latest between Clipboard & Primary)",
+				brief = "Pane Select (pin)",
+				doc = "Show letter overlay across all panes to select and jump to any pane",
+				icon = "md_bookmark",
+				action = act.PaneSelect({ mode = "Activate" }),
+			},
+			-- Close Pane
+			{
+				brief = "Close Pane (pin)",
+				doc = "Close the currently active pane with confirmation",
+				icon = "md_bookmark",
+				action = act.CloseCurrentPane({ confirm = true }),
+			},
+			-- Smart Paste (uses existing smart_paste action)
+			{
+				brief = "Smart Paste (pin)",
 				doc = "Pastes text from whichever buffer (Clipboard or Primary Selection) has newer data",
-				icon = "md_content_paste",
+				icon = "md_bookmark",
 				action = smart_paste,
 			},
+			-- All Scroll Variants
 			{
-				brief = "Select All: Copy entire scrollback to clipboard",
+				brief = "Scroll to Top (pin)",
+				doc = "Scroll all the way to the top of the scrollback buffer",
+				icon = "md_bookmark",
+				action = act.ScrollToTop,
+			},
+			{
+				brief = "Scroll to Bottom (pin)",
+				doc = "Scroll all the way to the bottom of the scrollback buffer",
+				icon = "md_bookmark",
+				action = act.ScrollToBottom,
+			},
+			{
+				brief = "Scroll Page Up (pin)",
+				doc = "Scroll viewport up by one full page",
+				icon = "md_bookmark",
+				action = act.ScrollByPage(-1),
+			},
+			{
+				brief = "Scroll Page Down (pin)",
+				doc = "Scroll viewport down by one full page",
+				icon = "md_bookmark",
+				action = act.ScrollByPage(1),
+			},
+			{
+				brief = "Scroll Half Page Up (pin)",
+				doc = "Scroll viewport up by half a page",
+				icon = "md_bookmark",
+				action = act.ScrollByPage(-0.5),
+			},
+			{
+				brief = "Scroll Half Page Down (pin)",
+				doc = "Scroll viewport down by half a page",
+				icon = "md_bookmark",
+				action = act.ScrollByPage(0.5),
+			},
+			{
+				brief = "Scroll Line Up (pin)",
+				doc = "Scroll viewport up by one line",
+				icon = "md_bookmark",
+				action = act.ScrollByLine(-1),
+			},
+			{
+				brief = "Scroll Line Down (pin)",
+				doc = "Scroll viewport down by one line",
+				icon = "md_bookmark",
+				action = act.ScrollByLine(1),
+			},
+			{
+				brief = "Scroll to Previous Prompt (pin)",
+				doc = "Scroll backward to the previous shell prompt zone",
+				icon = "md_bookmark",
+				action = act.ScrollToPrompt(-1),
+			},
+			{
+				brief = "Scroll to Next Prompt (pin)",
+				doc = "Scroll forward to the next shell prompt zone",
+				icon = "md_bookmark",
+				action = act.ScrollToPrompt(1),
+			},
+			-- Select All (uses existing select_all actions)
+			{
+				brief = "Select All (pin)",
 				doc = "Copies all text from current pane's scrollback history to clipboard",
-				icon = "md_content_copy",
+				icon = "md_bookmark",
 				action = select_all_and_copy,
 			},
 			{
-				brief = "Select All: Highlight all in Copy Mode",
+				brief = "Select All in Copy Mode (pin)",
 				doc = "Enters Copy Mode and highlights all text from top to bottom",
-				icon = "md_select_all",
+				icon = "md_bookmark",
 				action = select_all_in_copy_mode,
 			},
+			-- Vim Mode
 			{
-				brief = "Toggle Line Wrap (DECAWM: tput rmam / smam)",
+				brief = "Vim Mode (pin)",
+				doc = "Enter modal copy mode with Vim keybindings (hjkl navigation, v/V to select, y to copy)",
+				icon = "md_bookmark",
+				action = act.ActivateCopyMode,
+			},
+			-- Highlight Mode
+			{
+				brief = "Highlight Mode (pin)",
+				doc = "Highlight URLs, paths, and git hashes with jump hints for one-key copying",
+				icon = "md_bookmark",
+				action = act.QuickSelect,
+			},
+			-- Existing Helper Actions
+			{
+				brief = "Toggle Line Wrap (pin)",
 				doc = "Toggles terminal auto-wrap so lines truncate at margin instead of wrapping",
-				icon = "md_wrap",
+				icon = "md_bookmark",
 				action = toggle_autowrap,
 			},
 			{
-				brief = "View Scrollback Unwrapped (less -S)",
+				brief = "View Scrollback Unwrapped (pin)",
 				doc = "Opens scrollback in a new tab without wrapping, allowing horizontal scrolling",
-				icon = "md_arrow_expand_horizontal",
+				icon = "md_bookmark",
 				action = view_scrollback_unwrapped,
 			},
 		}

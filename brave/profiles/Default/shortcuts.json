@@ -1,0 +1,645 @@
+{
+  "profile_dir": "Default",
+  "profile_name": "p1",
+  "exported_at": "2026-10-17T14:46:34.306589+00:00",
+  "brave_native_shortcuts": {
+    "Browser Back": {
+      "command_id": "33000",
+      "accelerators": [
+        "BrowserBack",
+        "Alt+ArrowLeft",
+        "AltGr+ArrowLeft"
+      ]
+    },
+    "Browser Forward": {
+      "command_id": "33001",
+      "accelerators": [
+        "BrowserForward",
+        "Alt+ArrowRight",
+        "AltGr+ArrowRight"
+      ]
+    },
+    "Reload / Refresh": {
+      "command_id": "33002",
+      "accelerators": [
+        "Control+KeyR",
+        "F5",
+        "BrowserRefresh"
+      ]
+    },
+    "Home": {
+      "command_id": "33003",
+      "accelerators": [
+        "BrowserHome",
+        "Alt+Home"
+      ]
+    },
+    "Hard Reload (Bypass Cache)": {
+      "command_id": "33007",
+      "accelerators": [
+        "Control+Shift+KeyR",
+        "Control+F5",
+        "Shift+F5",
+        "Control+BrowserRefresh",
+        "Shift+BrowserRefresh"
+      ]
+    },
+    "New Window": {
+      "command_id": "34000",
+      "accelerators": [
+        "Control+KeyN"
+      ]
+    },
+    "New Incognito / Private Window": {
+      "command_id": "34001",
+      "accelerators": [
+        "Control+Shift+KeyN"
+      ]
+    },
+    "Close Window / Exit": {
+      "command_id": "34012",
+      "accelerators": [
+        "Alt+F4"
+      ]
+    },
+    "New Tab": {
+      "command_id": "34014",
+      "accelerators": [
+        "AppNew",
+        "Control+KeyT"
+      ]
+    },
+    "Close Tab": {
+      "command_id": "34015",
+      "accelerators": [
+        "Control+KeyW",
+        "Control+F4",
+        "AppClose"
+      ]
+    },
+    "Next Tab": {
+      "command_id": "34016",
+      "accelerators": [
+        "Control+PageDown",
+        "Control+ArrowRight",
+        "Control+Shift+KeyF"
+      ]
+    },
+    "Previous Tab": {
+      "command_id": "34017",
+      "accelerators": [
+        "Control+PageUp",
+        "Control+ArrowLeft",
+        "Control+Shift+KeyS"
+      ]
+    },
+    "Select Tab 1": {
+      "command_id": "34018",
+      "accelerators": [
+        "Control+Digit1",
+        "Control+Numpad1",
+        "Alt+Digit1",
+        "Alt+Numpad1"
+      ]
+    },
+    "Select Tab 2": {
+      "command_id": "34019",
+      "accelerators": [
+        "Control+Digit2",
+        "Control+Numpad2",
+        "Alt+Digit2",
+        "Alt+Numpad2"
+      ]
+    },
+    "Select Tab 3": {
+      "command_id": "34020",
+      "accelerators": [
+        "Control+Digit3",
+        "Control+Numpad3",
+        "Alt+Digit3",
+        "Alt+Numpad3"
+      ]
+    },
+    "Select Tab 4": {
+      "command_id": "34021",
+      "accelerators": [
+        "Control+Digit4",
+        "Control+Numpad4",
+        "Alt+Digit4",
+        "Alt+Numpad4"
+      ]
+    },
+    "Select Tab 5": {
+      "command_id": "34022",
+      "accelerators": [
+        "Control+Digit5",
+        "Control+Numpad5",
+        "Alt+Digit5",
+        "Alt+Numpad5"
+      ]
+    },
+    "Select Tab 6": {
+      "command_id": "34023",
+      "accelerators": [
+        "Control+Digit6",
+        "Control+Numpad6",
+        "Alt+Digit6",
+        "Alt+Numpad6"
+      ]
+    },
+    "Select Tab 7": {
+      "command_id": "34024",
+      "accelerators": [
+        "Control+Digit7",
+        "Control+Numpad7",
+        "Alt+Digit7",
+        "Alt+Numpad7"
+      ]
+    },
+    "Select Tab 8": {
+      "command_id": "34025",
+      "accelerators": [
+        "Control+Digit8",
+        "Control+Numpad8",
+        "Alt+Digit8",
+        "Alt+Numpad8"
+      ]
+    },
+    "Select Tab 9 (Last Tab)": {
+      "command_id": "34026",
+      "accelerators": [
+        "Control+Digit9",
+        "Control+Numpad9",
+        "Alt+Digit9",
+        "Alt+Numpad9"
+      ]
+    },
+    "Reopen Closed Tab": {
+      "command_id": "34028",
+      "accelerators": [
+        "Control+Shift+KeyT"
+      ]
+    },
+    "Toggle Fullscreen": {
+      "command_id": "34030",
+      "accelerators": [
+        "F11"
+      ]
+    },
+    "Quit Browser": {
+      "command_id": "34031",
+      "accelerators": [
+        "Control+KeyQ"
+      ]
+    },
+    "Move Tab Right": {
+      "command_id": "34032",
+      "accelerators": [
+        "Control+Shift+PageDown"
+      ]
+    },
+    "Move Tab Left": {
+      "command_id": "34033",
+      "accelerators": [
+        "Control+Shift+PageUp"
+      ]
+    },
+    "Duplicate Tab": {
+      "command_id": "34057",
+      "accelerators": [
+        "Control+Alt+KeyT"
+      ]
+    },
+    "Mute / Unmute Tab": {
+      "command_id": "34061",
+      "accelerators": [
+        "Control+Shift+KeyL"
+      ]
+    },
+    "Cycle Next Tab (MRU)": {
+      "command_id": "34062",
+      "accelerators": [
+        "Control+Tab",
+        "Control+KeyG",
+        "Control+Shift+KeyD"
+      ]
+    },
+    "Cycle Previous Tab (MRU)": {
+      "command_id": "34063",
+      "accelerators": [
+        "Control+Shift+Tab",
+        "Control+Shift+KeyG"
+      ]
+    },
+    "Custom Command #34071": {
+      "command_id": "34071",
+      "accelerators": []
+    },
+    "Vertical Tabs Toggle": {
+      "command_id": "34100",
+      "accelerators": [
+        "Alt+Shift+KeyC"
+      ]
+    },
+    "Custom Command #34101": {
+      "command_id": "34101",
+      "accelerators": [
+        "Alt+Shift+KeyP"
+      ]
+    },
+    "Custom Command #34102": {
+      "command_id": "34102",
+      "accelerators": [
+        "Alt+Shift+KeyX"
+      ]
+    },
+    "Custom Command #34103": {
+      "command_id": "34103",
+      "accelerators": [
+        "Alt+Shift+KeyZ"
+      ]
+    },
+    "Custom Command #34104": {
+      "command_id": "34104",
+      "accelerators": [
+        "Alt+Shift+KeyW"
+      ]
+    },
+    "Bookmark Current Tab": {
+      "command_id": "35000",
+      "accelerators": [
+        "Control+KeyD"
+      ]
+    },
+    "Bookmark All Tabs": {
+      "command_id": "35001",
+      "accelerators": []
+    },
+    "View Page Source": {
+      "command_id": "35002",
+      "accelerators": [
+        "Control+KeyU"
+      ]
+    },
+    "Print": {
+      "command_id": "35003",
+      "accelerators": [
+        "Control+KeyP"
+      ]
+    },
+    "Save Page As": {
+      "command_id": "35004",
+      "accelerators": [
+        "Control+KeyS"
+      ]
+    },
+    "Print Using System Dialog": {
+      "command_id": "35007",
+      "accelerators": [
+        "Control+Shift+KeyP"
+      ]
+    },
+    "Custom Command #35022": {
+      "command_id": "35022",
+      "accelerators": [
+        "Control+Shift+KeyW"
+      ]
+    },
+    "Custom Command #35024": {
+      "command_id": "35024",
+      "accelerators": [
+        "Control+Alt+KeyN"
+      ]
+    },
+    "Custom Command #35031": {
+      "command_id": "35031",
+      "accelerators": []
+    },
+    "Find in Page": {
+      "command_id": "37000",
+      "accelerators": [
+        "Control+KeyF"
+      ]
+    },
+    "Find Next": {
+      "command_id": "37001",
+      "accelerators": [
+        "F3"
+      ]
+    },
+    "Find Previous": {
+      "command_id": "37002",
+      "accelerators": [
+        "Shift+F3"
+      ]
+    },
+    "Stop Loading / Close Find": {
+      "command_id": "37003",
+      "accelerators": [
+        "Escape"
+      ]
+    },
+    "Zoom In": {
+      "command_id": "38001",
+      "accelerators": [
+        "Control+Equal",
+        "Control+NumpadAdd",
+        "Control+Shift+Equal"
+      ]
+    },
+    "Reset Zoom": {
+      "command_id": "38002",
+      "accelerators": [
+        "Control+Digit0",
+        "Control+Numpad0"
+      ]
+    },
+    "Zoom Out": {
+      "command_id": "38003",
+      "accelerators": [
+        "Control+Minus",
+        "Control+NumpadSubtract",
+        "Control+Shift+Minus"
+      ]
+    },
+    "Focus Next Pane": {
+      "command_id": "39000",
+      "accelerators": [
+        "Alt+Shift+KeyT"
+      ]
+    },
+    "Focus Address Bar / Omnibox": {
+      "command_id": "39001",
+      "accelerators": [
+        "Control+KeyL",
+        "Alt+KeyD"
+      ]
+    },
+    "Focus Search Box": {
+      "command_id": "39002",
+      "accelerators": [
+        "BrowserSearch",
+        "Control+KeyE",
+        "Control+KeyK"
+      ]
+    },
+    "Custom Command #39003": {
+      "command_id": "39003",
+      "accelerators": [
+        "F10",
+        "AltGr",
+        "Alt"
+      ]
+    },
+    "Custom Command #39004": {
+      "command_id": "39004",
+      "accelerators": [
+        "F6"
+      ]
+    },
+    "Custom Command #39005": {
+      "command_id": "39005",
+      "accelerators": [
+        "Shift+F6"
+      ]
+    },
+    "Focus Bookmarks Toolbar": {
+      "command_id": "39006",
+      "accelerators": [
+        "Alt+Shift+KeyB"
+      ]
+    },
+    "Custom Command #39007": {
+      "command_id": "39007",
+      "accelerators": [
+        "Alt+Shift+KeyA"
+      ]
+    },
+    "Custom Command #39009": {
+      "command_id": "39009",
+      "accelerators": [
+        "Control+F6"
+      ]
+    },
+    "Open Local File": {
+      "command_id": "40000",
+      "accelerators": [
+        "Control+KeyO"
+      ]
+    },
+    "Developer Tools (Inspect)": {
+      "command_id": "40004",
+      "accelerators": [
+        "Control+Shift+KeyI"
+      ]
+    },
+    "Developer Tools Console": {
+      "command_id": "40005",
+      "accelerators": [
+        "Control+Shift+KeyJ"
+      ]
+    },
+    "Toggle Bookmarks Bar": {
+      "command_id": "40009",
+      "accelerators": [
+        "BrowserFavorites",
+        "Control+Shift+KeyB"
+      ]
+    },
+    "Show Browsing History": {
+      "command_id": "40010",
+      "accelerators": [
+        "Control+KeyH"
+      ]
+    },
+    "Show Downloads": {
+      "command_id": "40011",
+      "accelerators": [
+        "Control+Shift+KeyO"
+      ]
+    },
+    "Bookmarks Manager": {
+      "command_id": "40012",
+      "accelerators": [
+        "Control+KeyJ"
+      ]
+    },
+    "Clear Browsing Data Dialog": {
+      "command_id": "40013",
+      "accelerators": [
+        "Control+Shift+Delete"
+      ]
+    },
+    "Help Center": {
+      "command_id": "40019",
+      "accelerators": [
+        "F1"
+      ]
+    },
+    "Custom Command #40021": {
+      "command_id": "40021",
+      "accelerators": [
+        "Alt+KeyE",
+        "Alt+KeyF"
+      ]
+    },
+    "Task Manager": {
+      "command_id": "40023",
+      "accelerators": [
+        "Control+Shift+KeyC"
+      ]
+    },
+    "Custom Command #40134": {
+      "command_id": "40134",
+      "accelerators": [
+        "Control+Shift+KeyM"
+      ]
+    },
+    "Custom Command #40237": {
+      "command_id": "40237",
+      "accelerators": [
+        "F12"
+      ]
+    },
+    "Custom Command #40260": {
+      "command_id": "40260",
+      "accelerators": [
+        "F7"
+      ]
+    },
+    "Custom Command #40286": {
+      "command_id": "40286",
+      "accelerators": [
+        "Shift+Escape"
+      ]
+    },
+    "Custom Command #40303": {
+      "command_id": "40303",
+      "accelerators": [
+        "Alt+Shift+KeyR"
+      ]
+    },
+    "Tab Search": {
+      "command_id": "52500",
+      "accelerators": [
+        "Control+Shift+KeyA"
+      ]
+    },
+    "Custom Command #56003": {
+      "command_id": "56003",
+      "accelerators": [
+        "Alt+Shift+KeyN"
+      ]
+    },
+    "Custom Command #56040": {
+      "command_id": "56040",
+      "accelerators": [
+        "Control+Shift+KeyY"
+      ]
+    },
+    "Custom Command #56041": {
+      "command_id": "56041",
+      "accelerators": [
+        "Control+KeyM"
+      ]
+    },
+    "Custom Command #56044": {
+      "command_id": "56044",
+      "accelerators": [
+        "Control+KeyB"
+      ]
+    },
+    "Quick Commands / Command Palette": {
+      "command_id": "56301",
+      "accelerators": [
+        "Control+Space"
+      ]
+    }
+  },
+  "extension_shortcuts": [
+    {
+      "extension_name": "Take Webpage Screenshots Entirely - FireShot",
+      "extension_id": "mcbpblocgmgfnpjjppndjkmgjaogfceg",
+      "command": "capture-entire-page-action",
+      "shortcut": "Alt+Shift+1",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Take Webpage Screenshots Entirely - FireShot",
+      "extension_id": "mcbpblocgmgfnpjjppndjkmgjaogfceg",
+      "command": "capture-visible-page-action",
+      "shortcut": "Alt+Shift+3",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Take Webpage Screenshots Entirely - FireShot",
+      "extension_id": "mcbpblocgmgfnpjjppndjkmgjaogfceg",
+      "command": "capture-selection-action",
+      "shortcut": "Alt+Shift+4",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Bitwarden Password Manager",
+      "extension_id": "nngceckbapebfimnlniiiahkandclblb",
+      "command": "generate_password",
+      "shortcut": "Alt+Shift+9",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Dark Reader",
+      "extension_id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
+      "command": "toggle",
+      "shortcut": "Alt+Shift+D",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Obsidian Web Clipper",
+      "extension_id": "cnjifjpddelmedmihgijeibhnjfabmlf",
+      "command": "toggle_highlighter",
+      "shortcut": "Alt+Shift+H",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Bitwarden Password Manager",
+      "extension_id": "nngceckbapebfimnlniiiahkandclblb",
+      "command": "autofill_login",
+      "shortcut": "Alt+Shift+L",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Obsidian Web Clipper",
+      "extension_id": "cnjifjpddelmedmihgijeibhnjfabmlf",
+      "command": "_execute_action",
+      "shortcut": "Alt+Shift+O",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Raindrop.io",
+      "extension_id": "ldgfbffkinooeloadekpmfoklnobpien",
+      "command": "execute_side_panel",
+      "shortcut": "Ctrl+Period",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Bitwarden Password Manager",
+      "extension_id": "nngceckbapebfimnlniiiahkandclblb",
+      "command": "_execute_action",
+      "shortcut": "Ctrl+Shift+B",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Simple Translate",
+      "extension_id": "ibplnjkanclpjokhdolnendpplpjiace",
+      "command": "_execute_action",
+      "shortcut": "Ctrl+Shift+Space",
+      "scope": "In-Browser"
+    },
+    {
+      "extension_name": "Raindrop.io",
+      "extension_id": "ldgfbffkinooeloadekpmfoklnobpien",
+      "command": "_execute_action",
+      "shortcut": "Ctrl+Shift+X",
+      "scope": "In-Browser"
+    }
+  ]
+}

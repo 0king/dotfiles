@@ -44,12 +44,15 @@ Modern, reproducible, and cross-platform personal dotfiles managed with [chezmoi
 │   └── zed/                                 # Zed editor configuration (private_settings.json)
 ├── private_dot_local/
 │   └── bin/                                 # Custom user scripts on PATH (git_*, ubuntu_*, vscode_*, etc.)
+│       ├── executable_browser-chrome-brave_export-import-settings.sh # Cloud-safe browser preferences & keymap sync
 │       ├── executable_sync-ai-agents        # Universal AI tool symlinker (Cursor, Gemini, Claude, etc.)
 │       ├── code/                            # C/C++ source snippets (off PATH)
 │       ├── docs/                            # Script manuals & guides (terminal-keymap.md, etc.)
 │       └── out/                             # Script-generated data & snapshots (off PATH)
+├── brave/                                   # Cloud-safe Brave/Chrome profile preferences & keymaps
 ├── docs/
-│   └── terminal-keymap.md                   # Complete unified terminal keymap reference
+│   ├── terminal-keymap-README.md            # Complete unified terminal keymap reference
+│   └── brave-profile-and-keymap-README.md   # Complete Brave/Chrome profile settings & keymap reference
 └── README.md                                # This documentation
 ```
 
