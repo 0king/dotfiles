@@ -6,45 +6,63 @@ local M = {}
 function M.apply_to_config(config)
 	config.keys = config.keys or {}
 
-	-- Action: Copy entire scrollback to clipboard (with feedback and alt screen awareness)
-	local select_all_and_copy = wezterm.action_callback(function(window, pane)
+	-- Action: Single unified Select All command
+	-- Identifies pane state, selects everything beyond the viewport (from Row 1, Column 1 to bottom), and copies it
+	local select_all = wezterm.action_callback(function(window, pane)
+		local is_copy_mode = window:active_key_table() == "copy_mode"
 		local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
 		local dims = pane:get_dimensions()
-		local lines_to_get = dims.scrollback_rows
+		local total_lines = dims.scrollback_rows
+		local viewport_lines = dims.viewport_rows
+		local beyond_viewport = math.max(0, total_lines - viewport_lines)
+
+		if is_copy_mode then
+			-- State: Currently in Copy Mode
+			-- Visually select from Row 1, Column 1 to bottom end, copy to clipboard, and close
+			window:perform_action(act.CopyMode("MoveToScrollbackTop"), pane)
+			window:perform_action(act.CopyMode("MoveToStartOfLine"), pane)
+			window:perform_action(act.CopyMode({ SetSelectionMode = "Cell" }), pane)
+			window:perform_action(act.CopyMode("MoveToScrollbackBottom"), pane)
+			window:perform_action(act.CopyMode("MoveToEndOfLineContent"), pane)
+			window:perform_action(act.CopyTo("ClipboardAndPrimarySelection"), pane)
+			window:perform_action(act.CopyMode("Close"), pane)
+		end
+
+		-- Extract all text:
+		-- In alternate screen, only active viewport rows exist.
+		-- In normal screen, retrieves all lines (including everything beyond the viewport up to Row 1).
+		local lines_to_get = is_alt and viewport_lines or total_lines
 		local text = pane:get_lines_as_text(lines_to_get)
-		-- Strip trailing blank lines
-		text = text:gsub("%s+$", "")
-		window:copy_to_clipboard(text, "Clipboard")
-		window:copy_to_clipboard(text, "PrimarySelection")
+		if text then
+			text = text:gsub("%s+$", "")
+			window:copy_to_clipboard(text, "Clipboard")
+			window:copy_to_clipboard(text, "PrimarySelection")
+		end
+
+		-- Provide clear, state-aware feedback
 		if is_alt then
-			window:toast_notification("WezTerm", "Copied active viewport (fullscreen application active)", nil, 2500)
+			window:toast_notification(
+				"WezTerm",
+				string.format("Copied active viewport (%d lines - fullscreen app active)", viewport_lines),
+				nil,
+				2500
+			)
+		elseif beyond_viewport > 0 then
+			window:toast_notification(
+				"WezTerm",
+				string.format("Copied all %d lines (%d lines beyond viewport) from Row 1", total_lines, beyond_viewport),
+				nil,
+				2500
+			)
 		else
 			window:toast_notification(
 				"WezTerm",
-				string.format("Copied %d lines (Row 1 to bottom) to clipboard", lines_to_get),
+				string.format("Copied all %d lines from Row 1 to clipboard", total_lines),
 				nil,
 				2500
 			)
 		end
 	end)
-
-	-- Action: Visual select all in Copy Mode (Row 1, Column 1 to bottom end)
-	local select_all_in_copy_mode = act.Multiple({
-		act.ActivateCopyMode,
-		act.CopyMode("MoveToScrollbackTop"),
-		act.CopyMode("MoveToStartOfLine"),
-		act.CopyMode({ SetSelectionMode = "Cell" }),
-		act.CopyMode("MoveToScrollbackBottom"),
-		act.CopyMode("MoveToEndOfLineContent"),
-	})
-
-	-- Action: Visual select all lines in Copy Mode (Row 1 to bottom)
-	local select_all_lines_in_copy_mode = act.Multiple({
-		act.ActivateCopyMode,
-		act.CopyMode("MoveToScrollbackTop"),
-		act.CopyMode({ SetSelectionMode = "Line" }),
-		act.CopyMode("MoveToScrollbackBottom"),
-	})
 
 	-- Action: Scroll to Top (Row 1, Column 1) across normal mode and Copy Mode
 	local scroll_to_top = wezterm.action_callback(function(window, pane)
@@ -63,13 +81,6 @@ function M.apply_to_config(config)
 		window:perform_action(act.CopyMode("MoveToScrollbackBottom"), pane)
 		window:perform_action(act.CopyMode("MoveToEndOfLineContent"), pane)
 	end)
-
-	-- Action: Dedicated entry to enter Copy Mode and jump directly to Row 1, Column 1
-	local scroll_to_top_in_copy_mode = act.Multiple({
-		act.ActivateCopyMode,
-		act.CopyMode("MoveToScrollbackTop"),
-		act.CopyMode("MoveToStartOfLine"),
-	})
 
 	-- Action: Toggle Auto-Wrap (DECAWM) in the terminal
 	-- Mode 7 (DECAWM): 'tput rmam' disables wrap (truncates at margin); 'tput smam' enables wrap
@@ -111,12 +122,12 @@ function M.apply_to_config(config)
 	table.insert(config.keys, {
 		key = "a",
 		mods = "CTRL|SHIFT",
-		action = select_all_and_copy,
+		action = select_all,
 	})
 	table.insert(config.keys, {
 		key = "A",
 		mods = "CTRL|SHIFT",
-		action = select_all_and_copy,
+		action = select_all,
 	})
 
 	-- Copy-on-select: Copy directly to Clipboard and PrimarySelection on mouse release
@@ -322,12 +333,6 @@ function M.apply_to_config(config)
 				action = scroll_to_top,
 			},
 			{
-				brief = "Scroll to Top in Copy Mode (pin)",
-				doc = "Enters Copy Mode and jumps directly to Row 1, Column 1",
-				icon = "md_bookmark",
-				action = scroll_to_top_in_copy_mode,
-			},
-			{
 				brief = "Scroll to Bottom (pin)",
 				doc = "Scroll all the way to the bottom of the scrollback buffer",
 				icon = "md_bookmark",
@@ -381,24 +386,12 @@ function M.apply_to_config(config)
 				icon = "md_bookmark",
 				action = act.ScrollToPrompt(1),
 			},
-			-- Select All (uses existing select_all actions)
+			-- Select All (single unified command)
 			{
 				brief = "Select All (pin)",
-				doc = "Copies all text from current pane's scrollback history (Row 1 to bottom) to clipboard",
+				doc = "Selects and copies entire scrollback history beyond the viewport (Row 1, Column 1 to bottom) to clipboard",
 				icon = "md_bookmark",
-				action = select_all_and_copy,
-			},
-			{
-				brief = "Select All in Copy Mode (pin)",
-				doc = "Enters Copy Mode and highlights all text from Row 1, Column 1 to bottom",
-				icon = "md_bookmark",
-				action = select_all_in_copy_mode,
-			},
-			{
-				brief = "Select All Lines in Copy Mode (pin)",
-				doc = "Enters Copy Mode and highlights entire lines from Row 1 to bottom",
-				icon = "md_bookmark",
-				action = select_all_lines_in_copy_mode,
+				action = select_all,
 			},
 			-- Vim Mode
 			{
