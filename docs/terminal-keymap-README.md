@@ -9,7 +9,7 @@ Standardized keybindings, clipboard behaviors, and Vim navigation across **Kitty
 | Action | Shortcut | Ghostty | Kitty | Alacritty | WezTerm |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Copy on Select** | *Mouse highlight* | `copy-on-select = clipboard` | `copy_on_select clipboard` | `save_to_clipboard = true` | `CompleteSelection(...)` |
-| **Select All** | `Ctrl + Shift + A` | `select_all` | `launch --type=clipboard` | Vi Mode Macro | `select_all_and_copy` |
+| **Select All** | `Ctrl + Shift + A` | `select_all` | `launch --type=clipboard` | Vi Mode Macro | `select_all` |
 | **Vim Mode** | `Ctrl + Shift + Space`<br>`Ctrl + Shift + X` | Neovim scrollback | Neovim pager overlay | Native `ToggleViMode` | Native `ActivateCopyMode` |
 | **Copy** | `Ctrl + Shift + C`<br>`Ctrl + Insert` | `copy_to_clipboard:mixed` | `copy_to_clipboard` | `Copy` | `CopyTo("Clipboard")` |
 | **Paste** | `Ctrl + Shift + V` | `paste_from_clipboard` | `paste_from_clipboard` | `Paste` | `PasteFrom("Clipboard")` |
@@ -35,7 +35,7 @@ Instantly captures and copies the complete scrollback history into your system c
 - **Ghostty**: Visually highlights all terminal cells and triggers the clipboard copy.
 - **Kitty**: Uses `launch --type=clipboard --stdin-source=@screen_scrollback` to dump all buffer lines directly into the clipboard.
 - **Alacritty**: Automates a Vi mode macro (`ToggleViMode` ➔ `ScrollToTop` ➔ `ToggleLineSelection` ➔ `ScrollToBottom` ➔ `Copy`).
-- **WezTerm**: Executes a custom Lua callback extracting all scrollback rows and stripping trailing whitespace with toast notification feedback. Also supports visual selection in Copy Mode starting precisely from Row 1, Column 1 to the bottom line (`a` / `Ctrl+A` / `A` or via Command Palette).
+- **WezTerm**: Single unified, state-aware command (`Select All (pin)` in palette or `Ctrl + Shift + A`). Automatically detects pane state: in Copy Mode it highlights and copies from Row 1, Column 1 to the bottom end; in fullscreen TUI apps it copies the active viewport; in normal shells it selects all scrollback rows beyond the visible viewport (from Row 1 to bottom) and copies them to the Clipboard and Primary Selection with informative toast feedback.
 
 ### 3. Unified Vim Mode (`Ctrl + Shift + Space` / `Ctrl + Shift + X`)
 Activates modal keyboard navigation across all four terminals using two complementary architectures:
