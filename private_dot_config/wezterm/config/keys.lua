@@ -6,22 +6,69 @@ local M = {}
 function M.apply_to_config(config)
 	config.keys = config.keys or {}
 
-	-- Action: Copy entire scrollback to clipboard
+	-- Action: Copy entire scrollback to clipboard (with feedback and alt screen awareness)
 	local select_all_and_copy = wezterm.action_callback(function(window, pane)
+		local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
 		local dims = pane:get_dimensions()
-		local text = pane:get_lines_as_text(dims.scrollback_rows)
+		local lines_to_get = dims.scrollback_rows
+		local text = pane:get_lines_as_text(lines_to_get)
 		-- Strip trailing blank lines
 		text = text:gsub("%s+$", "")
 		window:copy_to_clipboard(text, "Clipboard")
 		window:copy_to_clipboard(text, "PrimarySelection")
+		if is_alt then
+			window:toast_notification("WezTerm", "Copied active viewport (fullscreen application active)", nil, 2500)
+		else
+			window:toast_notification(
+				"WezTerm",
+				string.format("Copied %d lines (Row 1 to bottom) to clipboard", lines_to_get),
+				nil,
+				2500
+			)
+		end
 	end)
 
-	-- Action: Visual select all in Copy Mode
+	-- Action: Visual select all in Copy Mode (Row 1, Column 1 to bottom end)
 	local select_all_in_copy_mode = act.Multiple({
 		act.ActivateCopyMode,
 		act.CopyMode("MoveToScrollbackTop"),
+		act.CopyMode("MoveToStartOfLine"),
 		act.CopyMode({ SetSelectionMode = "Cell" }),
 		act.CopyMode("MoveToScrollbackBottom"),
+		act.CopyMode("MoveToEndOfLineContent"),
+	})
+
+	-- Action: Visual select all lines in Copy Mode (Row 1 to bottom)
+	local select_all_lines_in_copy_mode = act.Multiple({
+		act.ActivateCopyMode,
+		act.CopyMode("MoveToScrollbackTop"),
+		act.CopyMode({ SetSelectionMode = "Line" }),
+		act.CopyMode("MoveToScrollbackBottom"),
+	})
+
+	-- Action: Scroll to Top (Row 1, Column 1) across normal mode and Copy Mode
+	local scroll_to_top = wezterm.action_callback(function(window, pane)
+		local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
+		if is_alt then
+			window:toast_notification("WezTerm", "Fullscreen app active (scrollback managed inside app)", nil, 2500)
+		end
+		window:perform_action(act.ScrollToTop, pane)
+		window:perform_action(act.CopyMode("MoveToScrollbackTop"), pane)
+		window:perform_action(act.CopyMode("MoveToStartOfLine"), pane)
+	end)
+
+	-- Action: Scroll to Bottom across normal mode and Copy Mode
+	local scroll_to_bottom = wezterm.action_callback(function(window, pane)
+		window:perform_action(act.ScrollToBottom, pane)
+		window:perform_action(act.CopyMode("MoveToScrollbackBottom"), pane)
+		window:perform_action(act.CopyMode("MoveToEndOfLineContent"), pane)
+	end)
+
+	-- Action: Dedicated entry to enter Copy Mode and jump directly to Row 1, Column 1
+	local scroll_to_top_in_copy_mode = act.Multiple({
+		act.ActivateCopyMode,
+		act.CopyMode("MoveToScrollbackTop"),
+		act.CopyMode("MoveToStartOfLine"),
 	})
 
 	-- Action: Toggle Auto-Wrap (DECAWM) in the terminal
@@ -105,17 +152,70 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "PageUp", mods = "CTRL|SHIFT", action = act.ScrollByPage(-1) })
 	table.insert(config.keys, { key = "PageDown", mods = "CTRL|SHIFT", action = act.ScrollByPage(1) })
 
-	-- Unified Boundary Scrolling
-	table.insert(config.keys, { key = "Home", mods = "SHIFT", action = act.ScrollToTop })
-	table.insert(config.keys, { key = "End", mods = "SHIFT", action = act.ScrollToBottom })
-	table.insert(config.keys, { key = "Home", mods = "CTRL|SHIFT", action = act.ScrollToTop })
-	table.insert(config.keys, { key = "End", mods = "CTRL|SHIFT", action = act.ScrollToBottom })
+	-- Unified Boundary Scrolling (handles normal viewport and Copy Mode cursor)
+	table.insert(config.keys, { key = "Home", mods = "SHIFT", action = scroll_to_top })
+	table.insert(config.keys, { key = "End", mods = "SHIFT", action = scroll_to_bottom })
+	table.insert(config.keys, { key = "Home", mods = "CTRL|SHIFT", action = scroll_to_top })
+	table.insert(config.keys, { key = "End", mods = "CTRL|SHIFT", action = scroll_to_bottom })
 
 	-- Unified Vim Mode (ActivateCopyMode)
 	table.insert(config.keys, { key = "Space", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "phys:Space", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "x", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "X", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
+
+	-- Setup Copy Mode key table without breaking default keybindings
+	local key_tables = {}
+	if wezterm.gui then
+		key_tables = wezterm.gui.default_key_tables()
+	end
+	key_tables.copy_mode = key_tables.copy_mode or {}
+
+	local move_to_top_col1 = act.Multiple({
+		act.CopyMode("MoveToScrollbackTop"),
+		act.CopyMode("MoveToStartOfLine"),
+	})
+	local move_to_bottom_end = act.Multiple({
+		act.CopyMode("MoveToScrollbackBottom"),
+		act.CopyMode("MoveToEndOfLineContent"),
+	})
+	local select_all_cells = act.Multiple({
+		act.CopyMode("MoveToScrollbackTop"),
+		act.CopyMode("MoveToStartOfLine"),
+		act.CopyMode({ SetSelectionMode = "Cell" }),
+		act.CopyMode("MoveToScrollbackBottom"),
+		act.CopyMode("MoveToEndOfLineContent"),
+	})
+	local select_all_lines = act.Multiple({
+		act.CopyMode("MoveToScrollbackTop"),
+		act.CopyMode({ SetSelectionMode = "Line" }),
+		act.CopyMode("MoveToScrollbackBottom"),
+	})
+
+	-- Copy Mode: Jump to Row 1, Column 1
+	table.insert(key_tables.copy_mode, { key = "Home", mods = "NONE", action = move_to_top_col1 })
+	table.insert(key_tables.copy_mode, { key = "Home", mods = "SHIFT", action = move_to_top_col1 })
+	table.insert(key_tables.copy_mode, { key = "Home", mods = "CTRL", action = move_to_top_col1 })
+	table.insert(key_tables.copy_mode, { key = "Home", mods = "CTRL|SHIFT", action = move_to_top_col1 })
+	table.insert(key_tables.copy_mode, { key = "g", mods = "NONE", action = move_to_top_col1 })
+
+	-- Copy Mode: Jump to Bottom, End of Line
+	table.insert(key_tables.copy_mode, { key = "End", mods = "NONE", action = move_to_bottom_end })
+	table.insert(key_tables.copy_mode, { key = "End", mods = "SHIFT", action = move_to_bottom_end })
+	table.insert(key_tables.copy_mode, { key = "End", mods = "CTRL", action = move_to_bottom_end })
+	table.insert(key_tables.copy_mode, { key = "End", mods = "CTRL|SHIFT", action = move_to_bottom_end })
+	table.insert(key_tables.copy_mode, { key = "G", mods = "NONE", action = move_to_bottom_end })
+	table.insert(key_tables.copy_mode, { key = "G", mods = "SHIFT", action = move_to_bottom_end })
+
+	-- Copy Mode: Select All shortcuts (Ctrl+A, Ctrl+Shift+A, a, A)
+	table.insert(key_tables.copy_mode, { key = "a", mods = "CTRL", action = select_all_cells })
+	table.insert(key_tables.copy_mode, { key = "a", mods = "CTRL|SHIFT", action = select_all_cells })
+	table.insert(key_tables.copy_mode, { key = "A", mods = "CTRL|SHIFT", action = select_all_cells })
+	table.insert(key_tables.copy_mode, { key = "a", mods = "NONE", action = select_all_cells })
+	table.insert(key_tables.copy_mode, { key = "A", mods = "NONE", action = select_all_lines })
+	table.insert(key_tables.copy_mode, { key = "A", mods = "SHIFT", action = select_all_lines })
+
+	config.key_tables = key_tables
 
 	-- Action: Smart Paste (paste whichever clipboard has the latest data)
 	local last_cb_content = ""
@@ -217,15 +317,21 @@ function M.apply_to_config(config)
 			-- All Scroll Variants
 			{
 				brief = "Scroll to Top (pin)",
-				doc = "Scroll all the way to the top of the scrollback buffer",
+				doc = "Scroll all the way to the top of the scrollback buffer (Row 1, Column 1)",
 				icon = "md_bookmark",
-				action = act.ScrollToTop,
+				action = scroll_to_top,
+			},
+			{
+				brief = "Scroll to Top in Copy Mode (pin)",
+				doc = "Enters Copy Mode and jumps directly to Row 1, Column 1",
+				icon = "md_bookmark",
+				action = scroll_to_top_in_copy_mode,
 			},
 			{
 				brief = "Scroll to Bottom (pin)",
 				doc = "Scroll all the way to the bottom of the scrollback buffer",
 				icon = "md_bookmark",
-				action = act.ScrollToBottom,
+				action = scroll_to_bottom,
 			},
 			{
 				brief = "Scroll Page Up (pin)",
@@ -278,15 +384,21 @@ function M.apply_to_config(config)
 			-- Select All (uses existing select_all actions)
 			{
 				brief = "Select All (pin)",
-				doc = "Copies all text from current pane's scrollback history to clipboard",
+				doc = "Copies all text from current pane's scrollback history (Row 1 to bottom) to clipboard",
 				icon = "md_bookmark",
 				action = select_all_and_copy,
 			},
 			{
 				brief = "Select All in Copy Mode (pin)",
-				doc = "Enters Copy Mode and highlights all text from top to bottom",
+				doc = "Enters Copy Mode and highlights all text from Row 1, Column 1 to bottom",
 				icon = "md_bookmark",
 				action = select_all_in_copy_mode,
+			},
+			{
+				brief = "Select All Lines in Copy Mode (pin)",
+				doc = "Enters Copy Mode and highlights entire lines from Row 1 to bottom",
+				icon = "md_bookmark",
+				action = select_all_lines_in_copy_mode,
 			},
 			-- Vim Mode
 			{
