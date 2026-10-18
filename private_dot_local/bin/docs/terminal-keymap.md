@@ -35,14 +35,14 @@ Instantly captures and copies the complete scrollback history into your system c
 - **Ghostty**: Visually highlights all terminal cells and triggers the clipboard copy.
 - **Kitty**: Uses `launch --type=clipboard --stdin-source=@screen_scrollback` to dump all buffer lines directly into the clipboard.
 - **Alacritty**: Automates a Vi mode macro (`ToggleViMode` ➔ `ScrollToTop` ➔ `ToggleLineSelection` ➔ `ScrollToBottom` ➔ `Copy`).
-- **WezTerm**: Executes a custom Lua callback extracting all scrollback rows and stripping trailing whitespace.
+- **WezTerm**: Executes a custom Lua callback extracting all scrollback rows and stripping trailing whitespace with toast notification feedback. Also supports visual selection in Copy Mode starting precisely from Row 1, Column 1 to the bottom line (`a` / `Ctrl+A` / `A` or via Command Palette).
 
 ### 3. Unified Vim Mode (`Ctrl + Shift + Space` / `Ctrl + Shift + X`)
 Activates modal keyboard navigation across all four terminals using two complementary architectures:
 - **Native In-Terminal Vi Mode (Alacritty & WezTerm)**:
   - Cursor switches to an interactive rectangular cell.
-  - Move using `h`, `j`, `k`, `l`, `w`, `b`, `0`, `$`, `Ctrl+u` (half page up), `Ctrl+d` (half page down), `g` (top), `G` (bottom).
-  - Select text using `v` (character selection), `V` (line selection), or `Ctrl+v` (block selection).
+  - Move using `h`, `j`, `k`, `l`, `w`, `b`, `0`, `$`, `Ctrl+u` (half page up), `Ctrl+d` (half page down), `g` / `Home` / `Shift+Home` (jump directly to Row 1, Column 1), `G` / `End` / `Shift+End` (jump to bottom end of line).
+  - Select text using `v` (character selection), `V` (line selection), `Ctrl+v` (block selection), or `a` / `Ctrl+A` (select all cells from Row 1, Column 1 to bottom end), or `A` (select all lines).
   - Press `y` to yank to clipboard and exit.
   - Search using `/` (forward) or `?` (backward), stepping with `n`/`N`.
   - Exit with `i`, `Escape`, or `q`.
