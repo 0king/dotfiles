@@ -37,6 +37,7 @@ ZSH_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
 HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
 HISTSIZE=20000
 SAVEHIST=20000
+setopt HIST_IGNORE_SPACE
 
 # Ensure history directory exists
 [[ -d "${HISTFILE:h}" ]] || mkdir -p "${HISTFILE:h}"
