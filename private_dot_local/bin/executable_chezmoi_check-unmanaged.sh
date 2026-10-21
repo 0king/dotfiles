@@ -190,9 +190,9 @@ main() {
         exit 0
     fi
 
-    # Query current unmanaged files from chezmoi
+    # Query current unmanaged files and directories from chezmoi
     local -a raw_unmanaged=()
-    mapfile -t raw_unmanaged < <(command chezmoi unmanaged --include=files,symlinks "${SCAN_DIRS[@]}" 2>/dev/null || true)
+    mapfile -t raw_unmanaged < <(command chezmoi unmanaged --include=files,dirs,symlinks "${SCAN_DIRS[@]}" 2>/dev/null || true)
 
     local -A current_unmanaged_map=()
     for item in "${raw_unmanaged[@]}"; do
@@ -275,7 +275,7 @@ main() {
     mapfile -t files_to_prompt < <(for f in "${files_to_prompt[@]}"; do echo "$f"; done | sort)
 
     echo ""
-    echo -e "${YELLOW}${BOLD}❓ New untracked file(s) in managed directories (${count}):${RESET}"
+    echo -e "${YELLOW}${BOLD}❓ New untracked item(s) in managed directories (${count}):${RESET}"
     for f in "${files_to_prompt[@]}"; do
         echo -e "   ${CYAN}?${RESET}  ~/${f}"
     done

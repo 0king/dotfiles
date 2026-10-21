@@ -1,6 +1,6 @@
 # chezmoi_check-unmanaged.sh
 
-An interactive utility and `chezmoi status` companion that detects and alerts about **newly added** unmanaged files in directories already tracked by chezmoi (e.g. `~/.local/bin`, `~/.config/nvim`, `~/.config/zsh`, etc.), prompting whether they should be tracked in chezmoi or ignored.
+An interactive utility and `chezmoi status` companion that detects and alerts about **newly added** unmanaged files and directories in locations already tracked by chezmoi (e.g. `~/.local/bin`, `~/.config/nvim`, `~/.config/ai/skills`, etc.), prompting whether they should be tracked in chezmoi or ignored.
 
 ### Background & Problem
 
