@@ -48,3 +48,22 @@ The configuration integrates [legendary.nvim](https://github.com/mrjones2014/leg
   - **Ghostty & Windows Terminal**: Frequently bind `Ctrl + Shift + P` to terminal-level actions.
 - Using **`Alt + X`** (the classic universal command launcher shortcut) and **`<leader>p`** ensures zero collisions with terminal emulator shortcuts or shell environments, preserves all default terminal behaviors, and provides instant access even while actively typing in Insert mode.
 
+---
+
+## Completion & Prose Editing (`lua/plugins/completion.lua`)
+
+Automatic completion popups are disabled for plain text and markdown files (`.txt`, `.md`) to maintain a clean writing experience without distracting popups during prose editing.
+
+### Behavior Summary
+
+| Filetype | Extension | Auto Popup while typing | Manual Trigger (`<C-space>`) |
+| :--- | :--- | :--- | :--- |
+| `text`, `plaintext` | `.txt` | **Disabled** | Available |
+| `markdown` | `.md`, `.markdown` | **Disabled** | Available |
+| Code / Programming Languages | `.lua`, `.py`, `.rs`, `.ts`, etc. | **Enabled** | Available |
+
+### Implementation Details
+- Configures `saghen/blink.cmp` (`completion.menu.auto_show`) to evaluate buffer filetype dynamically.
+- Includes a fallback configuration for `hrsh7th/nvim-cmp` (`autocomplete = false`) should the `nvim-cmp` extra ever be activated.
+- Preserves manual trigger functionality (`<C-space>`) across all buffers.
+
