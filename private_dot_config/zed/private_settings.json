@@ -7,6 +7,19 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "use_smartcase_search": true,
+  "scrollbar": {
+    "show": "always"
+  },
+  "scroll_beyond_last_line": "vertical_scroll_margin",
+  "which_key": {
+    "delay_ms": 500,
+    "enabled": true
+  },
+  "default_open_behavior": "new_window",
+  "reveal_if_open": true,
+  "cli_default_open_behavior": "new_window",
+  "redact_private_values": true,
   "relative_line_numbers": "enabled",
   "session": {
     "trust_all_worktrees": true
