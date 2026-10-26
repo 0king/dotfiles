@@ -7,6 +7,15 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "languages": {
+    "Swift": {
+      "enable_language_server": false
+    }
+  },
+  "proxy": "",
+  "title_bar": {
+    "show_branch_status_icon": true
+  },
   "use_smartcase_search": true,
   "scrollbar": {
     "show": "always"
@@ -62,7 +71,7 @@
   "vim_mode": true,
   "base_keymap": "JetBrains",
   "ui_font_size": 16,
-  "buffer_font_size": 15,
+  "buffer_font_size": 14.0,
   "theme": {
     "mode": "system",
     "light": "One Light",
