@@ -118,6 +118,25 @@ function M.apply_to_config(config)
 		end
 	end)
 
+	-- Action: View current scrollback with continuous line numbers down the left margin
+	local view_scrollback_numbered = wezterm.action_callback(function(window, pane)
+		local dims = pane:get_dimensions()
+		local text = pane:get_lines_as_text(dims.scrollback_rows)
+		local tmp = os.tmpname()
+		local f = io.open(tmp, "w+")
+		if f then
+			f:write(text)
+			f:flush()
+			f:close()
+			window:perform_action(
+				act.SpawnCommandInNewTab({
+					args = { "less", "-N", "-S", "+G", tmp },
+				}),
+				pane
+			)
+		end
+	end)
+
 	-- Shortcut: Ctrl + Shift + A (Select All & Copy)
 	table.insert(config.keys, {
 		key = "a",
@@ -419,6 +438,12 @@ function M.apply_to_config(config)
 				doc = "Opens scrollback in a new tab without wrapping, allowing horizontal scrolling",
 				icon = "md_bookmark",
 				action = view_scrollback_unwrapped,
+			},
+			{
+				brief = "View Scrollback with Line Numbers (pin)",
+				doc = "Opens scrollback in a new tab with continuous line numbers down the left margin (less -N -S)",
+				icon = "md_format_list_numbered",
+				action = view_scrollback_numbered,
 			},
 		}
 	end)
