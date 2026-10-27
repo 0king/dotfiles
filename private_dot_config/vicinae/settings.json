@@ -33,6 +33,7 @@
       "floating_status_bar": false
    },
    "favorites": [
+      "@marcjulian/store.raycast.obsidian:searchNoteCommand",
       "clipboard:history",
       "core:search-emojis"
    ],
@@ -48,6 +49,11 @@
             "connectionToggleable": true
          }
       },
+      "@HarshNarayanJha/store.vicinae.timer": {
+         "preferences": {
+            "presets": "5m Tea, 25m Pomodoro"
+         }
+      },
       "@dagimg-dot/store.vicinae.gnome-settings": {
          "entrypoints": {
             "online-accounts": {
@@ -60,6 +66,46 @@
                "enabled": false
             },
             "wacom": {
+               "enabled": false
+            }
+         }
+      },
+      "@fbosch/store.vicinae.flathub-search": {
+         "enabled": false
+      },
+      "@marcjulian/store.raycast.obsidian": {
+         "preferences": {
+            "configFileName": ".obsidian"
+         },
+         "entrypoints": {
+            "appendTaskCommand": {
+               "enabled": false
+            },
+            "dailyNoteAppendCommand": {
+               "enabled": false
+            },
+            "dailyNoteCommand": {
+               "enabled": false
+            },
+            "openWorkspaceCommand": {
+               "enabled": false
+            },
+            "quickCaptureCommand": {
+               "enabled": false
+            },
+            "randomNoteCommand": {
+               "enabled": false
+            },
+            "runActionCommand": {
+               "enabled": false
+            },
+            "searchMedia": {
+               "enabled": false
+            },
+            "searchNoteCommand": {
+               "alias": "f"
+            },
+            "starredNotesCommand": {
                "enabled": false
             }
          }
