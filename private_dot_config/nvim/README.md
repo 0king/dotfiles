@@ -52,18 +52,19 @@ The configuration integrates [legendary.nvim](https://github.com/mrjones2014/leg
 
 ## Completion & Prose Editing (`lua/plugins/completion.lua`)
 
-Automatic completion popups are disabled for plain text and markdown files (`.txt`, `.md`) to maintain a clean writing experience without distracting popups during prose editing.
+Automatic completion popups and inline hint text (ghost text) are disabled for plain text and markdown files (`.txt`, `.md`) to maintain a clean writing experience without distracting popups or accidental completions on Enter during prose editing.
 
 ### Behavior Summary
 
-| Filetype | Extension | Auto Popup while typing | Manual Trigger (`<C-space>`) |
-| :--- | :--- | :--- | :--- |
-| `text`, `plaintext` | `.txt` | **Disabled** | Available |
-| `markdown` | `.md`, `.markdown` | **Disabled** | Available |
-| Code / Programming Languages | `.lua`, `.py`, `.rs`, `.ts`, etc. | **Enabled** | Available |
+| Filetype | Extension | Auto Popup & Ghost/Hint Text | Enter (`<CR>`) Behavior | Manual Trigger (`<C-space>`) |
+| :--- | :--- | :--- | :--- | :--- |
+| `text`, `plaintext` | `.txt` | **Disabled** | Normal newline (no accept) | Available |
+| `markdown` | `.md`, `.markdown` | **Disabled** | Normal newline (no accept) | Available |
+| Code / Programming Languages | `.lua`, `.py`, `.rs`, `.ts`, etc. | **Enabled** | Accepts completion / newline | Available |
 
 ### Implementation Details
-- Configures `saghen/blink.cmp` (`completion.menu.auto_show`) to evaluate buffer filetype dynamically.
+- Configures `saghen/blink.cmp` (`completion.menu.auto_show` and `completion.ghost_text.enabled`) to evaluate buffer filetype dynamically.
+- Disables inline ghost text in prose files, ensuring Enter (`<CR>`) acts as a standard newline rather than accepting previewed completions.
 - Includes a fallback configuration for `hrsh7th/nvim-cmp` (`autocomplete = false`) should the `nvim-cmp` extra ever be activated.
 - Preserves manual trigger functionality (`<C-space>`) across all buffers.
 
