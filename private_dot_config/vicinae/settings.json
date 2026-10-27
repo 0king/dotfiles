@@ -244,6 +244,7 @@
          "enabled": true
       },
       "wm": {
+         "enabled": false,
          "entrypoints": {
             "switch-windows": {
                "alias": "w"
