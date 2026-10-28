@@ -116,6 +116,12 @@
             }
          }
       },
+      "@sameoldlab/store.vicinae.fuzzy-files": {
+         "enabled": false
+      },
+      "@skifli/store.vicinae.protonvpn": {
+         "enabled": false
+      },
       "clipboard": {
          "preferences": {
             "eraseOnStartup": false,
