@@ -33,9 +33,15 @@
       "floating_status_bar": false
    },
    "favorites": [
-      "@marcjulian/store.raycast.obsidian:searchNoteCommand",
-      "clipboard:history",
-      "core:search-emojis"
+      "applications:firefox-profile-1",
+      "@aurelleb/store.vicinae.chromium-bookmarks:search-bookmarks",
+      "applications:neovide",
+      "core:search-emojis",
+      "applications:obsidian-technotesvault",
+      "applications:brave-origin-profile-1",
+      "applications:wezterm",
+      "files:search",
+      "@marcjulian/store.raycast.obsidian:searchNoteCommand"
    ],
    "fallbacks": [
       "shortcuts:sct-f62d4d74a866",

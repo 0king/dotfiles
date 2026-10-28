@@ -6,6 +6,57 @@ local M = {}
 function M.apply_to_config(config)
 	config.keys = config.keys or {}
 
+	-- In-window subtle notification system
+	-- Displays messages directly in the window title bar without triggering OS desktop toasts
+	local active_notification = nil
+	local notification_token = 0
+
+	wezterm.on("format-window-title", function(tab, pane, tabs, panes, config)
+		if active_notification then
+			return active_notification
+		end
+		local title = (pane and pane.title) or (tab and tab.active_pane and tab.active_pane.title) or "WezTerm"
+		if title == "" then
+			title = "WezTerm"
+		end
+		return title
+	end)
+
+	local function notify(window, pane, message, duration_secs)
+		duration_secs = duration_secs or 2.5
+		notification_token = notification_token + 1
+		local current_token = notification_token
+		active_notification = "📋 " .. message
+
+		-- Trigger an immediate title bar refresh
+		local overrides = window:get_config_overrides() or {}
+		overrides._notify_token = current_token
+		window:set_config_overrides(overrides)
+
+		-- Also update right_status if tab bar happens to be rendered (e.g. multi-tab)
+		pcall(function()
+			window:set_right_status(wezterm.format({
+				{ Attribute = { Intensity = "Bold" } },
+				{ Background = { Color = "#2e3440" } },
+				{ Foreground = { Color = "#88c0d0" } },
+				{ Text = "  " .. active_notification .. "  " },
+			}))
+		end)
+
+		-- Auto-clear after duration_secs
+		wezterm.time.call_after(duration_secs, function()
+			if notification_token == current_token then
+				active_notification = nil
+				local o = window:get_config_overrides() or {}
+				o._notify_token = nil
+				window:set_config_overrides(o)
+				pcall(function()
+					window:set_right_status("")
+				end)
+			end
+		end)
+	end
+
 	-- Action: Single unified Select All command
 	-- Identifies pane state, selects everything beyond the viewport (from Row 1, Column 1 to bottom), and copies it
 	local select_all = wezterm.action_callback(function(window, pane)
@@ -39,27 +90,27 @@ function M.apply_to_config(config)
 			window:copy_to_clipboard(text, "PrimarySelection")
 		end
 
-		-- Provide clear, state-aware feedback
+		-- Provide clear, subtle in-window feedback
 		if is_alt then
-			window:toast_notification(
-				"WezTerm",
+			notify(
+				window,
+				pane,
 				string.format("Copied active viewport (%d lines - fullscreen app active)", viewport_lines),
-				nil,
-				2500
+				2.5
 			)
 		elseif beyond_viewport > 0 then
-			window:toast_notification(
-				"WezTerm",
+			notify(
+				window,
+				pane,
 				string.format("Copied all %d lines (%d lines beyond viewport) from Row 1", total_lines, beyond_viewport),
-				nil,
-				2500
+				2.5
 			)
 		else
-			window:toast_notification(
-				"WezTerm",
+			notify(
+				window,
+				pane,
 				string.format("Copied all %d lines from Row 1 to clipboard", total_lines),
-				nil,
-				2500
+				2.5
 			)
 		end
 	end)
@@ -68,7 +119,7 @@ function M.apply_to_config(config)
 	local scroll_to_top = wezterm.action_callback(function(window, pane)
 		local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
 		if is_alt then
-			window:toast_notification("WezTerm", "Fullscreen app active (scrollback managed inside app)", nil, 2500)
+			notify(window, pane, "Fullscreen app active (scrollback managed inside app)", 2.5)
 		end
 		window:perform_action(act.ScrollToTop, pane)
 		window:perform_action(act.CopyMode("MoveToScrollbackTop"), pane)
@@ -91,11 +142,11 @@ function M.apply_to_config(config)
 		if is_wrapped then
 			pane:send_text("tput rmam\r")
 			pane_wrap_state[pane_id] = false
-			window:toast_notification("WezTerm", "Line wrap disabled (tput rmam)", nil, 2000)
+			notify(window, pane, "Line wrap disabled (tput rmam)", 2.0)
 		else
 			pane:send_text("tput smam\r")
 			pane_wrap_state[pane_id] = true
-			window:toast_notification("WezTerm", "Line wrap enabled (tput smam)", nil, 2000)
+			notify(window, pane, "Line wrap enabled (tput smam)", 2.0)
 		end
 	end)
 

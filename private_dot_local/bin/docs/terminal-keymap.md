@@ -35,7 +35,7 @@ Instantly captures and copies the complete scrollback history into your system c
 - **Ghostty**: Visually highlights all terminal cells and triggers the clipboard copy.
 - **Kitty**: Uses `launch --type=clipboard --stdin-source=@screen_scrollback` to dump all buffer lines directly into the clipboard.
 - **Alacritty**: Automates a Vi mode macro (`ToggleViMode` ➔ `ScrollToTop` ➔ `ToggleLineSelection` ➔ `ScrollToBottom` ➔ `Copy`).
-- **WezTerm**: Single unified, state-aware command (`Select All (pin)` in palette or `Ctrl + Shift + A`). Automatically detects pane state: in Copy Mode it highlights and copies from Row 1, Column 1 to the bottom end; in fullscreen TUI apps it copies the active viewport; in normal shells it selects all scrollback rows beyond the visible viewport (from Row 1 to bottom) and copies them to the Clipboard and Primary Selection with informative toast feedback.
+- **WezTerm**: Single unified, state-aware command (`Select All (pin)` in palette or `Ctrl + Shift + A`). Automatically detects pane state: in Copy Mode it highlights and copies from Row 1, Column 1 to the bottom end; in fullscreen TUI apps it copies the active viewport; in normal shells it selects all scrollback rows beyond the visible viewport (from Row 1 to bottom) and copies them to the Clipboard and Primary Selection with subtle in-window title bar notification feedback (no desktop toast popups).
 
 ### 3. Unified Vim Mode (`Ctrl + Shift + Space` / `Ctrl + Shift + X`)
 Activates modal keyboard navigation across all four terminals using two complementary architectures:
