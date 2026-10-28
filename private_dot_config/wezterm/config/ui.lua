@@ -43,6 +43,9 @@ function M.apply_to_config(config)
 		top = 8,
 		bottom = 8,
 	}
+
+	-- Command palette styling
+	config.command_palette_bg_color = "#000000"
 end
 
 return M
