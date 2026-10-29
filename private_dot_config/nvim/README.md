@@ -68,3 +68,16 @@ Automatic completion popups and inline hint text (ghost text) are disabled for p
 - Includes a fallback configuration for `hrsh7th/nvim-cmp` (`autocomplete = false`) should the `nvim-cmp` extra ever be activated.
 - Preserves manual trigger functionality (`<C-space>`) across all buffers.
 
+---
+
+## Statusline Line Count (`lua/plugins/lualine.lua`)
+
+Replaces LazyVim's default clock/time chip in section `lualine_z` (bottom right) with the active buffer's total line count.
+
+### Display Details
+
+- **Icon**: `` (Nerd Font Powerline line number symbol `U+E0A1`).
+- **Dynamic Calculation**: Retrieves the buffer line count dynamically via `vim.api.nvim_buf_line_count(0)`.
+- **Alternative Format**: Can be customized to `#L` or other icons (e.g., ``) by updating the `icon` attribute in `lua/plugins/lualine.lua`.
+
+
