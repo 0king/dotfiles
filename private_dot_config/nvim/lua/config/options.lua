@@ -5,3 +5,6 @@
 -- Prevent delete/cut/change (d, c, x) from overwriting system clipboard
 vim.opt.clipboard = ""
 
+-- Allow cursor to wrap to previous/next line with h, l, <Left>, and <Right>
+vim.opt.whichwrap:append("<,>,[,],h,l")
+
