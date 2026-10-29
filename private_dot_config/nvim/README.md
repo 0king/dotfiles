@@ -48,6 +48,21 @@ The configuration integrates [legendary.nvim](https://github.com/mrjones2014/leg
   - **Ghostty & Windows Terminal**: Frequently bind `Ctrl + Shift + P` to terminal-level actions.
 - Using **`Alt + X`** (the classic universal command launcher shortcut) and **`<leader>p`** ensures zero collisions with terminal emulator shortcuts or shell environments, preserves all default terminal behaviors, and provides instant access even while actively typing in Insert mode.
 
+### Popup Sizing (`lua/plugins/picker.lua`)
+
+`legendary.nvim` renders through `vim.ui.select()`, which LazyVim delegates to the `snacks.nvim` picker. A dedicated `legendary` picker layout makes the palette scale with the editor instead of the default fixed size:
+
+| Setting | Default snacks `select` | Legendary palette |
+| :--- | :--- | :--- |
+| Width | `50%` of editor, capped at `100` columns | `80%` of editor width |
+| Minimum width | `80` columns | `80` columns |
+| Height | `40%` of editor | `60%` of editor height |
+| Minimum height | `2` lines | `10` lines |
+
+- **Responsive**: `width = 0.8` / `height = 0.6` are fractions of the window, so the palette grows and shrinks with the editor. No `max_width` is set, so it is no longer capped at `100` columns on wide displays.
+- **Scoped**: only `vim.ui.select()` calls with `kind = "legendary.nvim"` use this layout; other selects keep the default sizing.
+- To taste, change the `width` / `height` fractions in `lua/plugins/picker.lua`.
+
 ---
 
 ## Completion & Prose Editing (`lua/plugins/completion.lua`)
