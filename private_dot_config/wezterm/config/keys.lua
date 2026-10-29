@@ -102,16 +102,11 @@ function M.apply_to_config(config)
 			notify(
 				window,
 				pane,
-				string.format("Copied all %d lines (%d lines beyond viewport) from Row 1", total_lines, beyond_viewport),
+				string.format("Copied all (%d lines beyond viewport)", total_lines, beyond_viewport),
 				2.5
 			)
 		else
-			notify(
-				window,
-				pane,
-				string.format("Copied all %d lines from Row 1 to clipboard", total_lines),
-				2.5
-			)
+			notify(window, pane, string.format("Copied all %d lines from Row 1", total_lines), 2.5)
 		end
 	end)
 
@@ -119,7 +114,7 @@ function M.apply_to_config(config)
 	local scroll_to_top = wezterm.action_callback(function(window, pane)
 		local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
 		if is_alt then
-			notify(window, pane, "Fullscreen app active (scrollback managed inside app)", 2.5)
+			notify(window, pane, "NB: scrollback managed inside app", 2.5)
 		end
 		window:perform_action(act.ScrollToTop, pane)
 		window:perform_action(act.CopyMode("MoveToScrollbackTop"), pane)
@@ -377,7 +372,7 @@ function M.apply_to_config(config)
 			-- Pane - All Select
 			{
 				brief = "Pane Select (pin)",
-				doc = "Show letter overlay across all panes to select and jump to any pane",
+				doc = "Show letter overlay across all panes to selecte",
 				icon = "md_bookmark",
 				action = act.PaneSelect({ mode = "Activate" }),
 			},
@@ -398,13 +393,13 @@ function M.apply_to_config(config)
 			-- All Scroll Variants
 			{
 				brief = "Scroll to Top (pin)",
-				doc = "Scroll all the way to the top of the scrollback buffer (Row 1, Column 1)",
+				doc = "Scroll all the way to the top (Row 1, Column 1)",
 				icon = "md_bookmark",
 				action = scroll_to_top,
 			},
 			{
 				brief = "Scroll to Bottom (pin)",
-				doc = "Scroll all the way to the bottom of the scrollback buffer",
+				doc = "Scroll all the way to the bottom",
 				icon = "md_bookmark",
 				action = scroll_to_bottom,
 			},
@@ -459,40 +454,40 @@ function M.apply_to_config(config)
 			-- Select All (single unified command)
 			{
 				brief = "Select All (pin)",
-				doc = "Selects and copies entire scrollback history beyond the viewport (Row 1, Column 1 to bottom) to clipboard",
+				doc = "Selects and copies entire scrollback history",
 				icon = "md_bookmark",
 				action = select_all,
 			},
 			-- Vim Mode
 			{
 				brief = "Vim Mode (pin)",
-				doc = "Enter modal copy mode with Vim keybindings (hjkl navigation, v/V to select, y to copy)",
+				doc = "Enter modal copy mode with Vim",
 				icon = "md_bookmark",
 				action = act.ActivateCopyMode,
 			},
 			-- Highlight Mode
 			{
 				brief = "Highlight Mode (pin)",
-				doc = "Highlight URLs, paths, and git hashes with jump hints for one-key copying",
+				doc = "Highlight URLs, paths, and git hashes",
 				icon = "md_bookmark",
 				action = act.QuickSelect,
 			},
 			-- Existing Helper Actions
 			{
 				brief = "Toggle Line Wrap (pin)",
-				doc = "Toggles terminal auto-wrap so lines truncate at margin instead of wrapping",
+				doc = "Toggles terminal auto-wrap",
 				icon = "md_bookmark",
 				action = toggle_autowrap,
 			},
 			{
 				brief = "View Scrollback Unwrapped (pin)",
-				doc = "Opens scrollback in a new tab without wrapping, allowing horizontal scrolling",
+				doc = "Opens scrollback in a new tab without wrapping",
 				icon = "md_bookmark",
 				action = view_scrollback_unwrapped,
 			},
 			{
 				brief = "View Scrollback with Line Numbers (pin)",
-				doc = "Opens scrollback in a new tab with continuous line numbers down the left margin (less -N -S)",
+				doc = "Opens scrollback in a new tab with line numbers",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
 			},
