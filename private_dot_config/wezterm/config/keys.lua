@@ -281,9 +281,9 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "x", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "X", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 
-	-- Unified Scrollback Pager in Neovim (Ctrl + Shift + H, matching Kitty show_scrollback)
-	table.insert(config.keys, { key = "h", mods = "CTRL|SHIFT", action = view_scrollback_pager })
-	table.insert(config.keys, { key = "H", mods = "CTRL|SHIFT", action = view_scrollback_pager })
+	-- Unified Scrollback Pager with Line Numbers in Neovim (Ctrl + Shift + H)
+	table.insert(config.keys, { key = "h", mods = "CTRL|SHIFT", action = view_scrollback_numbered })
+	table.insert(config.keys, { key = "H", mods = "CTRL|SHIFT", action = view_scrollback_numbered })
 
 	-- Setup Copy Mode key table without breaking default keybindings
 	local key_tables = {}
