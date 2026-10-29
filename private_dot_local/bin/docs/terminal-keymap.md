@@ -49,7 +49,7 @@ Activates modal keyboard navigation across all four terminals using two compleme
   - Exit with `i`, `Escape`, or `q`.
 - **Neovim Pager Integration (Kitty, Ghostty & WezTerm)**:
   - Terminal scrollback opens inside an overlay window or dedicated tab running **real Neovim** (`nvim`) with full ANSI color support.
-  - In WezTerm, press `Ctrl + Shift + H` or trigger `Open Scrollback in Pager (pin)` from the Command Palette (`Ctrl + Shift + P`).
+  - In WezTerm, press `Ctrl + Shift + H` or trigger `Open Scrollback with Line Numbers (pin) (q=quit)` from the Command Palette (`Ctrl + Shift + P`).
   - Provides full syntax highlighting, Neovim plugins, text objects, and clipboard registers (`+`).
   - Press `q` or `:q` to dismiss the pager and immediately return to your terminal prompt.
 
