@@ -25,6 +25,53 @@ return {
           auto_register = true,
         },
       },
+      commands = {
+        {
+          ":ToggleWrap",
+          function()
+            if Snacks and Snacks.toggle then
+              Snacks.toggle.option("wrap", { name = "Wrap" }):toggle()
+            else
+              vim.wo.wrap = not vim.wo.wrap
+              vim.notify("Wrap " .. (vim.wo.wrap and "enabled" or "disabled"), vim.log.levels.INFO, { title = "Option" })
+            end
+          end,
+          description = "Toggle word wrap",
+          keywords = { "wrap", "word wrap", "line wrap", "soft wrap", "toggle" },
+          category = "UI",
+          opts = { force = true },
+        },
+        {
+          ":ToggleWordWrap",
+          function()
+            if Snacks and Snacks.toggle then
+              Snacks.toggle.option("wrap", { name = "Wrap" }):toggle()
+            else
+              vim.wo.wrap = not vim.wo.wrap
+              vim.notify("Wrap " .. (vim.wo.wrap and "enabled" or "disabled"), vim.log.levels.INFO, { title = "Option" })
+            end
+          end,
+          description = "Toggle word wrap",
+          keywords = { "wrap", "word wrap", "line wrap", "soft wrap", "toggle" },
+          category = "UI",
+          opts = { force = true },
+        },
+        {
+          ":WrapToggle",
+          function()
+            if Snacks and Snacks.toggle then
+              Snacks.toggle.option("wrap", { name = "Wrap" }):toggle()
+            else
+              vim.wo.wrap = not vim.wo.wrap
+              vim.notify("Wrap " .. (vim.wo.wrap and "enabled" or "disabled"), vim.log.levels.INFO, { title = "Option" })
+            end
+          end,
+          description = "Toggle word wrap",
+          keywords = { "wrap", "word wrap", "line wrap", "soft wrap", "toggle" },
+          category = "UI",
+          opts = { force = true },
+        },
+      },
     },
   },
 }

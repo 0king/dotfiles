@@ -32,4 +32,19 @@ vim.keymap.set("n", "C", function()
   return vim.v.register == '"' and '"+D' or "D"
 end, { expr = true, desc = "Cut to end of line to clipboard" })
 
+-- Expose word wrap toggle to command prompts (:ToggleWrap, :ToggleWordWrap, :WrapToggle)
+-- Note: LazyVim also binds <leader>uw to toggle wrap via Snacks.
+local function toggle_wrap()
+  if Snacks and Snacks.toggle then
+    Snacks.toggle.option("wrap", { name = "Wrap" }):toggle()
+  else
+    vim.wo.wrap = not vim.wo.wrap
+    vim.notify("Wrap " .. (vim.wo.wrap and "enabled" or "disabled"), vim.log.levels.INFO, { title = "Option" })
+  end
+end
+
+for _, cmd in ipairs({ "ToggleWrap", "ToggleWordWrap", "WrapToggle" }) do
+  vim.api.nvim_create_user_command(cmd, toggle_wrap, { desc = "Toggle word wrap", force = true })
+end
+
 
