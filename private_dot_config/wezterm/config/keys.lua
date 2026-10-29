@@ -524,15 +524,15 @@ function M.apply_to_config(config)
 				icon = "md_bookmark",
 				action = toggle_autowrap,
 			},
-			{
-				brief = "Open Scrollback in Pager (pin)",
-				doc = "Opens scrollback buffer with ANSI colors in Neovim (press q to quit)",
-				icon = "md_bookmark",
-				action = view_scrollback_pager,
-			},
+			-- {
+			-- 	brief = "Open Scrollback in Pager (pin)",
+			-- 	doc = "Opens scrollback buffer with ANSI colors in Neovim (press q to quit)",
+			-- 	icon = "md_bookmark",
+			-- 	action = view_scrollback_pager,
+			-- },
 			{
 				brief = "Open Scrollback with Line Numbers (pin)",
-				doc = "Opens scrollback buffer with continuous line numbers in Neovim (press q to quit)",
+				--doc = "Opens scrollback buffer with line numbers in Neovim (press q to quit)",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
 			},
