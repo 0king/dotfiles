@@ -490,8 +490,7 @@ function M.apply_to_config(config)
 				action = select_all,
 			},
 			{
-				brief = "Vim Mode (pin)",
-				doc = "Enter modal copy mode with Vim",
+				brief = "Vim Mode (pin) (QuickSelectMode) (ESC-quit) <C-S-space>",
 				icon = "md_bookmark",
 				action = act.ActivateCopyMode,
 			},
