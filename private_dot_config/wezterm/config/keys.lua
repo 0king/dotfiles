@@ -411,40 +411,6 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "n", mods = "CTRL|SHIFT", action = act.SpawnWindow })
 	table.insert(config.keys, { key = "N", mods = "CTRL|SHIFT", action = act.SpawnWindow })
 
-	-- Helper: Right-align shortcut label inside Command Palette
-	-- WezTerm does not populate the native right-floated keycap column for custom entries
-	-- returned by 'augment-command-palette' (hardcoded keys: vec![] in upstream Rust palette.rs).
-	-- We calculate target palette width and pad with spaces to align the shortcut on the right.
-	local function pad_palette_entry(title, shortcut, window, pane)
-		if not shortcut or shortcut == "" then
-			return title
-		end
-
-		local win_cols = 120
-		if window and window.get_dimensions and pane and pane.get_dimensions then
-			local wdims = window:get_dimensions()
-			local pdims = pane:get_dimensions()
-			if wdims and wdims.pixel_width and pdims and pdims.pixel_width and pdims.cols and pdims.cols > 0 then
-				local cell_width = pdims.pixel_width / pdims.cols
-				if cell_width > 0 then
-					win_cols = math.floor(wdims.pixel_width / cell_width)
-				end
-			end
-		elseif pane and pane.get_dimensions then
-			local pdims = pane:get_dimensions()
-			if pdims and pdims.cols then
-				win_cols = pdims.cols
-			end
-		end
-
-		-- WezTerm palette width formula: (size.cols / 3).max(120).min(size.cols)
-		local palette_cols = math.min(win_cols, math.max(120, math.floor(win_cols / 3)))
-		-- Reserve space for container margin, padding, border, and icon (~10 cols)
-		local target_width = math.max(50, palette_cols - 10)
-		local pad_len = math.max(4, target_width - #title - #shortcut)
-		return title .. string.rep(" ", pad_len) .. shortcut
-	end
-
 	-- Register in Command Palette (Ctrl + Shift + P)
 	wezterm.on("augment-command-palette", function(window, pane)
 		return {
@@ -565,12 +531,7 @@ function M.apply_to_config(config)
 			-- 	action = view_scrollback_pager,
 			-- },
 			{
-				brief = pad_palette_entry(
-					"Open Scrollback with Line Numbers (pin) (q=quit)",
-					"Ctrl+Shift+H",
-					window,
-					pane
-				),
+				brief = "Open Scrollback with Line Numbers (pin) (q=quit)",
 				--doc = "Opens scrollback buffer with line numbers in Neovim (press q to quit)",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
