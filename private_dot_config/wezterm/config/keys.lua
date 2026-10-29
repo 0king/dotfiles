@@ -414,113 +414,95 @@ function M.apply_to_config(config)
 	-- Register in Command Palette (Ctrl + Shift + P)
 	wezterm.on("augment-command-palette", function(window, pane)
 		return {
-			-- Pane - All Select
 			{
 				brief = "Pane Select (pin)",
-				doc = "Show letter overlay across all panes to selecte",
+				doc = "Show letter overlay across all panes",
 				icon = "md_bookmark",
 				action = act.PaneSelect({ mode = "Activate" }),
 			},
-			-- Close Pane
 			{
 				brief = "Close Pane (pin)",
-				doc = "Close the currently active pane with confirmation",
+				doc = "Close the currently active pane",
 				icon = "md_bookmark",
 				action = act.CloseCurrentPane({ confirm = true }),
 			},
-			-- Smart Paste (uses existing smart_paste action)
 			{
 				brief = "Smart Paste (pin)",
-				doc = "Pastes text from whichever buffer (Clipboard or Primary Selection) has newer data",
+				doc = "Pastes from the newest buffer (Clipboard or Primary Selection)",
 				icon = "md_bookmark",
 				action = smart_paste,
 			},
 			-- All Scroll Variants
 			{
-				brief = "Scroll to Top (pin)",
-				doc = "Scroll all the way to the top (Row 1, Column 1)",
+				brief = "Scroll to Top (pin) (Row 1, Col 1)",
 				icon = "md_bookmark",
 				action = scroll_to_top,
 			},
 			{
 				brief = "Scroll to Bottom (pin)",
-				doc = "Scroll all the way to the bottom",
 				icon = "md_bookmark",
 				action = scroll_to_bottom,
 			},
 			{
 				brief = "Scroll Page Up (pin)",
-				doc = "Scroll viewport up by one full page",
 				icon = "md_bookmark",
 				action = act.ScrollByPage(-1),
 			},
 			{
 				brief = "Scroll Page Down (pin)",
-				doc = "Scroll viewport down by one full page",
 				icon = "md_bookmark",
 				action = act.ScrollByPage(1),
 			},
 			{
 				brief = "Scroll Half Page Up (pin)",
-				doc = "Scroll viewport up by half a page",
 				icon = "md_bookmark",
 				action = act.ScrollByPage(-0.5),
 			},
 			{
 				brief = "Scroll Half Page Down (pin)",
-				doc = "Scroll viewport down by half a page",
 				icon = "md_bookmark",
 				action = act.ScrollByPage(0.5),
 			},
 			{
 				brief = "Scroll Line Up (pin)",
-				doc = "Scroll viewport up by one line",
 				icon = "md_bookmark",
 				action = act.ScrollByLine(-1),
 			},
 			{
 				brief = "Scroll Line Down (pin)",
-				doc = "Scroll viewport down by one line",
 				icon = "md_bookmark",
 				action = act.ScrollByLine(1),
 			},
 			{
 				brief = "Scroll to Previous Prompt (pin)",
-				doc = "Scroll backward to the previous shell prompt zone",
 				icon = "md_bookmark",
 				action = act.ScrollToPrompt(-1),
 			},
 			{
 				brief = "Scroll to Next Prompt (pin)",
-				doc = "Scroll forward to the next shell prompt zone",
 				icon = "md_bookmark",
 				action = act.ScrollToPrompt(1),
 			},
-			-- Select All (single unified command)
 			{
 				brief = "Select All (pin)",
-				doc = "Selects and copies entire scrollback history",
+				doc = " - copies entire scrollback history",
 				icon = "md_bookmark",
 				action = select_all,
 			},
-			-- Vim Mode
 			{
 				brief = "Vim Mode (pin)",
 				doc = "Enter modal copy mode with Vim",
 				icon = "md_bookmark",
 				action = act.ActivateCopyMode,
 			},
-			-- Highlight Mode
 			{
 				brief = "Highlight Mode (pin)",
 				doc = "Highlight URLs, paths, and git hashes",
 				icon = "md_bookmark",
 				action = act.QuickSelect,
 			},
-			-- Existing Helper Actions
 			{
 				brief = "Toggle Line Wrap (pin)",
-				doc = "Toggles terminal auto-wrap",
 				icon = "md_bookmark",
 				action = toggle_autowrap,
 			},
@@ -531,7 +513,7 @@ function M.apply_to_config(config)
 			-- 	action = view_scrollback_pager,
 			-- },
 			{
-				brief = "Open Scrollback with Line Numbers (pin) (q=quit)",
+				brief = "Open Scrollback with Line Numbers (pin) (q=quit) <C-S-h>",
 				--doc = "Opens scrollback buffer with line numbers in Neovim (press q to quit)",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
