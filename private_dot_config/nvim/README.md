@@ -65,6 +65,27 @@ The configuration integrates [legendary.nvim](https://github.com/mrjones2014/leg
 
 ---
 
+## Word Wrap Commands & Toggle
+
+LazyVim enables line break formatting (`opt.linebreak = true`) while keeping visual wrap disabled by default (`opt.wrap = false`). Dedicated user commands and palette actions expose toggle functionality directly to command prompts and palettes.
+
+### Available Triggers
+
+| Trigger | Mode / Context | Type | Description |
+| :--- | :--- | :--- | :--- |
+| `<leader>uw` | Normal (`n`) | Built-in LazyVim Keymap | Toggle wrap via `Snacks.toggle.option("wrap")` |
+| `:ToggleWrap` | Ex command prompt (`:`) | User Command | Toggle wrap with auto-complete in command line |
+| `:ToggleWordWrap` | Ex command prompt (`:`) | User Command | Alias matching VS Code command naming |
+| `:WrapToggle` | Ex command prompt (`:`) | User Command | Alternative command prompt alias |
+| Command Palette | `<leader>p` / `<A-x>` | Palette Action | Searchable via `wrap`, `word wrap`, `toggle`, `soft wrap` |
+
+### Implementation Details
+- Defined in [`lua/config/keymaps.lua`](lua/config/keymaps.lua) and registered with [`lua/plugins/legendary.lua`](lua/plugins/legendary.lua).
+- Utilizes `Snacks.toggle.option("wrap", { name = "Wrap" }):toggle()` when available to stay unified with LazyVim UI status and notifications, with fallback to `vim.wo.wrap = not vim.wo.wrap`.
+- Exposed with `force = true` across all command entrypoints and indexed under category `UI`.
+
+---
+
 ## Completion & Prose Editing (`lua/plugins/completion.lua`)
 
 Automatic completion popups and inline hint text (ghost text) are disabled for plain text and markdown files (`.txt`, `.md`) to maintain a clean writing experience without distracting popups or accidental completions on Enter during prose editing.
