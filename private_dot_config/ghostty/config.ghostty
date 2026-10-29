@@ -39,3 +39,17 @@ keybind = ctrl+shift+f=start_search
 
 # Window Management
 keybind = ctrl+shift+n=new_window
+
+##################################################################
+
+### GUI ###
+# theme (Ayu, GitHub Dark)
+theme = Ayu
+
+background-opacity = 0.9
+background-blur = 20
+
+##################################################################
+
+notify-on-command-finish = unfocused
+
