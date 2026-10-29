@@ -46,8 +46,8 @@ keybind = ctrl+shift+n=new_window
 # theme (Ayu, GitHub Dark)
 theme = Ayu
 
-background-opacity = 0.9
-background-blur = 20
+# background-opacity = 0.9
+# background-blur = 20
 
 ##################################################################
 
