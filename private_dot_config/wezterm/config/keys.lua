@@ -28,12 +28,7 @@ function M.apply_to_config(config)
 		local current_token = notification_token
 		active_notification = "📋 " .. message
 
-		-- Trigger an immediate title bar refresh
-		local overrides = window:get_config_overrides() or {}
-		overrides._notify_token = current_token
-		window:set_config_overrides(overrides)
-
-		-- Also update right_status if tab bar happens to be rendered (e.g. multi-tab)
+		-- Update right_status for subtle in-window feedback
 		pcall(function()
 			window:set_right_status(wezterm.format({
 				{ Attribute = { Intensity = "Bold" } },
@@ -47,9 +42,6 @@ function M.apply_to_config(config)
 		wezterm.time.call_after(duration_secs, function()
 			if notification_token == current_token then
 				active_notification = nil
-				local o = window:get_config_overrides() or {}
-				o._notify_token = nil
-				window:set_config_overrides(o)
 				pcall(function()
 					window:set_right_status("")
 				end)
@@ -145,43 +137,92 @@ function M.apply_to_config(config)
 		end
 	end)
 
-	-- Action: View current scrollback in pager without wrapping (horizontal scroll)
-	local view_scrollback_unwrapped = wezterm.action_callback(function(window, pane)
-		local dims = pane:get_dimensions()
-		local text = pane:get_lines_as_text(dims.scrollback_rows)
-		local tmp = os.tmpname()
-		local f = io.open(tmp, "w+")
-		if f then
-			f:write(text)
-			f:flush()
-			f:close()
-			window:perform_action(
-				act.SpawnCommandInNewTab({
-					args = { "less", "-S", "+G", tmp },
-				}),
-				pane
-			)
-		end
-	end)
+	-- Action: Open scrollback in Neovim pager with full ANSI color support (dismisses with 'q')
+	local function create_scrollback_pager_action(with_numbers)
+		return wezterm.action_callback(function(window, pane)
+			local dims = pane:get_dimensions()
+			local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
+			local lines = is_alt and dims.viewport_rows or dims.scrollback_rows
+			if not lines or lines <= 0 then
+				lines = dims.viewport_rows or 2000
+			end
 
-	-- Action: View current scrollback with continuous line numbers down the left margin
-	local view_scrollback_numbered = wezterm.action_callback(function(window, pane)
-		local dims = pane:get_dimensions()
-		local text = pane:get_lines_as_text(dims.scrollback_rows)
-		local tmp = os.tmpname()
-		local f = io.open(tmp, "w+")
-		if f then
+			-- Capture lines with ANSI color escape sequences
+			local text = pane:get_lines_as_escapes(lines)
+			if not text or text == "" then
+				text = pane:get_lines_as_text(lines) or ""
+			end
+
+			local tmp = string.format("/tmp/wezterm_scrollback_%d_%d.txt", pane:pane_id(), os.time())
+			local f = io.open(tmp, "w+")
+			if not f then
+				notify(window, pane, "Error: unable to write temporary scrollback", 2.5)
+				return
+			end
 			f:write(text)
 			f:flush()
 			f:close()
+
+			-- Check if nvim is available; fall back to less with ANSI support if not
+			local has_nvim = true
+			local ok_nvim, nvim_path = pcall(function()
+				return wezterm.run_child_process({ "which", "nvim" })
+			end)
+			if not ok_nvim or not nvim_path or nvim_path == "" then
+				has_nvim = false
+			end
+
+			local pager_args
+			if has_nvim then
+				pager_args = {
+					"nvim",
+					"--cmd",
+					"set eventignore=FileType",
+					"+let ch = nvim_open_term(0, {})",
+					"+call chansend(ch, join(readfile('" .. tmp .. "', 'b'), \"\\r\\n\"))",
+					"+sleep 50m",
+					"+nnoremap <buffer> q :qa!<CR>",
+					"+nnoremap <buffer> <Esc> :qa!<CR>",
+					"+set nomodified nolist",
+				}
+				if with_numbers then
+					table.insert(pager_args, "+set number")
+				else
+					table.insert(pager_args, "+set nonumber")
+				end
+				table.insert(pager_args, "+$")
+				table.insert(pager_args, "+autocmd VimLeave * call delete('" .. tmp .. "')")
+			else
+				pager_args = {
+					"less",
+					with_numbers and "-N" or "-S",
+					"-R",
+					"-S",
+					"+G",
+					tmp,
+				}
+			end
+
 			window:perform_action(
 				act.SpawnCommandInNewTab({
-					args = { "less", "-N", "-S", "+G", tmp },
+					args = pager_args,
 				}),
 				pane
 			)
-		end
-	end)
+
+			-- Safety garbage collection for temporary buffer
+			wezterm.time.call_after(60, function()
+				pcall(os.remove, tmp)
+			end)
+
+			if is_alt then
+				notify(window, pane, "Scrollback pager: active viewport (fullscreen app active)", 2.5)
+			end
+		end)
+	end
+
+	local view_scrollback_pager = create_scrollback_pager_action(false)
+	local view_scrollback_numbered = create_scrollback_pager_action(true)
 
 	-- Shortcut: Ctrl + Shift + A (Select All & Copy)
 	table.insert(config.keys, {
@@ -239,6 +280,10 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "phys:Space", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "x", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
 	table.insert(config.keys, { key = "X", mods = "CTRL|SHIFT", action = act.ActivateCopyMode })
+
+	-- Unified Scrollback Pager in Neovim (Ctrl + Shift + H, matching Kitty show_scrollback)
+	table.insert(config.keys, { key = "h", mods = "CTRL|SHIFT", action = view_scrollback_pager })
+	table.insert(config.keys, { key = "H", mods = "CTRL|SHIFT", action = view_scrollback_pager })
 
 	-- Setup Copy Mode key table without breaking default keybindings
 	local key_tables = {}
@@ -480,14 +525,14 @@ function M.apply_to_config(config)
 				action = toggle_autowrap,
 			},
 			{
-				brief = "View Scrollback Unwrapped (pin)",
-				doc = "Opens scrollback in a new tab without wrapping",
+				brief = "Open Scrollback in Pager (pin)",
+				doc = "Opens scrollback buffer with ANSI colors in Neovim (press q to quit)",
 				icon = "md_bookmark",
-				action = view_scrollback_unwrapped,
+				action = view_scrollback_pager,
 			},
 			{
-				brief = "View Scrollback with Line Numbers (pin)",
-				doc = "Opens scrollback in a new tab with line numbers",
+				brief = "Open Scrollback with Line Numbers (pin)",
+				doc = "Opens scrollback buffer with continuous line numbers in Neovim (press q to quit)",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
 			},

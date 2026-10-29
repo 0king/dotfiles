@@ -11,6 +11,7 @@ Standardized keybindings, clipboard behaviors, and Vim navigation across **Kitty
 | **Copy on Select** | *Mouse highlight* | `copy-on-select = clipboard` | `copy_on_select clipboard` | `save_to_clipboard = true` | `CompleteSelection(...)` |
 | **Select All** | `Ctrl + Shift + A` | `select_all` | `launch --type=clipboard` | Vi Mode Macro | `select_all` |
 | **Vim Mode** | `Ctrl + Shift + Space`<br>`Ctrl + Shift + X` | Neovim scrollback | Neovim pager overlay | Native `ToggleViMode` | Native `ActivateCopyMode` |
+| **Scrollback Pager** | `Ctrl + Shift + H` | `write_scrollback_file:open` | `show_scrollback` (Neovim) | — | Neovim pager tab (`nvim`) |
 | **Copy** | `Ctrl + Shift + C`<br>`Ctrl + Insert` | `copy_to_clipboard:mixed` | `copy_to_clipboard` | `Copy` | `CopyTo("Clipboard")` |
 | **Paste** | `Ctrl + Shift + V` | `paste_from_clipboard` | `paste_from_clipboard` | `Paste` | `PasteFrom("Clipboard")` |
 | **Paste Selection** | `Shift + Insert` | `paste_from_selection` | `paste_from_selection` | `PasteSelection` | `PasteFrom("PrimarySelection")` |
@@ -46,10 +47,11 @@ Activates modal keyboard navigation across all four terminals using two compleme
   - Press `y` to yank to clipboard and exit.
   - Search using `/` (forward) or `?` (backward), stepping with `n`/`N`.
   - Exit with `i`, `Escape`, or `q`.
-- **Neovim Pager Integration (Kitty & Ghostty)**:
-  - Terminal scrollback opens inside an overlay window running **real Neovim** (`nvim`).
+- **Neovim Pager Integration (Kitty, Ghostty & WezTerm)**:
+  - Terminal scrollback opens inside an overlay window or dedicated tab running **real Neovim** (`nvim`) with full ANSI color support.
+  - In WezTerm, press `Ctrl + Shift + H` or trigger `Open Scrollback in Pager (pin)` from the Command Palette (`Ctrl + Shift + P`).
   - Provides full syntax highlighting, Neovim plugins, text objects, and clipboard registers (`+`).
-  - Press `:q` or `q` to dismiss the pager and immediately return to your terminal prompt.
+  - Press `q` or `:q` to dismiss the pager and immediately return to your terminal prompt.
 
 ### 4. Safe Scrolling & Override Protection
 - Both standard Arrow keys (`Up`/`Down`) and Vim navigation keys (`K`/`J`) with `Ctrl + Shift` scroll line-by-line.
