@@ -531,7 +531,7 @@ function M.apply_to_config(config)
 			-- 	action = view_scrollback_pager,
 			-- },
 			{
-				brief = "Open Scrollback with Line Numbers (pin)",
+				brief = "Open Scrollback with Line Numbers (pin) (q=quit)",
 				--doc = "Opens scrollback buffer with line numbers in Neovim (press q to quit)",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
