@@ -22,3 +22,9 @@ path=("$HOME/.local/bin" $path)
 export PATH
 
 . "$HOME/.cargo/env"
+
+# AI Agents Command History Hook
+if [ -f "$HOME/.config/ai/hooks/ai-agents-bash-hook.sh" ]; then
+  export BASH_ENV="$HOME/.config/ai/hooks/ai-agents-bash-hook.sh"
+fi
+

@@ -1,0 +1,401 @@
+#!/usr/bin/env python3
+"""
+ai_view-ai-agents-history
+=========================
+Query, filter, and inspect commands executed by AI coding agents:
+Kilo, Cline, Copilot, Antigravity, OpenCode, Aider, Pi, Dsh.
+
+Database location:
+  ~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history/ai-agents-history.db
+"""
+
+import argparse
+import csv
+import io
+import json
+import os
+import shutil
+import sqlite3
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
+# --- ANSI Color Palette ---
+COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+BOLD = "\033[1m" if COLOR else ""
+DIM = "\033[2m" if COLOR else ""
+RESET = "\033[0m" if COLOR else ""
+RED = "\033[31m" if COLOR else ""
+GREEN = "\033[32m" if COLOR else ""
+YELLOW = "\033[33m" if COLOR else ""
+BLUE = "\033[34m" if COLOR else ""
+MAGENTA = "\033[35m" if COLOR else ""
+CYAN = "\033[36m" if COLOR else ""
+WHITE = "\033[37m" if COLOR else ""
+
+AGENT_COLORS = {
+    "antigravity": CYAN,
+    "opencode": GREEN,
+    "kilo": YELLOW,
+    "cline": BLUE,
+    "aider": MAGENTA,
+    "copilot": WHITE,
+    "pi": RED,
+    "dsh": BOLD + BLUE,
+}
+
+DEFAULT_HISTORY_DIR = os.path.expanduser("~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history")
+DEFAULT_DB_PATH = os.path.join(DEFAULT_HISTORY_DIR, "ai-agents-history.db")
+
+
+def format_agent_badge(agent_name):
+    color = AGENT_COLORS.get(agent_name.lower(), WHITE)
+    return f"{color}{agent_name:<11}{RESET}"
+
+
+def format_rc(rc):
+    if rc is None:
+        return f"{DIM}-{RESET}"
+    if rc == 0:
+        return f"{GREEN}0{RESET}"
+    return f"{RED}{rc}{RESET}"
+
+
+def shorten_path(path):
+    home = os.path.expanduser("~")
+    if path.startswith(home):
+        return "~" + path[len(home):]
+    return path
+
+
+def parse_time_filter(time_str):
+    """Parse relative or absolute time filter into an ISO-8601 string."""
+    now = datetime.now(timezone.utc)
+    s = time_str.lower().strip()
+    if s == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s == "yesterday":
+        return (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s.endswith("h"):
+        hours = int(s[:-1])
+        return (now - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s.endswith("d"):
+        days = int(s[:-1])
+        return (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s.endswith("m"):
+        minutes = int(s[:-1])
+        return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return time_str
+
+
+def show_single_record(conn, record_id):
+    """Display full details for a single command execution."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, timestamp, agent, cwd, command, exit_code, output, session_id, source, created_at
+        FROM agent_commands
+        WHERE id = ?;
+        """,
+        (record_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        print(f"{RED}Error: Record with ID {record_id} not found.{RESET}")
+        return
+
+    _id, ts, agent, cwd, cmd, rc, out, session_id, src, created = row
+    color = AGENT_COLORS.get(agent.lower(), WHITE)
+
+    print(f"\n{BOLD}{CYAN}=== Command Details [ID #{_id}] ==={RESET}")
+    print(f"{BOLD}Agent:{RESET}        {color}{agent.upper()}{RESET}")
+    print(f"{BOLD}Timestamp:{RESET}    {ts}")
+    print(f"{BOLD}Exit Status:{RESET}  {format_rc(rc)}")
+    print(f"{BOLD}Directory:{RESET}    {cwd}")
+    print(f"{BOLD}Source:{RESET}       {src}")
+    if session_id:
+        print(f"{BOLD}Session ID:{RESET}   {session_id}")
+    print(f"\n{BOLD}Command:{RESET}\n{DIM}{'-'*60}{RESET}\n{cmd}\n{DIM}{'-'*60}{RESET}")
+    if out:
+        print(f"\n{BOLD}Output:{RESET}\n{DIM}{'-'*60}{RESET}\n{out.strip()}\n{DIM}{'-'*60}{RESET}")
+    else:
+        print(f"\n{DIM}(No captured output recorded){RESET}")
+    print()
+
+
+def show_statistics(conn):
+    """Display comprehensive analytics across AI agent commands."""
+    cur = conn.cursor()
+    cur.execute("SELECT count(*) FROM agent_commands;")
+    total = cur.fetchone()[0]
+
+    if total == 0:
+        print(f"{YELLOW}No commands recorded yet.{RESET}")
+        return
+
+    print(f"\n{BOLD}{CYAN}=== AI Agents Command History Statistics ==={RESET}")
+    print(f"Total Commands Recorded: {BOLD}{total:,}{RESET}\n")
+
+    # 1. Agent breakdown & Error rate
+    print(f"{BOLD}Agent Breakdown:{RESET}")
+    print(f"  {'AGENT':<14} {'COUNT':>8} {'SHARE':>8} {'FAILED':>8} {'FAIL %':>8}")
+    print(f"  {'-'*50}")
+    cur.execute(
+        """
+        SELECT 
+            agent, 
+            count(*) as total_cmds,
+            sum(CASE WHEN exit_code != 0 AND exit_code IS NOT NULL THEN 1 ELSE 0 END) as failed_cmds
+        FROM agent_commands
+        GROUP BY agent
+        ORDER BY total_cmds DESC;
+        """
+    )
+    for agent, cnt, failed in cur.fetchall():
+        pct = (cnt / total * 100) if total else 0
+        fail_pct = (failed / cnt * 100) if cnt else 0
+        color = AGENT_COLORS.get(agent.lower(), WHITE)
+        print(f"  {color}{agent:<14}{RESET} {BOLD}{cnt:>8,}{RESET} {pct:>7.1f}% {failed:>8,} {fail_pct:>7.1f}%")
+
+    # 2. Top Working Directories
+    print(f"\n{BOLD}Top Working Directories:{RESET}")
+    cur.execute(
+        """
+        SELECT cwd, count(*) as cnt
+        FROM agent_commands
+        GROUP BY cwd
+        ORDER BY cnt DESC
+        LIMIT 5;
+        """
+    )
+    for cwd, cnt in cur.fetchall():
+        print(f"  {cnt:>6,}  {shorten_path(cwd)}")
+
+    # 3. Top Most Frequent Commands
+    print(f"\n{BOLD}Most Frequent Commands:{RESET}")
+    cur.execute(
+        """
+        SELECT command, count(*) as cnt
+        FROM agent_commands
+        GROUP BY command
+        ORDER BY cnt DESC
+        LIMIT 6;
+        """
+    )
+    for cmd, cnt in cur.fetchall():
+        one_liner = " ".join(cmd.splitlines())[:70]
+        print(f"  {cnt:>6,}  {DIM}{one_liner}{RESET}")
+
+    # 4. Activity breakdown: Today & Past 7 Days
+    cur.execute(
+        """
+        SELECT count(*) FROM agent_commands
+        WHERE timestamp >= date('now', 'start of day');
+        """
+    )
+    today_cnt = cur.fetchone()[0]
+    cur.execute(
+        """
+        SELECT count(*) FROM agent_commands
+        WHERE timestamp >= datetime('now', '-7 days');
+        """
+    )
+    week_cnt = cur.fetchone()[0]
+    print(f"\n{BOLD}Activity Trends:{RESET}")
+    print(f"  Today:        {BOLD}{today_cnt:,}{RESET} commands")
+    print(f"  Past 7 days:  {BOLD}{week_cnt:,}{RESET} commands\n")
+
+
+def follow_mode(conn, args):
+    """Continuously poll and print new incoming agent commands."""
+    print(f"{CYAN}{BOLD}Streaming AI agent commands in real-time... (Press Ctrl+C to exit){RESET}\n")
+    cur = conn.cursor()
+    cur.execute("SELECT ifnull(max(id), 0) FROM agent_commands;")
+    last_id = cur.fetchone()[0]
+
+    try:
+        while True:
+            cur.execute(
+                """
+                SELECT id, timestamp, agent, cwd, command, exit_code, output
+                FROM agent_commands
+                WHERE id > ?
+                ORDER BY id ASC;
+                """,
+                (last_id,),
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                _id, ts, agent, cwd, cmd, rc, out = row
+                last_id = _id
+                ts_disp = ts.replace("T", " ").replace("Z", "")[:19]
+                cmd_line = " ".join(cmd.splitlines())
+                print(f"{DIM}{ts_disp}{RESET} [{format_agent_badge(agent)}] (rc={format_rc(rc)}) {shorten_path(cwd)} $ {cmd_line}")
+                if args.show_output and out:
+                    for line in out.strip().splitlines()[:10]:
+                        print(f"  {DIM}│ {line}{RESET}")
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        print(f"\n{YELLOW}Stopped streaming.{RESET}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Query, filter, and inspect AI coding agents command history.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("query", nargs="?", default="", help="Search query in command string")
+    parser.add_argument("-n", "--limit", type=int, default=25, help="Number of records to show (default: 25, 0 for all)")
+    parser.add_argument("-a", "--agent", help="Filter by agent (kilo, cline, copilot, antigravity, opencode, aider, pi, dsh)")
+    parser.add_argument("-s", "--search", help="Search query (alternative to positional argument)")
+    parser.add_argument("-d", "--dir", "--cwd", dest="cwd", help="Filter by working directory")
+    parser.add_argument("-e", "--failed", "--errors", action="store_true", help="Show only failed commands (exit_code != 0)")
+    parser.add_argument("--since", help="Filter commands after datetime (e.g. 'today', 'yesterday', '1h', '7d', '2026-10-29')")
+    parser.add_argument("--until", help="Filter commands before datetime")
+    parser.add_argument("-o", "--show-output", action="store_true", help="Print captured command output inline")
+    parser.add_argument("-i", "--id", type=int, help="Show complete details for a specific command ID")
+    parser.add_argument("--stats", action="store_true", help="Show summary statistics and analytics")
+    parser.add_argument("-f", "--follow", action="store_true", help="Live stream new commands in real-time")
+    parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    parser.add_argument("--csv", action="store_true", help="Output results in CSV format")
+    parser.add_argument("--db", default=DEFAULT_DB_PATH, help=f"Path to SQLite database (default: {DEFAULT_DB_PATH})")
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.db):
+        print(f"{YELLOW}AI command history database not found at:{RESET} {args.db}")
+        print(f"Run {BOLD}ai_create-ai-agents-history-hook --install{RESET} to initialize and backfill history.")
+        sys.exit(1)
+
+    conn = sqlite3.connect(args.db)
+
+    # 1. Single record detail mode
+    if args.id:
+        show_single_record(conn, args.id)
+        conn.close()
+        return
+
+    # 2. Statistics mode
+    if args.stats:
+        show_statistics(conn)
+        conn.close()
+        return
+
+    # 3. Follow live mode
+    if args.follow:
+        follow_mode(conn, args)
+        conn.close()
+        return
+
+    # 4. Standard query mode
+    conditions = []
+    params = []
+
+    search_term = args.search or args.query
+    if search_term:
+        conditions.append("command LIKE ?")
+        params.append(f"%{search_term}%")
+
+    if args.agent:
+        conditions.append("agent = ?")
+        params.append(args.agent.lower())
+
+    if args.cwd:
+        conditions.append("cwd LIKE ?")
+        params.append(f"%{args.cwd}%")
+
+    if args.failed:
+        conditions.append("exit_code != 0 AND exit_code IS NOT NULL")
+
+    if args.since:
+        conditions.append("timestamp >= ?")
+        params.append(parse_time_filter(args.since))
+
+    if args.until:
+        conditions.append("timestamp <= ?")
+        params.append(parse_time_filter(args.until))
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    limit_clause = f"LIMIT {args.limit}" if args.limit and args.limit > 0 else ""
+
+    sql = f"""
+        SELECT id, timestamp, agent, cwd, command, exit_code, output, session_id
+        FROM agent_commands
+        {where_clause}
+        ORDER BY timestamp DESC, id DESC
+        {limit_clause};
+    """
+
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+
+    if args.json:
+        records = []
+        for r in rows:
+            records.append({
+                "id": r[0],
+                "timestamp": r[1],
+                "agent": r[2],
+                "cwd": r[3],
+                "command": r[4],
+                "exit_code": r[5],
+                "output": r[6],
+                "session_id": r[7],
+            })
+        print(json.dumps(records, indent=2))
+        conn.close()
+        return
+
+    if args.csv:
+        writer = csv.writer(sys.stdout)
+        writer.writerow(["id", "timestamp", "agent", "cwd", "command", "exit_code", "output", "session_id"])
+        for r in rows:
+            writer.writerow(r)
+        conn.close()
+        return
+
+    if not rows:
+        print(f"{DIM}No matching commands found.{RESET}")
+        conn.close()
+        return
+
+    term_width = shutil.get_terminal_size((120, 24)).columns
+
+    print(f"\n{BOLD}{'ID':<6} {'TIMESTAMP':<19} {'AGENT':<11} {'RC':<4} {'DIRECTORY':<22} {'COMMAND'}{RESET}")
+    print(f"{DIM}{'-'*term_width}{RESET}")
+
+    for row in rows:
+        _id, ts, agent, cwd, cmd, rc, out, sid = row
+        ts_clean = ts.replace("T", " ").replace("Z", "")[:19]
+        short_dir = shorten_path(cwd)
+        if len(short_dir) > 20:
+            short_dir = "…" + short_dir[-19:]
+        
+        # Format command as single line
+        cmd_one_line = " ".join(cmd.splitlines())
+        available_width = term_width - (6 + 20 + 12 + 5 + 23)
+        if available_width > 15 and len(cmd_one_line) > available_width:
+            cmd_display = cmd_one_line[: available_width - 1] + "…"
+        else:
+            cmd_display = cmd_one_line
+
+        print(f"{DIM}{_id:<6}{RESET} {ts_clean:<19} {format_agent_badge(agent)} {format_rc(rc):<4} {short_dir:<22} {cmd_display}")
+
+        if args.show_output and out:
+            print(f"  {DIM}┌─ Captured Output (ID #{_id}):{RESET}")
+            out_lines = out.strip().splitlines()
+            for line in out_lines[:6]:
+                print(f"  {DIM}│ {line[:term_width - 6]}{RESET}")
+            if len(out_lines) > 6:
+                print(f"  {DIM}└─ … ({len(out_lines) - 6} more lines, view with: ai_view-ai-agents-history -i {_id}){RESET}")
+            else:
+                print(f"  {DIM}└{'─'*40}{RESET}")
+
+    print(f"{DIM}{'-'*term_width}{RESET}")
+    print(f"Showing {len(rows)} commands. (Use {CYAN}-i <ID>{RESET} for full output, {CYAN}--stats{RESET} for analytics, {CYAN}-f{RESET} to follow)\n")
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()

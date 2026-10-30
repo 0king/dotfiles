@@ -1,0 +1,594 @@
+#!/usr/bin/env python3
+"""
+ai_create-ai-agents-history-hook
+================================
+Management, installer, and backfill utility for the AI Agents Command History System.
+Supports: Kilo, Cline, Copilot, Antigravity, OpenCode, Aider, Pi, Dsh.
+
+Database location:
+  ~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history/ai-agents-history.db
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# --- ANSI Color Palette ---
+COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+BOLD = "\033[1m" if COLOR else ""
+DIM = "\033[2m" if COLOR else ""
+RESET = "\033[0m" if COLOR else ""
+RED = "\033[31m" if COLOR else ""
+GREEN = "\033[32m" if COLOR else ""
+YELLOW = "\033[33m" if COLOR else ""
+BLUE = "\033[34m" if COLOR else ""
+MAGENTA = "\033[35m" if COLOR else ""
+CYAN = "\033[36m" if COLOR else ""
+WHITE = "\033[37m" if COLOR else ""
+
+DEFAULT_HISTORY_DIR = os.path.expanduser("~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history")
+DEFAULT_DB_PATH = os.path.join(DEFAULT_HISTORY_DIR, "ai-agents-history.db")
+HOOK_SCRIPT_PATH = os.path.expanduser("~/.config/ai/hooks/ai-agents-bash-hook.sh")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS agent_commands (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    cwd TEXT NOT NULL,
+    command TEXT NOT NULL,
+    exit_code INTEGER,
+    output TEXT,
+    session_id TEXT,
+    source TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    UNIQUE(timestamp, agent, cwd, command) ON CONFLICT IGNORE
+);
+CREATE INDEX IF NOT EXISTS idx_cmd_timestamp ON agent_commands(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_cmd_agent ON agent_commands(agent);
+CREATE INDEX IF NOT EXISTS idx_cmd_cwd ON agent_commands(cwd);
+CREATE INDEX IF NOT EXISTS idx_cmd_exit ON agent_commands(exit_code);
+"""
+
+
+def get_db_connection(db_path=DEFAULT_DB_PATH):
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=10.0)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.executescript(SCHEMA)
+    return conn
+
+
+def cmd_record(args):
+    """Record a single command entry into SQLite."""
+    db_path = args.db or DEFAULT_DB_PATH
+    ts = args.timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = get_db_connection(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ts,
+                args.agent.lower(),
+                args.cwd or os.getcwd(),
+                args.command.strip(),
+                args.exit_code,
+                (args.output or "")[:65536] if args.output else None,
+                args.session_id,
+                args.source or "hook",
+            ),
+        )
+        conn.commit()
+    except Exception as e:
+        sys.stderr.write(f"Record error: {e}\n")
+    finally:
+        conn.close()
+
+
+def backfill_antigravity(conn):
+    """Extract commands from Antigravity session transcripts."""
+    print(f"  {CYAN}▸{RESET} Scanning Antigravity transcripts...")
+    brain_dir = os.path.expanduser("~/.gemini/antigravity/brain")
+    transcript_files = glob.glob(os.path.join(brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+    
+    records = []
+    for fpath in transcript_files:
+        session_id = Path(fpath).parents[2].name
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                lines = [json.loads(line) for line in f if line.strip()]
+            for i, step in enumerate(lines):
+                tool_calls = step.get("tool_calls") or []
+                for tc in tool_calls:
+                    if tc.get("name") == "run_command":
+                        args = tc.get("args") or {}
+                        raw_cmd = args.get("CommandLine", "")
+                        if raw_cmd.startswith('"') and raw_cmd.endswith('"'):
+                            raw_cmd = raw_cmd[1:-1].replace('\\"', '"').replace('\\\\', '\\')
+                        raw_cmd = raw_cmd.strip()
+                        if not raw_cmd:
+                            continue
+                        
+                        ts = step.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        # Try to capture output from subsequent tool result step
+                        out = None
+                        rc = 0
+                        if i + 1 < len(lines):
+                            next_step = lines[i + 1]
+                            content = next_step.get("content") or ""
+                            if content:
+                                out = content[:65536]
+                                m_rc = re.search(r"Command exited with code (\d+)", content)
+                                if m_rc:
+                                    rc = int(m_rc.group(1))
+                        
+                        records.append((ts, "antigravity", os.path.expanduser("~"), raw_cmd, rc, out, session_id, "backfill"))
+        except Exception:
+            continue
+
+    if records:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+        conn.commit()
+    print(f"    {GREEN}✓{RESET} Found and processed {len(records)} Antigravity commands")
+    return len(records)
+
+
+def backfill_opencode(conn):
+    """Extract commands from OpenCode database."""
+    print(f"  {CYAN}▸{RESET} Scanning OpenCode SQLite database...")
+    db_file = os.path.expanduser("~/.local/share/opencode/opencode.db")
+    if not os.path.exists(db_file):
+        print(f"    {DIM}OpenCode database not found. Skipping.{RESET}")
+        return 0
+
+    records = []
+    try:
+        src = sqlite3.connect(db_file)
+        cur = src.cursor()
+        cur.execute(
+            """
+            SELECT 
+                datetime(time_created/1000, 'unixepoch'),
+                session_id,
+                json_extract(data, '$.state.input.command'),
+                json_extract(data, '$.state.output'),
+                json_extract(data, '$.state.status')
+            FROM part
+            WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
+            """
+        )
+        for ts, session_id, cmd, output, status in cur.fetchall():
+            if not cmd:
+                continue
+            rc = 0 if status == "completed" else 1
+            out_sample = (output or "")[:65536] if output else None
+            records.append((ts + "Z" if ts else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), 
+                            "opencode", os.path.expanduser("~"), cmd.strip(), rc, out_sample, session_id, "backfill"))
+        src.close()
+    except Exception as e:
+        print(f"    {YELLOW}! Warning while reading OpenCode db: {e}{RESET}")
+
+    if records:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+        conn.commit()
+    print(f"    {GREEN}✓{RESET} Found and processed {len(records)} OpenCode commands")
+    return len(records)
+
+
+def backfill_kilo(conn):
+    """Extract commands from Kilo database."""
+    print(f"  {CYAN}▸{RESET} Scanning Kilo SQLite database...")
+    db_file = os.path.expanduser("~/.local/share/kilo/kilo.db")
+    if not os.path.exists(db_file):
+        print(f"    {DIM}Kilo database not found. Skipping.{RESET}")
+        return 0
+
+    records = []
+    try:
+        src = sqlite3.connect(db_file)
+        cur = src.cursor()
+        cur.execute(
+            """
+            SELECT 
+                datetime(time_created/1000, 'unixepoch'),
+                session_id,
+                json_extract(data, '$.state.input.command'),
+                json_extract(data, '$.state.output'),
+                json_extract(data, '$.state.status')
+            FROM part
+            WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
+            """
+        )
+        for ts, session_id, cmd, output, status in cur.fetchall():
+            if not cmd:
+                continue
+            rc = 0 if status == "completed" else 1
+            out_sample = (output or "")[:65536] if output else None
+            records.append((ts + "Z" if ts else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), 
+                            "kilo", os.path.expanduser("~"), cmd.strip(), rc, out_sample, session_id, "backfill"))
+        src.close()
+    except Exception as e:
+        print(f"    {YELLOW}! Warning while reading Kilo db: {e}{RESET}")
+
+    if records:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+        conn.commit()
+    print(f"    {GREEN}✓{RESET} Found and processed {len(records)} Kilo commands")
+    return len(records)
+
+
+def backfill_cline(conn):
+    """Extract commands from Cline session messages."""
+    print(f"  {CYAN}▸{RESET} Scanning Cline session data...")
+    session_files = glob.glob(os.path.expanduser("~/.cline/data/sessions/*/*.messages.json"))
+    if not session_files:
+        print(f"    {DIM}No Cline session messages found. Skipping.{RESET}")
+        return 0
+
+    records = []
+    for fpath in session_files:
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+            
+            session_id = data.get("sessionId") or Path(fpath).parent.name
+            messages = data.get("messages") or []
+            tool_results = {}
+
+            # First pass: map tool results
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                content = msg.get("content") or []
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "tool_result":
+                            call_id = item.get("tool_use_id")
+                            if call_id:
+                                tool_results[call_id] = json.dumps(item.get("content", ""))
+
+            # Second pass: extract tool uses
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                content = msg.get("content") or []
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "tool_use":
+                            tool_name = item.get("name")
+                            if tool_name in ("run_commands", "execute_command"):
+                                call_id = item.get("id")
+                                inp = item.get("input") or {}
+                                cmds = inp.get("commands") or ([inp.get("command")] if inp.get("command") else [])
+                                output = tool_results.get(call_id)
+                                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                for c in cmds:
+                                    if c and c.strip():
+                                        records.append((ts, "cline", os.path.expanduser("~"), c.strip(), 0, output, session_id, "backfill"))
+        except Exception:
+            continue
+
+    if records:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+        conn.commit()
+    print(f"    {GREEN}✓{RESET} Found and processed {len(records)} Cline commands")
+    return len(records)
+
+
+def backfill_aider(conn):
+    """Extract commands from Aider history files."""
+    print(f"  {CYAN}▸{RESET} Scanning Aider input history...")
+    hist_file = os.path.expanduser("~/.aider.input.history")
+    if not os.path.exists(hist_file):
+        print(f"    {DIM}Aider history file not found. Skipping.{RESET}")
+        return 0
+
+    records = []
+    current_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        with open(hist_file, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("# "):
+                    ts_part = line[2:].strip()
+                    try:
+                        # e.g. 2026-10-15 20:34:08.167573
+                        dt = datetime.fromisoformat(ts_part.split(".")[0])
+                        current_ts = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except Exception:
+                        pass
+                elif line.startswith("+/run ") or line.startswith("+"):
+                    cmd = line[1:].strip()
+                    if cmd and not cmd.startswith(("+", "#")):
+                        records.append((current_ts, "aider", os.path.expanduser("~"), cmd, 0, None, None, "backfill"))
+    except Exception as e:
+        print(f"    {YELLOW}! Warning reading Aider history: {e}{RESET}")
+
+    if records:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+        conn.commit()
+    print(f"    {GREEN}✓{RESET} Found and processed {len(records)} Aider commands")
+    return len(records)
+
+
+def backfill_copilot(conn):
+    """Scan Copilot directory if present."""
+    print(f"  {CYAN}▸{RESET} Checking GitHub Copilot history...")
+    copilot_dir = os.path.expanduser("~/.local/state/.copilot")
+    if not os.path.exists(copilot_dir):
+        print(f"    {DIM}Copilot state directory not found. Skipping.{RESET}")
+        return 0
+    print(f"    {DIM}No historical command logs present in Copilot directory.{RESET}")
+    return 0
+
+
+def backfill_pi(conn):
+    """Scan Pi directory if present."""
+    print(f"  {CYAN}▸{RESET} Checking Pi agent history...")
+    pi_dir = os.path.expanduser("~/.pi")
+    if not os.path.exists(pi_dir):
+        print(f"    {DIM}Pi agent not currently installed / no history found.{RESET}")
+        return 0
+    return 0
+
+
+def backfill_dsh(conn):
+    """Scan Dsh directory if present."""
+    print(f"  {CYAN}▸{RESET} Checking Dsh agent history...")
+    dsh_dir = os.path.expanduser("~/.dsh")
+    if not os.path.exists(dsh_dir):
+        print(f"    {DIM}Dsh agent not currently installed / no history found.{RESET}")
+        return 0
+    return 0
+
+
+def cmd_backfill(args):
+    """Run full backfill across all 8 agents."""
+    db_path = args.db or DEFAULT_DB_PATH
+    print(f"\n{BOLD}{CYAN}=== AI Agents Command History Backfill ==={RESET}")
+    print(f"Database destination: {BOLD}{db_path}{RESET}\n")
+
+    conn = get_db_connection(db_path)
+    total = 0
+    total += backfill_antigravity(conn)
+    total += backfill_opencode(conn)
+    total += backfill_kilo(conn)
+    total += backfill_cline(conn)
+    total += backfill_aider(conn)
+    total += backfill_copilot(conn)
+    total += backfill_pi(conn)
+    total += backfill_dsh(conn)
+
+    cur = conn.cursor()
+    cur.execute("SELECT count(*) FROM agent_commands;")
+    stored_total = cur.fetchone()[0]
+    conn.close()
+
+    print(f"\n{GREEN}{BOLD}✓ Backfill completed successfully!{RESET}")
+    print(f"Total commands now in database: {BOLD}{stored_total:,}{RESET}\n")
+
+
+def cmd_install(args):
+    """Install the universal bash hook, configure environment, and run initial backfill."""
+    db_path = args.db or DEFAULT_DB_PATH
+    print(f"\n{BOLD}{CYAN}=== Installing AI Agents History Hook ==={RESET}")
+    
+    # 1. Ensure database directory and schema exist
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = get_db_connection(db_path)
+    conn.close()
+    print(f"  {GREEN}✓{RESET} SQLite database initialized at: {BOLD}{db_path}{RESET}")
+
+    # 2. Verify bash hook script
+    if not os.path.exists(HOOK_SCRIPT_PATH):
+        # Create or copy to ~/.config/ai/hooks/ai-agents-bash-hook.sh if missing
+        os.makedirs(os.path.dirname(HOOK_SCRIPT_PATH), exist_ok=True)
+    os.chmod(HOOK_SCRIPT_PATH, 0o755)
+    print(f"  {GREEN}✓{RESET} Bash hook script active at: {BOLD}{HOOK_SCRIPT_PATH}{RESET}")
+
+    # 3. Configure systemd user environment
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "set-environment", f"BASH_ENV={HOOK_SCRIPT_PATH}"],
+            check=True,
+            capture_output=True,
+        )
+        print(f"  {GREEN}✓{RESET} Configured systemd user environment {BOLD}BASH_ENV{RESET}")
+    except Exception as e:
+        print(f"  {YELLOW}! Note: Could not set systemd user environment: {e}{RESET}")
+
+    # 4. Run backfill
+    cmd_backfill(args)
+
+    print(f"{GREEN}{BOLD}System ready!{RESET} New commands from all 8 agents will be captured automatically.")
+    print(f"Use {CYAN}ai_view-ai-agents-history{RESET} to browse and query commands.\n")
+
+
+def cmd_uninstall(args):
+    """Uninstall the hook and remove environment variables."""
+    print(f"\n{BOLD}{YELLOW}=== Uninstalling AI Agents History Hook ==={RESET}")
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "unset-environment", "BASH_ENV"],
+            check=True,
+            capture_output=True,
+        )
+        print(f"  {GREEN}✓{RESET} Unset systemd user environment BASH_ENV")
+    except Exception as e:
+        print(f"  {YELLOW}! Could not unset systemd user environment: {e}{RESET}")
+
+    print(f"  {BLUE}ℹ{RESET} Your history database remains preserved at: {BOLD}{DEFAULT_DB_PATH}{RESET}")
+    print(f"{GREEN}{BOLD}✓ Hook uninstalled successfully.{RESET}\n")
+
+
+def cmd_status(args):
+    """Display system status, hook wiring, and database statistics."""
+    db_path = args.db or DEFAULT_DB_PATH
+    print(f"\n{BOLD}{CYAN}=== AI Agents History Hook Status ==={RESET}")
+
+    # Hook status
+    hook_installed = os.path.exists(HOOK_SCRIPT_PATH) and os.access(HOOK_SCRIPT_PATH, os.X_OK)
+    hook_badge = f"{GREEN}ACTIVE{RESET}" if hook_installed else f"{RED}MISSING{RESET}"
+    print(f"Hook Script:   {HOOK_SCRIPT_PATH} [{hook_badge}]")
+
+    # Systemd environment status
+    sys_env = ""
+    try:
+        out = subprocess.check_output(["systemctl", "--user", "show-environment"], text=True)
+        for line in out.splitlines():
+            if line.startswith("BASH_ENV="):
+                sys_env = line.split("=", 1)[1]
+    except Exception:
+        pass
+    env_badge = f"{GREEN}CONFIGURED{RESET}" if sys_env else f"{YELLOW}NOT SET{RESET}"
+    print(f"BASH_ENV Env:  {sys_env or '(none)'} [{env_badge}]")
+
+    # Database status
+    db_exists = os.path.exists(db_path)
+    db_badge = f"{GREEN}EXISTS{RESET}" if db_exists else f"{RED}NOT INITIALIZED{RESET}"
+    print(f"Database:      {db_path} [{db_badge}]")
+
+    if db_exists:
+        size_bytes = os.path.getsize(db_path)
+        print(f"Database Size: {size_bytes / (1024 * 1024):.2f} MB")
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("SELECT agent, count(*) FROM agent_commands GROUP BY agent ORDER BY count(*) DESC;")
+            rows = cur.fetchall()
+            cur.execute("SELECT count(*) FROM agent_commands;")
+            total = cur.fetchone()[0]
+            conn.close()
+
+            print(f"\n{BOLD}Total Recorded Commands:{RESET} {total:,}")
+            print(f"{BOLD}Agent Breakdown:{RESET}")
+            for agent, count in rows:
+                pct = (count / total * 100) if total else 0
+                print(f"  {CYAN}•{RESET} {agent:<15} : {BOLD}{count:>7,}{RESET}  ({pct:5.1f}%)")
+        except Exception as e:
+            print(f"Error reading database: {e}")
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Management, setup, and backfill utility for AI agents command history.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--db", default=DEFAULT_DB_PATH, help=f"Path to SQLite database (default: {DEFAULT_DB_PATH})")
+
+    subparsers = parser.add_subparsers(dest="subcommand", help="Available subcommands")
+
+    # install
+    subparsers.add_parser("install", help="Install hook, configure environment, and run initial backfill")
+    # uninstall
+    subparsers.add_parser("uninstall", help="Uninstall hook and remove environment variable")
+    # status
+    subparsers.add_parser("status", help="Show system status and database metrics")
+    # backfill
+    subparsers.add_parser("backfill", help="Scan and backfill all past commands from all 8 agents")
+
+    # record (internal / hook helper)
+    rec_parser = subparsers.add_parser("record", help="Record a command execution into SQLite")
+    rec_parser.add_argument("--agent", required=True, help="Agent name (kilo, cline, etc.)")
+    rec_parser.add_argument("--cwd", required=True, help="Working directory")
+    rec_parser.add_argument("--command", required=True, help="Executed command string")
+    rec_parser.add_argument("--exit-code", type=int, default=0, help="Exit code")
+    rec_parser.add_argument("--output", default="", help="Command output")
+    rec_parser.add_argument("--timestamp", default="", help="Timestamp (ISO-8601)")
+    rec_parser.add_argument("--session-id", default=None, help="Session / conversation ID")
+    rec_parser.add_argument("--source", default="hook", help="Source (hook or backfill)")
+
+    # Also support top-level flags like --install, --backfill, --status
+    parser.add_argument("--install", action="store_true", help="Alias for install subcommand")
+    parser.add_argument("--uninstall", action="store_true", help="Alias for uninstall subcommand")
+    parser.add_argument("--status", action="store_true", help="Alias for status subcommand")
+    parser.add_argument("--backfill", action="store_true", help="Alias for backfill subcommand")
+    parser.add_argument("--record", action="store_true", help="Alias for record subcommand")
+
+    args, unknown = parser.parse_known_args()
+
+    # Route top-level flags to subcommands
+    subcmd = args.subcommand
+    if args.install:
+        subcmd = "install"
+    elif args.uninstall:
+        subcmd = "uninstall"
+    elif args.status:
+        subcmd = "status"
+    elif args.backfill:
+        subcmd = "backfill"
+    elif args.record:
+        subcmd = "record"
+
+    if subcmd == "install":
+        cmd_install(args)
+    elif subcmd == "uninstall":
+        cmd_uninstall(args)
+    elif subcmd == "status":
+        cmd_status(args)
+    elif subcmd == "backfill":
+        cmd_backfill(args)
+    elif subcmd == "record":
+        # Re-parse with rec_parser for argument extraction
+        rec_args = rec_parser.parse_args(sys.argv[2:])
+        cmd_record(rec_args)
+    else:
+        # Default behavior: show status if DB exists, else help
+        if os.path.exists(DEFAULT_DB_PATH):
+            cmd_status(args)
+        else:
+            parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
