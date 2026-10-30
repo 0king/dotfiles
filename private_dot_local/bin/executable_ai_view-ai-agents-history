@@ -5,6 +5,12 @@ ai_view-ai-agents-history
 Query, filter, and inspect commands executed by AI coding agents:
 Kilo, Cline, Copilot, Antigravity, OpenCode, Aider, Pi, Dsh.
 
+Default View:
+  TIME (relative) | AGENT (colored) | DIR (last dir) | COMMAND (full formatted)
+
+Full Details View (-F / --full):
+  ID, Timestamp, Agent, Full Directory, Formatted Command, Exit Code, Formatted Output.
+
 Database location:
   ~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history/ai-agents-history.db
 """
@@ -51,12 +57,66 @@ DEFAULT_HISTORY_DIR = os.path.expanduser("~/Desktop/fj/Dropbox/archives/backups/
 DEFAULT_DB_PATH = os.path.join(DEFAULT_HISTORY_DIR, "ai-agents-history.db")
 
 
-def format_agent_badge(agent_name):
+def format_relative_time(ts_str):
+    """Convert timestamp to relative time string (e.g. 15s ago, 2m ago, 1h ago, 1d ago, 1M ago, 1y ago)."""
+    if not ts_str:
+        return "-"
+    now = datetime.now(timezone.utc)
+    ts_clean = ts_str.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(ts_clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        # Fallback to simple date extraction
+        return ts_str[:10]
+
+    diff = now - dt
+    secs = int(diff.total_seconds())
+    if secs < 0:
+        secs = 0
+
+    if secs < 60:
+        return f"{secs}s ago"
+    elif secs < 3600:
+        return f"{secs // 60}m ago"
+    elif secs < 86400:
+        return f"{secs // 3600}h ago"
+    elif secs < 86400 * 30:
+        return f"{secs // 86400}d ago"
+    elif secs < 86400 * 365:
+        return f"{secs // (86400 * 30)}M ago"
+    else:
+        return f"{secs // (86400 * 365)}y ago"
+
+
+def color_relative_time(rel_str, width=10):
+    """Pad string first, then wrap with ANSI color code."""
+    padded = f"{rel_str:<{width}}"
+    if not COLOR:
+        return padded
+    if rel_str.endswith("s ago") or rel_str.endswith("m ago"):
+        return f"{GREEN}{padded}{RESET}"
+    elif rel_str.endswith("h ago"):
+        return f"{CYAN}{padded}{RESET}"
+    elif rel_str.endswith("d ago"):
+        return f"{YELLOW}{padded}{RESET}"
+    elif rel_str.endswith("M ago") or rel_str.endswith("y ago"):
+        return f"{MAGENTA}{padded}{RESET}"
+    return f"{DIM}{padded}{RESET}"
+
+
+def format_agent_badge(agent_name, width=12):
+    """Pad agent name first, then wrap with ANSI color code."""
+    padded = f"{agent_name:<{width}}"
+    if not COLOR:
+        return padded
     color = AGENT_COLORS.get(agent_name.lower(), WHITE)
-    return f"{color}{agent_name:<11}{RESET}"
+    return f"{color}{padded}{RESET}"
 
 
 def format_rc(rc):
+    """Format exit code."""
     if rc is None:
         return f"{DIM}-{RESET}"
     if rc == 0:
@@ -64,11 +124,53 @@ def format_rc(rc):
     return f"{RED}{rc}{RESET}"
 
 
-def shorten_path(path):
-    home = os.path.expanduser("~")
-    if path.startswith(home):
-        return "~" + path[len(home):]
-    return path
+def format_last_dir(path, width=14):
+    """Get the last directory component of the full path."""
+    if not path:
+        res = "~"
+    else:
+        p = os.path.abspath(path.rstrip("/"))
+        if p == os.path.expanduser("~"):
+            res = "~"
+        else:
+            b = os.path.basename(p)
+            res = b or "/"
+    if len(res) > width:
+        res = "…" + res[-(width - 1):]
+    return f"{res:<{width}}"
+
+
+def clean_command(cmd):
+    """Unescape literal \\n to real newlines and strip surrounding whitespace/quotes."""
+    if not cmd:
+        return ""
+    c = cmd.strip()
+    if c.startswith('"') and c.endswith('"'):
+        c = c[1:-1]
+    # Replace literal \n with real newline
+    return c.replace("\\\\n", "\n").replace("\\n", "\n").strip()
+
+
+def clean_output(out):
+    """Strip agent execution wrappers (Created At, Completed At, Command exited with code, Command output:)."""
+    if not out:
+        return ""
+    text = out.strip()
+    
+    # 1. Antigravity runner pattern: Command output:\n<real output>
+    m = re.search(r"Command output:\s*\n?(.*)", text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    else:
+        # Strip header lines if present
+        lines = text.splitlines()
+        clean_lines = [
+            l for l in lines 
+            if not re.match(r"^(Created At:|Completed At:|Command exited with code)", l.strip())
+        ]
+        text = "\n".join(clean_lines).strip()
+
+    return text
 
 
 def parse_time_filter(time_str):
@@ -110,8 +212,8 @@ def sync_recent_events(conn, window_seconds=7200):
             for i, step in enumerate(lines):
                 for tc in step.get("tool_calls") or []:
                     if tc.get("name") == "run_command":
-                        args = tc.get("args") or {}
-                        raw_cmd = args.get("CommandLine", "")
+                        args_tc = tc.get("args") or {}
+                        raw_cmd = args_tc.get("CommandLine", "")
                         if raw_cmd.startswith('"') and raw_cmd.endswith('"'):
                             raw_cmd = raw_cmd[1:-1].replace('\\"', '"').replace('\\\\', '\\')
                         raw_cmd = raw_cmd.strip()
@@ -123,7 +225,7 @@ def sync_recent_events(conn, window_seconds=7200):
                         if i + 1 < len(lines):
                             content = lines[i + 1].get("content") or ""
                             if content:
-                                out = content[:65536]
+                                out = clean_output(content[:65536])
                                 m_rc = re.search(r"Command exited with code (\d+)", content)
                                 if m_rc:
                                     rc = int(m_rc.group(1))
@@ -186,39 +288,54 @@ def sync_recent_events(conn, window_seconds=7200):
         conn.commit()
 
 
-def show_single_record(conn, record_id):
-    """Display full details for a single command execution."""
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT id, timestamp, agent, cwd, command, exit_code, output, session_id, source, created_at
-        FROM agent_commands
-        WHERE id = ?;
-        """,
-        (record_id,),
-    )
-    row = cur.fetchone()
-    if not row:
-        print(f"{RED}Error: Record with ID {record_id} not found.{RESET}")
-        return
+def display_full_records(rows):
+    """Display full details for matched records (-F / --full)."""
+    for r in rows:
+        _id, ts, agent, cwd, cmd, rc, out, sid = r
+        clean_c = clean_command(cmd)
+        clean_o = clean_output(out)
+        agent_color = AGENT_COLORS.get(agent.lower(), WHITE)
+        ts_clean = ts.replace("T", " ").replace("Z", "")[:19]
+        rc_disp = format_rc(rc)
 
-    _id, ts, agent, cwd, cmd, rc, out, session_id, src, created = row
-    color = AGENT_COLORS.get(agent.lower(), WHITE)
-
-    print(f"\n{BOLD}{CYAN}=== Command Details [ID #{_id}] ==={RESET}")
-    print(f"{BOLD}Agent:{RESET}        {color}{agent.upper()}{RESET}")
-    print(f"{BOLD}Timestamp:{RESET}    {ts}")
-    print(f"{BOLD}Exit Status:{RESET}  {format_rc(rc)}")
-    print(f"{BOLD}Directory:{RESET}    {cwd}")
-    print(f"{BOLD}Source:{RESET}       {src}")
-    if session_id:
-        print(f"{BOLD}Session ID:{RESET}   {session_id}")
-    print(f"\n{BOLD}Command:{RESET}\n{DIM}{'-'*60}{RESET}\n{cmd}\n{DIM}{'-'*60}{RESET}")
-    if out:
-        print(f"\n{BOLD}Output:{RESET}\n{DIM}{'-'*60}{RESET}\n{out.strip()}\n{DIM}{'-'*60}{RESET}")
-    else:
-        print(f"\n{DIM}(No captured output recorded){RESET}")
+        print(f"\n{BOLD}{CYAN}=== [ID #{_id}] {ts_clean} | {agent_color}{agent.upper()}{RESET}{BOLD}{CYAN} | Exit: {rc_disp}{BOLD}{CYAN} ==={RESET}")
+        print(f"{BOLD}Directory:{RESET} {cwd}")
+        if sid:
+            print(f"{BOLD}Session:{RESET}   {sid}")
+        print(f"{BOLD}Command:{RESET}\n{clean_c}")
+        if clean_o:
+            print(f"{BOLD}Output:{RESET}\n{clean_o}")
     print()
+
+
+def display_default_table(rows):
+    """Display default compact table with relative time, agent, last directory, and human-readable full command."""
+    term_width = shutil.get_terminal_size((120, 24)).columns
+    time_w = 10
+    agent_w = 12
+    dir_w = 14
+    indent = " " * (time_w + 1 + agent_w + 1 + dir_w + 1)
+
+    print(f"\n{BOLD}{'TIME':<{time_w}} {'AGENT':<{agent_w}} {'DIR':<{dir_w}} {'COMMAND'}{RESET}")
+    print(f"{DIM}{'-'*term_width}{RESET}")
+
+    for row in rows:
+        _id, ts, agent, cwd, cmd, rc, out, sid = row
+        rel_time = format_relative_time(ts)
+        time_badge = color_relative_time(rel_time, time_w)
+        agent_badge = format_agent_badge(agent, agent_w)
+        last_dir = format_last_dir(cwd, dir_w)
+        clean_c = clean_command(cmd)
+
+        cmd_lines = clean_c.splitlines() or [""]
+        # Print first line aligned with columns
+        print(f"{time_badge} {agent_badge} {last_dir} {cmd_lines[0]}")
+        # Print subsequent lines indented to COMMAND column
+        for l in cmd_lines[1:]:
+            print(f"{indent}{l}")
+
+    print(f"{DIM}{'-'*term_width}{RESET}")
+    print(f"Showing {len(rows)} commands. (Use {CYAN}-F/--full{RESET} for full details, {CYAN}--stats{RESET} for analytics, {CYAN}-f{RESET} to follow)\n")
 
 
 def show_statistics(conn):
@@ -267,7 +384,7 @@ def show_statistics(conn):
         """
     )
     for cwd, cnt in cur.fetchall():
-        print(f"  {cnt:>6,}  {shorten_path(cwd)}")
+        print(f"  {cnt:>6,}  {cwd}")
 
     # 3. Top Most Frequent Commands
     print(f"\n{BOLD}Most Frequent Commands:{RESET}")
@@ -318,9 +435,10 @@ def follow_mode(conn, args):
                     sync_recent_events(conn, window_seconds=120)
                 except Exception:
                     pass
+
             cur.execute(
                 """
-                SELECT id, timestamp, agent, cwd, command, exit_code, output
+                SELECT id, timestamp, agent, cwd, command, exit_code, output, session_id
                 FROM agent_commands
                 WHERE id > ?
                 ORDER BY id ASC;
@@ -328,15 +446,23 @@ def follow_mode(conn, args):
                 (last_id,),
             )
             rows = cur.fetchall()
-            for row in rows:
-                _id, ts, agent, cwd, cmd, rc, out = row
-                last_id = _id
-                ts_disp = ts.replace("T", " ").replace("Z", "")[:19]
-                cmd_line = " ".join(cmd.splitlines())
-                print(f"{DIM}{ts_disp}{RESET} [{format_agent_badge(agent)}] (rc={format_rc(rc)}) {shorten_path(cwd)} $ {cmd_line}")
-                if args.show_output and out:
-                    for line in out.strip().splitlines()[:10]:
-                        print(f"  {DIM}│ {line}{RESET}")
+            if rows:
+                if args.full:
+                    display_full_records(rows)
+                else:
+                    for row in rows:
+                        _id, ts, agent, cwd, cmd, rc, out, sid = row
+                        last_id = _id
+                        rel_time = format_relative_time(ts)
+                        time_b = color_relative_time(rel_time, 10)
+                        agent_b = format_agent_badge(agent, 12)
+                        last_d = format_last_dir(cwd, 14)
+                        clean_c = clean_command(cmd)
+                        indent = " " * (10 + 1 + 12 + 1 + 14 + 1)
+                        lines = clean_c.splitlines() or [""]
+                        print(f"{time_b} {agent_b} {last_d} {lines[0]}")
+                        for l in lines[1:]:
+                            print(f"{indent}{l}")
             time.sleep(1.0)
     except KeyboardInterrupt:
         print(f"\n{YELLOW}Stopped streaming.{RESET}")
@@ -349,13 +475,13 @@ def main():
     )
     parser.add_argument("query", nargs="?", default="", help="Search query in command string")
     parser.add_argument("-n", "--limit", type=int, default=25, help="Number of records to show (default: 25, 0 for all)")
+    parser.add_argument("-F", "--full", action="store_true", help="Display full details (ID, timestamp, agent, full directory path, formatted full command, exit code, formatted output)")
     parser.add_argument("-a", "--agent", help="Filter by agent (kilo, cline, copilot, antigravity, opencode, aider, pi, dsh)")
     parser.add_argument("-s", "--search", help="Search query (alternative to positional argument)")
     parser.add_argument("-d", "--dir", "--cwd", dest="cwd", help="Filter by working directory")
     parser.add_argument("-e", "--failed", "--errors", action="store_true", help="Show only failed commands (exit_code != 0)")
     parser.add_argument("--since", help="Filter commands after datetime (e.g. 'today', 'yesterday', '1h', '7d', '2026-10-29')")
     parser.add_argument("--until", help="Filter commands before datetime")
-    parser.add_argument("-o", "--show-output", action="store_true", help="Print captured command output inline")
     parser.add_argument("-i", "--id", type=int, help="Show complete details for a specific command ID")
     parser.add_argument("--stats", action="store_true", help="Show summary statistics and analytics")
     parser.add_argument("-f", "--follow", action="store_true", help="Live stream new commands in real-time")
@@ -382,7 +508,20 @@ def main():
 
     # 1. Single record detail mode
     if args.id:
-        show_single_record(conn, args.id)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, timestamp, agent, cwd, command, exit_code, output, session_id
+            FROM agent_commands
+            WHERE id = ?;
+            """,
+            (args.id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            print(f"{RED}Error: Record with ID {args.id} not found.{RESET}")
+        else:
+            display_full_records([row])
         conn.close()
         return
 
@@ -449,9 +588,9 @@ def main():
                 "timestamp": r[1],
                 "agent": r[2],
                 "cwd": r[3],
-                "command": r[4],
+                "command": clean_command(r[4]),
                 "exit_code": r[5],
-                "output": r[6],
+                "output": clean_output(r[6]),
                 "session_id": r[7],
             })
         print(json.dumps(records, indent=2))
@@ -462,7 +601,7 @@ def main():
         writer = csv.writer(sys.stdout)
         writer.writerow(["id", "timestamp", "agent", "cwd", "command", "exit_code", "output", "session_id"])
         for r in rows:
-            writer.writerow(r)
+            writer.writerow([r[0], r[1], r[2], r[3], clean_command(r[4]), r[5], clean_output(r[6]), r[7]])
         conn.close()
         return
 
@@ -471,40 +610,12 @@ def main():
         conn.close()
         return
 
-    term_width = shutil.get_terminal_size((120, 24)).columns
+    # Check display mode
+    if args.full:
+        display_full_records(rows)
+    else:
+        display_default_table(rows)
 
-    print(f"\n{BOLD}{'ID':<6} {'TIMESTAMP':<19} {'AGENT':<11} {'RC':<4} {'DIRECTORY':<22} {'COMMAND'}{RESET}")
-    print(f"{DIM}{'-'*term_width}{RESET}")
-
-    for row in rows:
-        _id, ts, agent, cwd, cmd, rc, out, sid = row
-        ts_clean = ts.replace("T", " ").replace("Z", "")[:19]
-        short_dir = shorten_path(cwd)
-        if len(short_dir) > 20:
-            short_dir = "…" + short_dir[-19:]
-        
-        # Format command as single line
-        cmd_one_line = " ".join(cmd.splitlines())
-        available_width = term_width - (6 + 20 + 12 + 5 + 23)
-        if available_width > 15 and len(cmd_one_line) > available_width:
-            cmd_display = cmd_one_line[: available_width - 1] + "…"
-        else:
-            cmd_display = cmd_one_line
-
-        print(f"{DIM}{_id:<6}{RESET} {ts_clean:<19} {format_agent_badge(agent)} {format_rc(rc):<4} {short_dir:<22} {cmd_display}")
-
-        if args.show_output and out:
-            print(f"  {DIM}┌─ Captured Output (ID #{_id}):{RESET}")
-            out_lines = out.strip().splitlines()
-            for line in out_lines[:6]:
-                print(f"  {DIM}│ {line[:term_width - 6]}{RESET}")
-            if len(out_lines) > 6:
-                print(f"  {DIM}└─ … ({len(out_lines) - 6} more lines, view with: ai_view-ai-agents-history -i {_id}){RESET}")
-            else:
-                print(f"  {DIM}└{'─'*40}{RESET}")
-
-    print(f"{DIM}{'-'*term_width}{RESET}")
-    print(f"Showing {len(rows)} commands. (Use {CYAN}-i <ID>{RESET} for full output, {CYAN}--stats{RESET} for analytics, {CYAN}-f{RESET} to follow)\n")
     conn.close()
 
 
