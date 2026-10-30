@@ -152,7 +152,7 @@ def clean_command(cmd):
 
 
 def clean_output(out):
-    """Strip agent execution wrappers (Created At, Completed At, Command exited with code, Command output:)."""
+    """Strip agent execution wrappers (Created At, Completed At, Command exited with code, Command output:, No output from the command.)."""
     if not out:
         return ""
     text = out.strip()
@@ -169,6 +169,9 @@ def clean_output(out):
             if not re.match(r"^(Created At:|Completed At:|Command exited with code)", l.strip())
         ]
         text = "\n".join(clean_lines).strip()
+
+    if text in ("No output from the command.", "No output from the command"):
+        text = ""
 
     return text
 

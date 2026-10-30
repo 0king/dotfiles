@@ -99,6 +99,31 @@ def cmd_record(args):
         conn.close()
 
 
+def clean_output(out):
+    """Strip agent execution wrappers (Created At, Completed At, Command exited with code, Command output:, No output from the command.)."""
+    if not out:
+        return ""
+    text = out.strip()
+    
+    # Antigravity runner pattern: Command output:\n<real output>
+    m = re.search(r"Command output:\s*\n?(.*)", text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    else:
+        # Strip header / status lines if present
+        lines = text.splitlines()
+        clean_lines = [
+            l for l in lines 
+            if not re.match(r"^(Created At:|Completed At:|Command exited with code)", l.strip())
+        ]
+        text = "\n".join(clean_lines).strip()
+
+    if text in ("No output from the command.", "No output from the command"):
+        text = ""
+
+    return text
+
+
 def backfill_antigravity(conn):
     """Extract commands from Antigravity session transcripts."""
     print(f"  {CYAN}▸{RESET} Scanning Antigravity transcripts...")
@@ -131,7 +156,7 @@ def backfill_antigravity(conn):
                             next_step = lines[i + 1]
                             content = next_step.get("content") or ""
                             if content:
-                                out = content[:65536]
+                                out = clean_output(content[:65536])
                                 m_rc = re.search(r"Command exited with code (\d+)", content)
                                 if m_rc:
                                     rc = int(m_rc.group(1))
@@ -454,7 +479,7 @@ def cmd_sync(args):
                         if i + 1 < len(lines):
                             content = lines[i + 1].get("content") or ""
                             if content:
-                                out = content[:65536]
+                                out = clean_output(content[:65536])
                                 m_rc = re.search(r"Command exited with code (\d+)", content)
                                 if m_rc:
                                     rc = int(m_rc.group(1))
