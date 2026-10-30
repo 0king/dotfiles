@@ -11,14 +11,17 @@ Database location:
 
 import argparse
 import csv
+import glob
 import io
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # --- ANSI Color Palette ---
 COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
@@ -86,6 +89,101 @@ def parse_time_filter(time_str):
         minutes = int(s[:-1])
         return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return time_str
+
+
+def sync_recent_events(conn, window_seconds=7200):
+    """Fast incremental sync of newly written agent commands (<25ms)."""
+    now = time.time()
+    records = []
+
+    # 1. Antigravity transcripts
+    brain_dir = os.path.expanduser("~/.gemini/antigravity/brain")
+    recent_ag = [
+        f for f in glob.glob(os.path.join(brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+        if now - os.path.getmtime(f) < window_seconds
+    ]
+    for fpath in recent_ag:
+        session_id = Path(fpath).parents[2].name
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as fp:
+                lines = [json.loads(l) for l in fp if l.strip()]
+            for i, step in enumerate(lines):
+                for tc in step.get("tool_calls") or []:
+                    if tc.get("name") == "run_command":
+                        args = tc.get("args") or {}
+                        raw_cmd = args.get("CommandLine", "")
+                        if raw_cmd.startswith('"') and raw_cmd.endswith('"'):
+                            raw_cmd = raw_cmd[1:-1].replace('\\"', '"').replace('\\\\', '\\')
+                        raw_cmd = raw_cmd.strip()
+                        if not raw_cmd:
+                            continue
+                        ts = step.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        out = None
+                        rc = 0
+                        if i + 1 < len(lines):
+                            content = lines[i + 1].get("content") or ""
+                            if content:
+                                out = content[:65536]
+                                m_rc = re.search(r"Command exited with code (\d+)", content)
+                                if m_rc:
+                                    rc = int(m_rc.group(1))
+                        records.append((ts, "antigravity", os.path.expanduser("~"), raw_cmd, rc, out, session_id, "sync"))
+        except Exception:
+            continue
+
+    # 2. OpenCode recent records
+    oc_db = os.path.expanduser("~/.local/share/opencode/opencode.db")
+    if os.path.exists(oc_db) and (now - os.path.getmtime(oc_db) < window_seconds):
+        try:
+            src = sqlite3.connect(oc_db)
+            cur = src.cursor()
+            cur.execute("""
+                SELECT datetime(time_created/1000, 'unixepoch'), session_id,
+                       json_extract(data, '$.state.input.command'),
+                       json_extract(data, '$.state.output'),
+                       json_extract(data, '$.state.status')
+                FROM part
+                WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
+                  AND time_created >= ?
+            """, ((now - window_seconds) * 1000,))
+            for ts, sid, cmd, out, status in cur.fetchall():
+                if cmd and cmd.strip():
+                    rc = 0 if status == "completed" else 1
+                    records.append((ts + "Z", "opencode", os.path.expanduser("~"), cmd.strip(), rc, (out or "")[:65536] if out else None, sid, "sync"))
+            src.close()
+        except Exception:
+            pass
+
+    # 3. Kilo recent records
+    kilo_db = os.path.expanduser("~/.local/share/kilo/kilo.db")
+    if os.path.exists(kilo_db) and (now - os.path.getmtime(kilo_db) < window_seconds):
+        try:
+            src = sqlite3.connect(kilo_db)
+            cur = src.cursor()
+            cur.execute("""
+                SELECT datetime(time_created/1000, 'unixepoch'), session_id,
+                       json_extract(data, '$.state.input.command'),
+                       json_extract(data, '$.state.output'),
+                       json_extract(data, '$.state.status')
+                FROM part
+                WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
+                  AND time_created >= ?
+            """, ((now - window_seconds) * 1000,))
+            for ts, sid, cmd, out, status in cur.fetchall():
+                if cmd and cmd.strip():
+                    rc = 0 if status == "completed" else 1
+                    records.append((ts + "Z", "kilo", os.path.expanduser("~"), cmd.strip(), rc, (out or "")[:65536] if out else None, sid, "sync"))
+            src.close()
+        except Exception:
+            pass
+
+    if records:
+        conn.executemany("""
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, records)
+        conn.commit()
 
 
 def show_single_record(conn, record_id):
@@ -215,6 +313,11 @@ def follow_mode(conn, args):
 
     try:
         while True:
+            if not getattr(args, "no_sync", False):
+                try:
+                    sync_recent_events(conn, window_seconds=120)
+                except Exception:
+                    pass
             cur.execute(
                 """
                 SELECT id, timestamp, agent, cwd, command, exit_code, output
@@ -258,6 +361,7 @@ def main():
     parser.add_argument("-f", "--follow", action="store_true", help="Live stream new commands in real-time")
     parser.add_argument("--json", action="store_true", help="Output results in JSON format")
     parser.add_argument("--csv", action="store_true", help="Output results in CSV format")
+    parser.add_argument("--no-sync", action="store_true", help="Skip automatic fast sync of recent commands")
     parser.add_argument("--db", default=DEFAULT_DB_PATH, help=f"Path to SQLite database (default: {DEFAULT_DB_PATH})")
 
     args = parser.parse_args()
@@ -268,6 +372,13 @@ def main():
         sys.exit(1)
 
     conn = sqlite3.connect(args.db)
+
+    # Automatic fast sync of newly executed commands (<25ms)
+    if not args.no_sync:
+        try:
+            sync_recent_events(conn)
+        except Exception:
+            pass
 
     # 1. Single record detail mode
     if args.id:

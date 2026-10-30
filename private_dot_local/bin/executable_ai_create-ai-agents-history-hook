@@ -417,6 +417,92 @@ def cmd_backfill(args):
     print(f"Total commands now in database: {BOLD}{stored_total:,}{RESET}\n")
 
 
+def cmd_sync(args):
+    """Fast incremental sync of newly executed commands."""
+    db_path = args.db or DEFAULT_DB_PATH
+    conn = get_db_connection(db_path)
+    print(f"\n{BOLD}{CYAN}=== Syncing Recent AI Agent Commands ==={RESET}")
+    start = time.time()
+    
+    # 1. Antigravity transcripts in last 2 hours
+    now = time.time()
+    window_seconds = 7200
+    brain_dir = os.path.expanduser("~/.gemini/antigravity/brain")
+    recent_ag = [
+        f for f in glob.glob(os.path.join(brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+        if now - os.path.getmtime(f) < window_seconds
+    ]
+    records = []
+    for fpath in recent_ag:
+        session_id = Path(fpath).parents[2].name
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as fp:
+                lines = [json.loads(l) for l in fp if l.strip()]
+            for i, step in enumerate(lines):
+                for tc in step.get("tool_calls") or []:
+                    if tc.get("name") == "run_command":
+                        args_tc = tc.get("args") or {}
+                        raw_cmd = args_tc.get("CommandLine", "")
+                        if raw_cmd.startswith('"') and raw_cmd.endswith('"'):
+                            raw_cmd = raw_cmd[1:-1].replace('\\"', '"').replace('\\\\', '\\')
+                        raw_cmd = raw_cmd.strip()
+                        if not raw_cmd:
+                            continue
+                        ts = step.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        out = None
+                        rc = 0
+                        if i + 1 < len(lines):
+                            content = lines[i + 1].get("content") or ""
+                            if content:
+                                out = content[:65536]
+                                m_rc = re.search(r"Command exited with code (\d+)", content)
+                                if m_rc:
+                                    rc = int(m_rc.group(1))
+                        records.append((ts, "antigravity", os.path.expanduser("~"), raw_cmd, rc, out, session_id, "sync"))
+        except Exception:
+            continue
+
+    # 2. OpenCode
+    oc_db = os.path.expanduser("~/.local/share/opencode/opencode.db")
+    if os.path.exists(oc_db) and (now - os.path.getmtime(oc_db) < window_seconds):
+        try:
+            src = sqlite3.connect(oc_db)
+            cur = src.cursor()
+            cur.execute("""
+                SELECT datetime(time_created/1000, 'unixepoch'), session_id,
+                       json_extract(data, '$.state.input.command'),
+                       json_extract(data, '$.state.output'),
+                       json_extract(data, '$.state.status')
+                FROM part
+                WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
+                  AND time_created >= ?
+            """, ((now - window_seconds) * 1000,))
+            for ts, sid, cmd, out, status in cur.fetchall():
+                if cmd and cmd.strip():
+                    rc = 0 if status == "completed" else 1
+                    records.append((ts + "Z", "opencode", os.path.expanduser("~"), cmd.strip(), rc, (out or "")[:65536] if out else None, sid, "sync"))
+            src.close()
+        except Exception:
+            pass
+
+    if records:
+        conn.executemany("""
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, records)
+        conn.commit()
+
+    cur = conn.cursor()
+    cur.execute("SELECT count(*) FROM agent_commands;")
+    total = cur.fetchone()[0]
+    conn.close()
+
+    elapsed = (time.time() - start) * 1000
+    print(f"  {GREEN}✓{RESET} Synced {len(records)} recent command entries in {elapsed:.1f}ms")
+    print(f"Total commands in database: {BOLD}{total:,}{RESET}\n")
+
+
 def cmd_install(args):
     """Install the universal bash hook, configure environment, and run initial backfill."""
     db_path = args.db or DEFAULT_DB_PATH
@@ -551,12 +637,15 @@ def main():
     subparsers.add_parser("status", help="Show system status and database metrics")
     # backfill
     subparsers.add_parser("backfill", help="Scan and backfill all past commands from all 8 agents")
+    # sync
+    subparsers.add_parser("sync", help="Fast incremental sync of newly executed commands")
 
-    # Also support top-level flags like --install, --backfill, --status
+    # Also support top-level flags like --install, --backfill, --status, --sync
     parser.add_argument("--install", action="store_true", help="Alias for install subcommand")
     parser.add_argument("--uninstall", action="store_true", help="Alias for uninstall subcommand")
     parser.add_argument("--status", action="store_true", help="Alias for status subcommand")
     parser.add_argument("--backfill", action="store_true", help="Alias for backfill subcommand")
+    parser.add_argument("--sync", action="store_true", help="Alias for sync subcommand")
 
     args = parser.parse_args()
 
@@ -570,6 +659,8 @@ def main():
         subcmd = "status"
     elif args.backfill:
         subcmd = "backfill"
+    elif args.sync:
+        subcmd = "sync"
 
     if subcmd == "install":
         cmd_install(args)
@@ -579,12 +670,9 @@ def main():
         cmd_status(args)
     elif subcmd == "backfill":
         cmd_backfill(args)
+    elif subcmd == "sync":
+        cmd_sync(args)
     else:
-        # Default behavior: show status if DB exists, else help
-        if os.path.exists(DEFAULT_DB_PATH):
-            cmd_status(args)
-        else:
-            parser.print_help()
         # Default behavior: show status if DB exists, else help
         if os.path.exists(DEFAULT_DB_PATH):
             cmd_status(args)

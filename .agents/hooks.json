@@ -1,0 +1,16 @@
+{
+  "command-recorder": {
+    "enabled": true,
+    "PostToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/dj/.config/ai/hooks/log-antigravity-command.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
