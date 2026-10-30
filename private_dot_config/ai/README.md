@@ -161,6 +161,53 @@ Provide clear, step-by-step instructions for the agent here.
 
 ---
 
+## 📜 AI Agents Command History & Auditing System
+
+A unified, real-time command logging and auditing system for AI coding agents (**Kilo**, **Cline**, **Copilot**, **Antigravity**, **OpenCode**, **Aider**, **Pi**, **Dsh**).
+
+### Features
+- **Zero Configuration Hook**: Transparent non-interactive Bash hook (`~/.config/ai/hooks/ai-agents-bash-hook.sh`) intercepts commands executed by AI agents without polling or modifying agent sources.
+- **Dedicated SQLite Storage**: Stored outside Chezmoi at `~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history/ai-agents-history.db` with WAL mode.
+- **Rich Auditing Metadata**: Logs command, working directory, ISO-8601 timestamp, executor agent, exit code, and captured command output (where available).
+- **Zero Pollution**: Interactive user shells (Ghostty, Kitty, WezTerm, Alacritty) do not trigger logging.
+- **Independent from Atuin**: Keeps personal interactive history clean and isolated.
+
+### Key Commands
+
+```bash
+# View system and database status
+ai_create-ai-agents-history-hook --status
+
+# Re-run or refresh backfill from all agent logs
+ai_create-ai-agents-history-hook --backfill
+
+# Browse the most recent 25 commands
+ai_view-ai-agents-history
+
+# Search for commands matching a query
+ai_view-ai-agents-history -s "git status"
+
+# Filter by agent name
+ai_view-ai-agents-history -a opencode -n 50
+
+# Filter only failed commands (exit_code != 0)
+ai_view-ai-agents-history --failed
+
+# Show captured output inline
+ai_view-ai-agents-history -o
+
+# Show complete details (including full multi-line output) for a record
+ai_view-ai-agents-history -i 4882
+
+# Show command statistics and analytics
+ai_view-ai-agents-history --stats
+
+# Live follow/stream new commands in real-time
+ai_view-ai-agents-history -f
+```
+
+---
+
 ## 🔍 Verification & Troubleshooting
 
 - **Audit all AI symlinks**:
