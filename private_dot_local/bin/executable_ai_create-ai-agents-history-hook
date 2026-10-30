@@ -520,6 +520,21 @@ def cmd_status(args):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("record", "--record"):
+        rec_parser = argparse.ArgumentParser(description="Record a command execution into SQLite")
+        rec_parser.add_argument("--db", default=DEFAULT_DB_PATH, help="Path to SQLite database")
+        rec_parser.add_argument("--agent", required=True, help="Agent name (kilo, cline, etc.)")
+        rec_parser.add_argument("--cwd", required=True, help="Working directory")
+        rec_parser.add_argument("--command", required=True, help="Executed command string")
+        rec_parser.add_argument("--exit-code", type=int, default=0, help="Exit code")
+        rec_parser.add_argument("--output", default="", help="Command output")
+        rec_parser.add_argument("--timestamp", default="", help="Timestamp (ISO-8601)")
+        rec_parser.add_argument("--session-id", default=None, help="Session / conversation ID")
+        rec_parser.add_argument("--source", default="hook", help="Source (hook or backfill)")
+        rec_args = rec_parser.parse_args(sys.argv[2:])
+        cmd_record(rec_args)
+        return
+
     parser = argparse.ArgumentParser(
         description="Management, setup, and backfill utility for AI agents command history.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -537,25 +552,13 @@ def main():
     # backfill
     subparsers.add_parser("backfill", help="Scan and backfill all past commands from all 8 agents")
 
-    # record (internal / hook helper)
-    rec_parser = subparsers.add_parser("record", help="Record a command execution into SQLite")
-    rec_parser.add_argument("--agent", required=True, help="Agent name (kilo, cline, etc.)")
-    rec_parser.add_argument("--cwd", required=True, help="Working directory")
-    rec_parser.add_argument("--command", required=True, help="Executed command string")
-    rec_parser.add_argument("--exit-code", type=int, default=0, help="Exit code")
-    rec_parser.add_argument("--output", default="", help="Command output")
-    rec_parser.add_argument("--timestamp", default="", help="Timestamp (ISO-8601)")
-    rec_parser.add_argument("--session-id", default=None, help="Session / conversation ID")
-    rec_parser.add_argument("--source", default="hook", help="Source (hook or backfill)")
-
     # Also support top-level flags like --install, --backfill, --status
     parser.add_argument("--install", action="store_true", help="Alias for install subcommand")
     parser.add_argument("--uninstall", action="store_true", help="Alias for uninstall subcommand")
     parser.add_argument("--status", action="store_true", help="Alias for status subcommand")
     parser.add_argument("--backfill", action="store_true", help="Alias for backfill subcommand")
-    parser.add_argument("--record", action="store_true", help="Alias for record subcommand")
 
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     # Route top-level flags to subcommands
     subcmd = args.subcommand
@@ -567,8 +570,6 @@ def main():
         subcmd = "status"
     elif args.backfill:
         subcmd = "backfill"
-    elif args.record:
-        subcmd = "record"
 
     if subcmd == "install":
         cmd_install(args)
@@ -578,11 +579,12 @@ def main():
         cmd_status(args)
     elif subcmd == "backfill":
         cmd_backfill(args)
-    elif subcmd == "record":
-        # Re-parse with rec_parser for argument extraction
-        rec_args = rec_parser.parse_args(sys.argv[2:])
-        cmd_record(rec_args)
     else:
+        # Default behavior: show status if DB exists, else help
+        if os.path.exists(DEFAULT_DB_PATH):
+            cmd_status(args)
+        else:
+            parser.print_help()
         # Default behavior: show status if DB exists, else help
         if os.path.exists(DEFAULT_DB_PATH):
             cmd_status(args)
