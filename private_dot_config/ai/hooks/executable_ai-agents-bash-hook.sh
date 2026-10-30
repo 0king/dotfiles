@@ -9,10 +9,14 @@
 # ==============================================================================
 
 # 1. Guard against recursive hook execution
-[ -n "${_AI_HOOK_ACTIVE:-}" ] && return 0 2>/dev/null || exit 0
+if [ -n "${_AI_HOOK_ACTIVE:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 # 2. Only intercept non-interactive command string invocations
-[ -z "${BASH_EXECUTION_STRING:-}" ] && return 0 2>/dev/null || exit 0
+if [ -z "${BASH_EXECUTION_STRING:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 # 3. Detect if parent process ancestry contains an AI agent
 _ai_p=$PPID
@@ -49,7 +53,9 @@ for _ in {1..8}; do
 done
 
 # If no AI agent is in the process tree, exit immediately
-[ -z "$_ai_agent" ] && return 0 2>/dev/null || exit 0
+if [ -z "$_ai_agent" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 # Mark active to avoid recursion
 export _AI_HOOK_ACTIVE=1
