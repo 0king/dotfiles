@@ -73,16 +73,16 @@ _ai_on_exit() {
   # Restore original file descriptors
   exec 1>&3 2>&4 3>&- 4>&- 2>/dev/null || true
 
-  # Capture output safely (capped at 64KB)
-  local out=""
-  if [ -f "$_ai_out_file" ]; then
-    sleep 0.02 2>/dev/null || true
-    out=$(head -c 65536 "$_ai_out_file" 2>/dev/null || true)
-    rm -f "$_ai_out_file" 2>/dev/null || true
-  fi
-
-  # Record entry asynchronously in background (<5ms return)
+  # Record entry asynchronously in background
   (
+    # Allow tee pipe buffer to flush
+    sleep 0.05 2>/dev/null || true
+    local out=""
+    if [ -f "$_ai_out_file" ]; then
+      out=$(head -c 65536 "$_ai_out_file" 2>/dev/null || true)
+      rm -f "$_ai_out_file" 2>/dev/null || true
+    fi
+
     if command -v ai_create-ai-agents-history-hook >/dev/null 2>&1; then
       ai_create-ai-agents-history-hook --record \
         --agent "$_ai_agent" \
