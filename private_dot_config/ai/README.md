@@ -181,8 +181,11 @@ ai_create-ai-agents-history-hook --status
 # Re-run or refresh backfill from all agent logs
 ai_create-ai-agents-history-hook --backfill
 
-# Browse the most recent 25 commands
+# Browse the most recent 25 commands (default table: TIME, AGENT, DIR, formatted COMMAND)
 ai_view-ai-agents-history
+
+# Show full details (-F / --full): ID, timestamp, agent, full cwd, formatted command, exit code, output
+ai_view-ai-agents-history -F -n 10
 
 # Search for commands matching a query
 ai_view-ai-agents-history -s "git status"
@@ -193,17 +196,15 @@ ai_view-ai-agents-history -a opencode -n 50
 # Filter only failed commands (exit_code != 0)
 ai_view-ai-agents-history --failed
 
-# Show captured output inline
-ai_view-ai-agents-history -o
-
-# Show complete details (including full multi-line output) for a record
+# Show complete details for a specific record ID
 ai_view-ai-agents-history -i 4882
 
-# Show command statistics and analytics
+# Show command statistics and analytics across agents
 ai_view-ai-agents-history --stats
 
-# Live follow/stream new commands in real-time
+# Live follow/stream new commands in real-time (-F can also be combined)
 ai_view-ai-agents-history -f
+ai_view-ai-agents-history -f -F
 ```
 
 ---
