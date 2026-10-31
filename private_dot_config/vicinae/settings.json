@@ -79,6 +79,11 @@
       "@fbosch/store.vicinae.flathub-search": {
          "enabled": false
       },
+      "@knoopx/store.vicinae.firefox": {
+         "preferences": {
+            "profile_dir": "snap/firefox/common/.mozilla/firefox/"
+         }
+      },
       "@marcjulian/store.raycast.obsidian": {
          "preferences": {
             "configFileName": ".obsidian"
@@ -120,6 +125,9 @@
          "enabled": false
       },
       "@skifli/store.vicinae.protonvpn": {
+         "enabled": false
+      },
+      "browser-extension": {
          "enabled": false
       },
       "clipboard": {
@@ -171,6 +179,7 @@
          }
       },
       "media": {
+         "enabled": false,
          "entrypoints": {
             "next-track": {
                "enabled": false
@@ -253,7 +262,7 @@
          }
       },
       "theme": {
-         "enabled": true
+         "enabled": false
       },
       "wm": {
          "enabled": false,
