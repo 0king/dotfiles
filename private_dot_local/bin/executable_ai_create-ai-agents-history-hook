@@ -124,6 +124,149 @@ def clean_output(out):
     return text
 
 
+def extract_opencode_records(db_path, since_ms=None, source_label="sync"):
+    """Extract commands from OpenCode database (supporting both v2 session_message and v1 part schemas)."""
+    if not os.path.exists(db_path):
+        return []
+    records = []
+    try:
+        src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        cur = src.cursor()
+
+        # 1. OpenCode V2 schema (session_message + session_v2)
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='session_message';")
+        if cur.fetchone():
+            time_filter = "AND sm.time_created >= ?" if since_ms else ""
+            params = (since_ms,) if since_ms else ()
+            cur.execute(f"""
+                SELECT sm.id, sm.session_id, sm.time_created, sm.data, sv.directory
+                FROM session_message sm
+                LEFT JOIN session_v2 sv ON sm.session_id = sv.id
+                WHERE sm.type = 'assistant' {time_filter}
+                ORDER BY sm.time_created ASC;
+            """, params)
+            for msg_id, sid, tc, data_str, sv_dir in cur.fetchall():
+                try:
+                    data = json.loads(data_str)
+                    for item in data.get("content", []):
+                        if item.get("type") == "tool" and item.get("name") in ("shell", "bash"):
+                            state = item.get("state") or {}
+                            inp = state.get("input") or {}
+                            cmd = inp.get("command")
+                            if not cmd or not cmd.strip():
+                                continue
+                            cwd = inp.get("workdir") or sv_dir or os.path.expanduser("~")
+                            out_list = state.get("content") or []
+                            out = "\n".join(c.get("text", "") for c in out_list if isinstance(c, dict) and "text" in c)
+                            meta = state.get("metadata") or {}
+                            rc = meta.get("exit")
+                            if rc is None:
+                                rc = 0 if state.get("status") == "completed" else 1
+                            item_time = item.get("time", {}).get("created") or tc
+                            ts = datetime.fromtimestamp(item_time / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            records.append((ts, "opencode", cwd, cmd.strip(), rc, clean_output(out[:65536]) if out else None, sid, source_label))
+                except Exception:
+                    continue
+
+        # 2. OpenCode V1 schema (part table)
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='part';")
+        if cur.fetchone():
+            time_filter = "AND time_created >= ?" if since_ms else ""
+            params = (since_ms,) if since_ms else ()
+            cur.execute(f"""
+                SELECT time_created, session_id,
+                       json_extract(data, '$.state.input.command'),
+                       json_extract(data, '$.state.input.workdir'),
+                       json_extract(data, '$.state.output'),
+                       json_extract(data, '$.state.status')
+                FROM part
+                WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') IN ('bash', 'shell')
+                  {time_filter}
+                ORDER BY time_created ASC;
+            """, params)
+            for tc, sid, cmd, workdir, out, status in cur.fetchall():
+                if cmd and cmd.strip():
+                    rc = 0 if status == "completed" else 1
+                    ts = datetime.fromtimestamp(tc / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    cwd = workdir or os.path.expanduser("~")
+                    records.append((ts, "opencode", cwd, cmd.strip(), rc, clean_output(out[:65536]) if out else None, sid, source_label))
+        src.close()
+    except Exception:
+        pass
+    return records
+
+
+def extract_kilo_records(db_path, since_ms=None, source_label="sync"):
+    """Extract commands from Kilo database."""
+    if not os.path.exists(db_path):
+        return []
+    records = []
+    try:
+        src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        cur = src.cursor()
+
+        # 1. Kilo session_message
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='session_message';")
+        if cur.fetchone():
+            time_filter = "AND sm.time_created >= ?" if since_ms else ""
+            params = (since_ms,) if since_ms else ()
+            cur.execute(f"""
+                SELECT sm.id, sm.session_id, sm.time_created, sm.data
+                FROM session_message sm
+                WHERE sm.type = 'assistant' {time_filter}
+                ORDER BY sm.time_created ASC;
+            """, params)
+            for msg_id, sid, tc, data_str in cur.fetchall():
+                try:
+                    data = json.loads(data_str)
+                    for item in data.get("content", []):
+                        if item.get("type") == "tool" and item.get("name") in ("shell", "bash"):
+                            state = item.get("state") or {}
+                            inp = state.get("input") or {}
+                            cmd = inp.get("command")
+                            if not cmd or not cmd.strip():
+                                continue
+                            cwd = inp.get("workdir") or os.path.expanduser("~")
+                            out_list = state.get("content") or []
+                            out = "\n".join(c.get("text", "") for c in out_list if isinstance(c, dict) and "text" in c)
+                            meta = state.get("metadata") or {}
+                            rc = meta.get("exit")
+                            if rc is None:
+                                rc = 0 if state.get("status") == "completed" else 1
+                            item_time = item.get("time", {}).get("created") or tc
+                            ts = datetime.fromtimestamp(item_time / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            records.append((ts, "kilo", cwd, cmd.strip(), rc, clean_output(out[:65536]) if out else None, sid, source_label))
+                except Exception:
+                    continue
+
+        # 2. Kilo part
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='part';")
+        if cur.fetchone():
+            time_filter = "AND time_created >= ?" if since_ms else ""
+            params = (since_ms,) if since_ms else ()
+            cur.execute(f"""
+                SELECT time_created, session_id,
+                       json_extract(data, '$.state.input.command'),
+                       json_extract(data, '$.state.input.workdir'),
+                       json_extract(data, '$.state.output'),
+                       json_extract(data, '$.state.status')
+                FROM part
+                WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') IN ('bash', 'shell')
+                  {time_filter}
+                ORDER BY time_created ASC;
+            """, params)
+            for tc, sid, cmd, workdir, out, status in cur.fetchall():
+                if cmd and cmd.strip():
+                    rc = 0 if status == "completed" else 1
+                    ts = datetime.fromtimestamp(tc / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    cwd = workdir or os.path.expanduser("~")
+                    records.append((ts, "kilo", cwd, cmd.strip(), rc, clean_output(out[:65536]) if out else None, sid, source_label))
+        src.close()
+    except Exception:
+        pass
+    return records
+
+
 def backfill_antigravity(conn):
     """Extract commands from Antigravity session transcripts."""
     print(f"  {CYAN}▸{RESET} Scanning Antigravity transcripts...")
@@ -180,39 +323,14 @@ def backfill_antigravity(conn):
 
 
 def backfill_opencode(conn):
-    """Extract commands from OpenCode database."""
+    """Extract commands from OpenCode database (both v2 session_message and v1 part schemas)."""
     print(f"  {CYAN}▸{RESET} Scanning OpenCode SQLite database...")
     db_file = os.path.expanduser("~/.local/share/opencode/opencode.db")
     if not os.path.exists(db_file):
         print(f"    {DIM}OpenCode database not found. Skipping.{RESET}")
         return 0
 
-    records = []
-    try:
-        src = sqlite3.connect(db_file)
-        cur = src.cursor()
-        cur.execute(
-            """
-            SELECT 
-                datetime(time_created/1000, 'unixepoch'),
-                session_id,
-                json_extract(data, '$.state.input.command'),
-                json_extract(data, '$.state.output'),
-                json_extract(data, '$.state.status')
-            FROM part
-            WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
-            """
-        )
-        for ts, session_id, cmd, output, status in cur.fetchall():
-            if not cmd:
-                continue
-            rc = 0 if status == "completed" else 1
-            out_sample = (output or "")[:65536] if output else None
-            records.append((ts + "Z" if ts else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), 
-                            "opencode", os.path.expanduser("~"), cmd.strip(), rc, out_sample, session_id, "backfill"))
-        src.close()
-    except Exception as e:
-        print(f"    {YELLOW}! Warning while reading OpenCode db: {e}{RESET}")
+    records = extract_opencode_records(db_file, since_ms=None, source_label="backfill")
 
     if records:
         conn.executemany(
@@ -236,32 +354,7 @@ def backfill_kilo(conn):
         print(f"    {DIM}Kilo database not found. Skipping.{RESET}")
         return 0
 
-    records = []
-    try:
-        src = sqlite3.connect(db_file)
-        cur = src.cursor()
-        cur.execute(
-            """
-            SELECT 
-                datetime(time_created/1000, 'unixepoch'),
-                session_id,
-                json_extract(data, '$.state.input.command'),
-                json_extract(data, '$.state.output'),
-                json_extract(data, '$.state.status')
-            FROM part
-            WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
-            """
-        )
-        for ts, session_id, cmd, output, status in cur.fetchall():
-            if not cmd:
-                continue
-            rc = 0 if status == "completed" else 1
-            out_sample = (output or "")[:65536] if output else None
-            records.append((ts + "Z" if ts else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), 
-                            "kilo", os.path.expanduser("~"), cmd.strip(), rc, out_sample, session_id, "backfill"))
-        src.close()
-    except Exception as e:
-        print(f"    {YELLOW}! Warning while reading Kilo db: {e}{RESET}")
+    records = extract_kilo_records(db_file, since_ms=None, source_label="backfill")
 
     if records:
         conn.executemany(
@@ -490,25 +583,12 @@ def cmd_sync(args):
     # 2. OpenCode
     oc_db = os.path.expanduser("~/.local/share/opencode/opencode.db")
     if os.path.exists(oc_db) and (now - os.path.getmtime(oc_db) < window_seconds):
-        try:
-            src = sqlite3.connect(oc_db)
-            cur = src.cursor()
-            cur.execute("""
-                SELECT datetime(time_created/1000, 'unixepoch'), session_id,
-                       json_extract(data, '$.state.input.command'),
-                       json_extract(data, '$.state.output'),
-                       json_extract(data, '$.state.status')
-                FROM part
-                WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'bash'
-                  AND time_created >= ?
-            """, ((now - window_seconds) * 1000,))
-            for ts, sid, cmd, out, status in cur.fetchall():
-                if cmd and cmd.strip():
-                    rc = 0 if status == "completed" else 1
-                    records.append((ts + "Z", "opencode", os.path.expanduser("~"), cmd.strip(), rc, (out or "")[:65536] if out else None, sid, "sync"))
-            src.close()
-        except Exception:
-            pass
+        records.extend(extract_opencode_records(oc_db, (now - window_seconds) * 1000, "sync"))
+
+    # 3. Kilo
+    kilo_db = os.path.expanduser("~/.local/share/kilo/kilo.db")
+    if os.path.exists(kilo_db) and (now - os.path.getmtime(kilo_db) < window_seconds):
+        records.extend(extract_kilo_records(kilo_db, (now - window_seconds) * 1000, "sync"))
 
     if records:
         conn.executemany("""
