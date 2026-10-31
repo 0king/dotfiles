@@ -184,11 +184,15 @@ ai_create-ai-agents-history-hook --backfill
 # Browse the most recent 25 commands (default table: TIME, AGENT, DIR, formatted COMMAND)
 ai_view-ai-agents-history
 
+# Short view (-s / --short): relative time and command (truncated to 300 chars)
+ai_view-ai-agents-history -s -n 15
+
 # Show full details (-F / --full): ID, timestamp, agent, full cwd, formatted command, exit code, output
 ai_view-ai-agents-history -F -n 10
 
-# Search for commands matching a query
-ai_view-ai-agents-history -s "git status"
+# Search for commands matching a query (positional or -q / --query)
+ai_view-ai-agents-history "git status"
+ai_view-ai-agents-history -q "chezmoi apply"
 
 # Filter by agent name
 ai_view-ai-agents-history -a opencode -n 50
