@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Import of AI Coding Agents Command History
+Documentation=file://%h/.local/bin/ai_import-ai-agents-history
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ai_cron-ai-agents-history run
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal

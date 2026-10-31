@@ -163,25 +163,36 @@ Provide clear, step-by-step instructions for the agent here.
 
 ## 📜 AI Agents Command History & Auditing System
 
-A unified, real-time command logging and auditing system for AI coding agents (**Kilo**, **Cline**, **Copilot**, **Antigravity**, **OpenCode**, **Aider**, **Pi**, **Dsh**).
+A unified command logging and auditing system for AI coding agents (**Kilo**, **Cline**, **Copilot**, **Antigravity**, **OpenCode**, **Aider**, **Pi**, **Dsh**).
 
 ### Features
-- **Zero Configuration Hook**: Transparent non-interactive Bash hook (`~/.config/ai/hooks/ai-agents-bash-hook.sh`) intercepts commands executed by AI agents without polling or modifying agent sources.
+- **Hourly Scheduled Import**: Automated hourly cron orchestrator (`ai_cron-ai-agents-history`) imports new commands from all agent databases and transcripts into SQLite.
+- **On-Demand Import**: Run `ai_import-ai-agents-history` anytime to immediately sync new commands (e.g. `--since 2h`, `--all`, `--agent opencode`).
+- **No Fragile Shell Hooks**: Avoids brittle shell execution hooks, environment overrides, or subshell interception. Uses direct, reliable native storage extraction.
 - **Dedicated SQLite Storage**: Stored outside Chezmoi at `~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history/ai-agents-history.db` with WAL mode.
 - **Rich Auditing Metadata**: Logs command, working directory, ISO-8601 timestamp, executor agent, exit code, and captured command output (where available).
-- **Zero Pollution**: Interactive user shells (Ghostty, Kitty, WezTerm, Alacritty) do not trigger logging.
-- **Independent from Atuin**: Keeps personal interactive history clean and isolated.
+- **Independent from Atuin**: Keeps personal interactive shell history clean and isolated.
 
 ### Key Commands
 
 ```bash
-# View system and database status
-ai_create-ai-agents-history-hook --status
+# On-demand import of recent commands (default: last 2 hours)
+ai_import-ai-agents-history
 
-# Re-run or refresh backfill from all agent logs
-ai_create-ai-agents-history-hook --backfill
+# Full historical backfill from all agents
+ai_import-ai-agents-history --all
 
-# Browse the most recent 25 commands (default table: TIME, AGENT, DIR, formatted COMMAND)
+# Import commands from a specific timeframe or agent
+ai_import-ai-agents-history --since 24h
+ai_import-ai-agents-history -a opencode --since 4h
+
+# Manage hourly cron job / systemd user timer
+ai_cron-ai-agents-history --status
+ai_cron-ai-agents-history --install-timer
+ai_cron-ai-agents-history --install-cron
+ai_cron-ai-agents-history --uninstall
+
+# Browse recent commands (default table: TIME, AGENT, DIR, formatted COMMAND)
 ai_view-ai-agents-history
 
 # Short view (-s / --short): relative time and command (truncated to 300 chars)
@@ -206,9 +217,8 @@ ai_view-ai-agents-history -i 4882
 # Show command statistics and analytics across agents
 ai_view-ai-agents-history --stats
 
-# Live follow/stream new commands in real-time (-F can also be combined)
+# Live follow/stream new commands in real-time
 ai_view-ai-agents-history -f
-ai_view-ai-agents-history -f -F
 ```
 
 ---

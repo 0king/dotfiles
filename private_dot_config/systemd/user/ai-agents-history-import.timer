@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Timer for AI Coding Agents Command History Import
+Documentation=file://%h/.local/bin/ai_cron-ai-agents-history
+
+[Timer]
+OnCalendar=*:00:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

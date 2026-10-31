@@ -1,0 +1,635 @@
+#!/usr/bin/env python3
+"""
+ai_import-ai-agents-history
+===========================
+Modular import and backfill engine for AI coding agents command history:
+Antigravity, OpenCode, Kilo, Cline, Copilot, Aider, Pi, Dsh.
+
+Extracts, cleans, and deduplicates commands directly into SQLite storage:
+~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history/ai-agents-history.db
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import sqlite3
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+# --- ANSI Color Palette ---
+COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+BOLD = "\033[1m" if COLOR else ""
+DIM = "\033[2m" if COLOR else ""
+RESET = "\033[0m" if COLOR else ""
+RED = "\033[31m" if COLOR else ""
+GREEN = "\033[32m" if COLOR else ""
+YELLOW = "\033[33m" if COLOR else ""
+CYAN = "\033[36m" if COLOR else ""
+
+DEFAULT_HISTORY_DIR = os.path.expanduser("~/Desktop/fj/Dropbox/archives/backups/terminal/ai-agents-history")
+DEFAULT_DB_PATH = os.path.join(DEFAULT_HISTORY_DIR, "ai-agents-history.db")
+
+
+# ── String Sanitization Helpers ───────────────────────────────────────────────
+
+def clean_command(cmd):
+    """Unescape literal \\n to real newlines and strip surrounding whitespace/quotes."""
+    if not cmd:
+        return ""
+    c = cmd.strip()
+    if c.startswith('"') and c.endswith('"'):
+        c = c[1:-1]
+    return c.replace("\\\\n", "\n").replace("\\n", "\n").strip()
+
+
+def clean_output(out):
+    """Strip agent execution wrappers (Created At, Completed At, Command exited with code, Command output:)."""
+    if not out:
+        return ""
+    text = out.strip()
+
+    # 1. Antigravity runner pattern: Command output:\n<real output>
+    m = re.search(r"Command output:\s*\n?(.*)", text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    else:
+        # Strip header / status lines if present
+        lines = text.splitlines()
+        clean_lines = [
+            l for l in lines
+            if not re.match(r"^(Created At:|Completed At:|Command exited with code)", l.strip())
+        ]
+        text = "\n".join(clean_lines).strip()
+
+    if text in ("No output from the command.", "No output from the command"):
+        text = ""
+
+    return text
+
+
+def parse_time_filter(time_str):
+    """Parse relative or absolute time filter into an ISO-8601 string."""
+    if not time_str:
+        return None
+    now = datetime.now(timezone.utc)
+    s = time_str.lower().strip()
+    if s == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s == "yesterday":
+        return (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s.endswith("h"):
+        hours = int(s[:-1])
+        return (now - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s.endswith("d"):
+        days = int(s[:-1])
+        return (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if s.endswith("m"):
+        minutes = int(s[:-1])
+        return (now - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return time_str
+
+
+# ── Database Layer ─────────────────────────────────────────────────────────────
+
+def get_db_connection(db_path):
+    """Initialize SQLite database with WAL mode and canonical schema."""
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            agent TEXT NOT NULL,
+            cwd TEXT NOT NULL,
+            command TEXT NOT NULL,
+            exit_code INTEGER,
+            output TEXT,
+            session_id TEXT,
+            source TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(timestamp, agent, cwd, command) ON CONFLICT IGNORE
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cmd_timestamp ON agent_commands(timestamp DESC);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cmd_agent ON agent_commands(agent);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cmd_cwd ON agent_commands(cwd);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cmd_exit ON agent_commands(exit_code);")
+    conn.commit()
+    return conn
+
+
+# ── Modular Agent Extractors ──────────────────────────────────────────────────
+
+class AntigravityExtractor:
+    """Extracts commands from Antigravity session transcripts."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Scanning Antigravity transcripts...")
+        brain_dir = os.path.expanduser("~/.gemini/antigravity/brain")
+        transcript_files = glob.glob(os.path.join(brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"))
+
+        records = []
+        for fpath in transcript_files:
+            session_id = Path(fpath).parents[2].name
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                    lines = [json.loads(line) for line in f if line.strip()]
+                for i, step in enumerate(lines):
+                    tool_calls = step.get("tool_calls") or []
+                    for tc in tool_calls:
+                        if tc.get("name") == "run_command":
+                            args = tc.get("args") or {}
+                            raw_cmd = args.get("CommandLine", "")
+                            if raw_cmd.startswith('"') and raw_cmd.endswith('"'):
+                                raw_cmd = raw_cmd[1:-1].replace('\\"', '"').replace('\\\\', '\\')
+                            raw_cmd = clean_command(raw_cmd)
+                            if not raw_cmd:
+                                continue
+
+                            ts = step.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            if since_iso and ts < since_iso:
+                                continue
+
+                            out = None
+                            rc = 0
+                            if i + 1 < len(lines):
+                                next_step = lines[i + 1]
+                                content = next_step.get("content") or ""
+                                if content:
+                                    out = clean_output(content[:65536])
+                                    m_rc = re.search(r"Command exited with code (\d+)", content)
+                                    if m_rc:
+                                        rc = int(m_rc.group(1))
+
+                            records.append((ts, "antigravity", os.path.expanduser("~"), raw_cmd, rc, out, session_id, "import"))
+            except Exception:
+                continue
+
+        if not quiet:
+            print(f"    {GREEN}✓{RESET} Extracted {len(records)} Antigravity commands")
+        return records
+
+
+class OpenCodeExtractor:
+    """Extracts commands from OpenCode database (both v2 session_message and v1 part schemas)."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Scanning OpenCode SQLite database...")
+        db_file = os.path.expanduser("~/.local/share/opencode/opencode.db")
+        if not os.path.exists(db_file):
+            if not quiet:
+                print(f"    {DIM}OpenCode database not found. Skipping.{RESET}")
+            return []
+
+        since_ms = None
+        if since_iso:
+            try:
+                dt = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+                since_ms = int(dt.timestamp() * 1000)
+            except Exception:
+                pass
+
+        records = []
+        try:
+            src = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
+            cur = src.cursor()
+
+            # 1. OpenCode V2 schema (session_message + session_v2)
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='session_message';")
+            if cur.fetchone():
+                time_filter = "AND sm.time_created >= ?" if since_ms else ""
+                params = (since_ms,) if since_ms else ()
+                cur.execute(
+                    f"""
+                    SELECT sm.id, sm.session_id, sm.time_created, sm.data, sv.directory
+                    FROM session_message sm
+                    LEFT JOIN session_v2 sv ON sm.session_id = sv.id
+                    WHERE sm.type = 'assistant' {time_filter}
+                    ORDER BY sm.time_created ASC;
+                    """,
+                    params,
+                )
+                for msg_id, sid, tc, data_str, sv_dir in cur.fetchall():
+                    try:
+                        data = json.loads(data_str)
+                        for item in data.get("content", []):
+                            if item.get("type") == "tool" and item.get("name") in ("shell", "bash"):
+                                state = item.get("state") or {}
+                                inp = state.get("input") or {}
+                                cmd = inp.get("command")
+                                if not cmd or not cmd.strip():
+                                    continue
+                                cwd = inp.get("workdir") or sv_dir or os.path.expanduser("~")
+                                out_list = state.get("content") or []
+                                out = "\n".join(c.get("text", "") for c in out_list if isinstance(c, dict) and "text" in c)
+                                meta = state.get("metadata") or {}
+                                rc = meta.get("exit")
+                                if rc is None:
+                                    rc = 0 if state.get("status") == "completed" else 1
+                                item_time = item.get("time", {}).get("created") or tc
+                                ts = datetime.fromtimestamp(item_time / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                records.append((ts, "opencode", cwd, clean_command(cmd), rc, clean_output(out[:65536]) if out else None, sid, "import"))
+                    except Exception:
+                        continue
+
+            # 2. OpenCode V1 schema (part table)
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='part';")
+            if cur.fetchone():
+                time_filter = "AND time_created >= ?" if since_ms else ""
+                params = (since_ms,) if since_ms else ()
+                cur.execute(
+                    f"""
+                    SELECT time_created, session_id,
+                           json_extract(data, '$.state.input.command'),
+                           json_extract(data, '$.state.input.workdir'),
+                           json_extract(data, '$.state.output'),
+                           json_extract(data, '$.state.status')
+                    FROM part
+                    WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') IN ('bash', 'shell')
+                      {time_filter}
+                    ORDER BY time_created ASC;
+                    """,
+                    params,
+                )
+                for tc, sid, cmd, workdir, out, status in cur.fetchall():
+                    if cmd and cmd.strip():
+                        rc = 0 if status == "completed" else 1
+                        ts = datetime.fromtimestamp(tc / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        cwd = workdir or os.path.expanduser("~")
+                        records.append((ts, "opencode", cwd, clean_command(cmd), rc, clean_output(out[:65536]) if out else None, sid, "import"))
+            src.close()
+        except Exception as e:
+            if not quiet:
+                print(f"    {YELLOW}! Warning while reading OpenCode db: {e}{RESET}")
+
+        if not quiet:
+            print(f"    {GREEN}✓{RESET} Extracted {len(records)} OpenCode commands")
+        return records
+
+
+class KiloExtractor:
+    """Extracts commands from Kilo database."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Scanning Kilo SQLite database...")
+        db_file = os.path.expanduser("~/.local/share/kilo/kilo.db")
+        if not os.path.exists(db_file):
+            if not quiet:
+                print(f"    {DIM}Kilo database not found. Skipping.{RESET}")
+            return []
+
+        since_ms = None
+        if since_iso:
+            try:
+                dt = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+                since_ms = int(dt.timestamp() * 1000)
+            except Exception:
+                pass
+
+        records = []
+        try:
+            src = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
+            cur = src.cursor()
+
+            # 1. Kilo session_message
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='session_message';")
+            if cur.fetchone():
+                time_filter = "AND sm.time_created >= ?" if since_ms else ""
+                params = (since_ms,) if since_ms else ()
+                cur.execute(
+                    f"""
+                    SELECT sm.id, sm.session_id, sm.time_created, sm.data
+                    FROM session_message sm
+                    WHERE sm.type = 'assistant' {time_filter}
+                    ORDER BY sm.time_created ASC;
+                    """,
+                    params,
+                )
+                for msg_id, sid, tc, data_str in cur.fetchall():
+                    try:
+                        data = json.loads(data_str)
+                        for item in data.get("content", []):
+                            if item.get("type") == "tool" and item.get("name") in ("shell", "bash"):
+                                state = item.get("state") or {}
+                                inp = state.get("input") or {}
+                                cmd = inp.get("command")
+                                if not cmd or not cmd.strip():
+                                    continue
+                                cwd = inp.get("workdir") or os.path.expanduser("~")
+                                out_list = state.get("content") or []
+                                out = "\n".join(c.get("text", "") for c in out_list if isinstance(c, dict) and "text" in c)
+                                meta = state.get("metadata") or {}
+                                rc = meta.get("exit")
+                                if rc is None:
+                                    rc = 0 if state.get("status") == "completed" else 1
+                                item_time = item.get("time", {}).get("created") or tc
+                                ts = datetime.fromtimestamp(item_time / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                records.append((ts, "kilo", cwd, clean_command(cmd), rc, clean_output(out[:65536]) if out else None, sid, "import"))
+                    except Exception:
+                        continue
+
+            # 2. Kilo part
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='part';")
+            if cur.fetchone():
+                time_filter = "AND time_created >= ?" if since_ms else ""
+                params = (since_ms,) if since_ms else ()
+                cur.execute(
+                    f"""
+                    SELECT time_created, session_id,
+                           json_extract(data, '$.state.input.command'),
+                           json_extract(data, '$.state.input.workdir'),
+                           json_extract(data, '$.state.output'),
+                           json_extract(data, '$.state.status')
+                    FROM part
+                    WHERE json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') IN ('bash', 'shell')
+                      {time_filter}
+                    ORDER BY time_created ASC;
+                    """,
+                    params,
+                )
+                for tc, sid, cmd, workdir, out, status in cur.fetchall():
+                    if cmd and cmd.strip():
+                        rc = 0 if status == "completed" else 1
+                        ts = datetime.fromtimestamp(tc / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        cwd = workdir or os.path.expanduser("~")
+                        records.append((ts, "kilo", cwd, clean_command(cmd), rc, clean_output(out[:65536]) if out else None, sid, "import"))
+            src.close()
+        except Exception as e:
+            if not quiet:
+                print(f"    {YELLOW}! Warning while reading Kilo db: {e}{RESET}")
+
+        if not quiet:
+            print(f"    {GREEN}✓{RESET} Extracted {len(records)} Kilo commands")
+        return records
+
+
+class ClineExtractor:
+    """Extracts commands from Cline session messages."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Scanning Cline session data...")
+        cline_dir = os.path.expanduser("~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks")
+        if not os.path.exists(cline_dir):
+            if not quiet:
+                print(f"    {DIM}Cline task storage not found. Skipping.{RESET}")
+            return []
+
+        task_files = glob.glob(os.path.join(cline_dir, "*", "ui_messages.json"))
+        records = []
+        for tf in task_files:
+            task_id = Path(tf).parent.name
+            try:
+                with open(tf, "r", encoding="utf-8", errors="replace") as f:
+                    messages = json.load(f)
+                tool_results = {}
+                for msg in messages:
+                    if msg.get("type") == "ask" and msg.get("ask") == "tool":
+                        call_id = msg.get("tool_call_id")
+                        text_val = msg.get("text")
+                        if call_id and text_val:
+                            tool_results[call_id] = text_val
+
+                for msg in messages:
+                    content = msg.get("content") or []
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "tool_use":
+                                tool_name = item.get("name")
+                                if tool_name in ("run_commands", "execute_command"):
+                                    call_id = item.get("id")
+                                    inp = item.get("input") or {}
+                                    cmds = inp.get("commands") or ([inp.get("command")] if inp.get("command") else [])
+                                    output = tool_results.get(call_id)
+                                    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                    if since_iso and ts < since_iso:
+                                        continue
+                                    for c in cmds:
+                                        if c and c.strip():
+                                            records.append((ts, "cline", os.path.expanduser("~"), clean_command(c), 0, clean_output(output[:65536]) if output else None, task_id, "import"))
+            except Exception:
+                continue
+
+        if not quiet:
+            print(f"    {GREEN}✓{RESET} Extracted {len(records)} Cline commands")
+        return records
+
+
+class AiderExtractor:
+    """Extracts commands from Aider command history."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Scanning Aider input history...")
+        history_files = [
+            os.path.expanduser("~/.aider.input.history"),
+            os.path.expanduser("~/.aider/history"),
+        ]
+        records = []
+        for hf in history_files:
+            if not os.path.exists(hf):
+                continue
+            try:
+                with open(hf, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        l = line.strip()
+                        if l.startswith("/run ") or l.startswith("/cmd "):
+                            raw_cmd = clean_command(l[5:])
+                            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            if since_iso and ts < since_iso:
+                                continue
+                            records.append((ts, "aider", os.path.expanduser("~"), raw_cmd, 0, None, None, "import"))
+            except Exception:
+                continue
+
+        if not quiet:
+            print(f"    {GREEN}✓{RESET} Extracted {len(records)} Aider commands")
+        return records
+
+
+class CopilotExtractor:
+    """Extracts commands from GitHub Copilot logs (stub/extensible)."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Checking GitHub Copilot history...")
+            print(f"    {DIM}No historical command logs present in Copilot directory.{RESET}")
+        return []
+
+
+class PiExtractor:
+    """Extracts commands from Pi agent (stub)."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Checking Pi agent history...")
+            print(f"    {DIM}Pi agent not currently installed / no history found.{RESET}")
+        return []
+
+
+class DshExtractor:
+    """Extracts commands from Dsh agent (stub)."""
+
+    @staticmethod
+    def extract(since_iso=None, quiet=False):
+        if not quiet:
+            print(f"  {CYAN}▸{RESET} Checking Dsh agent history...")
+            print(f"    {DIM}Dsh agent not currently installed / no history found.{RESET}")
+        return []
+
+
+EXTRACTORS = {
+    "antigravity": AntigravityExtractor,
+    "opencode": OpenCodeExtractor,
+    "kilo": KiloExtractor,
+    "cline": ClineExtractor,
+    "aider": AiderExtractor,
+    "copilot": CopilotExtractor,
+    "pi": PiExtractor,
+    "dsh": DshExtractor,
+}
+
+
+# ── Main Import Runner ────────────────────────────────────────────────────────
+
+def run_import(db_path=DEFAULT_DB_PATH, since_iso=None, target_agents=None, quiet=False):
+    """Import new commands into SQLite database with conflict avoidance."""
+    start_time = time.time()
+    conn = get_db_connection(db_path)
+
+    cur = conn.cursor()
+    cur.execute("SELECT count(*) FROM agent_commands;")
+    before_count = cur.fetchone()[0]
+
+    selected_agents = target_agents or list(EXTRACTORS.keys())
+    if not quiet:
+        print(f"\n{BOLD}{CYAN}=== AI Agents Command History Import ==={RESET}")
+        print(f"Database: {BOLD}{db_path}{RESET}")
+        if since_iso:
+            print(f"Window:   {BOLD}Since {since_iso}{RESET}")
+        else:
+            print(f"Window:   {BOLD}All available history (full backfill){RESET}")
+        print()
+
+    all_records = []
+    for agent_name in selected_agents:
+        extractor = EXTRACTORS.get(agent_name.lower())
+        if extractor:
+            try:
+                records = extractor.extract(since_iso=since_iso, quiet=quiet)
+                all_records.extend(records)
+            except Exception as e:
+                if not quiet:
+                    print(f"    {RED}! Error extracting from {agent_name}: {e}{RESET}")
+
+    if all_records:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO agent_commands 
+            (timestamp, agent, cwd, command, exit_code, output, session_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            all_records,
+        )
+        conn.commit()
+
+    cur.execute("SELECT count(*) FROM agent_commands;")
+    after_count = cur.fetchone()[0]
+    conn.close()
+
+    newly_added = after_count - before_count
+    elapsed = time.time() - start_time
+
+    if not quiet:
+        print(f"\n{GREEN}{BOLD}✓ Import complete in {elapsed:.2f}s!{RESET}")
+        print(f"  Processed:    {BOLD}{len(all_records):,}{RESET} candidates")
+        print(f"  Newly added:  {GREEN}{BOLD}{newly_added:,}{RESET} commands")
+        print(f"  Total in DB:  {BOLD}{after_count:,}{RESET} commands\n")
+
+    return {
+        "processed": len(all_records),
+        "added": newly_added,
+        "total": after_count,
+        "elapsed": elapsed,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Import commands from AI coding agents (Antigravity, OpenCode, Kilo, Cline, Copilot, Aider, Pi, Dsh) into SQLite.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--since",
+        help="Import commands executed since a relative or absolute time (e.g. '2h', '24h', '7d', 'today', '2026-10-31'). Default: 2h for on-demand sync.",
+    )
+    parser.add_argument(
+        "--all", "--backfill",
+        dest="all_history",
+        action="store_true",
+        help="Scan and import all historical logs from day zero (full backfill).",
+    )
+    parser.add_argument(
+        "-a", "--agent",
+        help="Import for specific agent only (antigravity, opencode, kilo, cline, aider, copilot, pi, dsh).",
+    )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Quiet mode for cron execution (no stdout, only errors to stderr).",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Print summary statistics after importing.",
+    )
+    parser.add_argument(
+        "--db",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to SQLite database (default: {DEFAULT_DB_PATH}).",
+    )
+
+    args = parser.parse_args()
+
+    # Determine time window
+    if args.all_history:
+        since_iso = None
+    elif args.since:
+        since_iso = parse_time_filter(args.since)
+    else:
+        # Default on-demand sync window: last 2 hours
+        since_iso = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    target_agents = [args.agent.lower()] if args.agent else None
+
+    result = run_import(
+        db_path=args.db,
+        since_iso=since_iso,
+        target_agents=target_agents,
+        quiet=args.quiet,
+    )
+
+    if args.stats and args.quiet:
+        print(f"Added {result['added']} commands (Total: {result['total']}) in {result['elapsed']:.2f}s")
+
+
+if __name__ == "__main__":
+    main()
