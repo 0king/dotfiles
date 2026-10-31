@@ -8,6 +8,9 @@ Kilo, Cline, Copilot, Antigravity, OpenCode, Aider, Pi, Dsh.
 Default View:
   TIME (relative) | AGENT (colored) | DIR (last dir) | COMMAND (full formatted)
 
+Short View (-s / --short):
+  TIME (relative) | COMMAND (truncated to 300 chars)
+
 Full Details View (-F / --full):
   ID, Timestamp, Agent, Full Directory, Formatted Command, Exit Code, Formatted Output.
 
@@ -338,7 +341,33 @@ def display_default_table(rows):
             print(f"{indent}{l}")
 
     print(f"{DIM}{'-'*term_width}{RESET}")
-    print(f"Showing {len(rows)} commands. (Use {CYAN}-F/--full{RESET} for full details, {CYAN}--stats{RESET} for analytics, {CYAN}-f{RESET} to follow)\n")
+    print(f"Showing {len(rows)} commands. (Use {CYAN}-s/--short{RESET} for short, {CYAN}-F/--full{RESET} for full, {CYAN}--stats{RESET} for analytics, {CYAN}-f{RESET} to follow)\n")
+
+
+def display_short_table(rows):
+    """Display short view: relative time and command truncated to 300 characters (-s / --short)."""
+    term_width = shutil.get_terminal_size((120, 24)).columns
+    time_w = 10
+    indent = " " * (time_w + 1)
+
+    print(f"\n{BOLD}{'TIME':<{time_w}} {'COMMAND'}{RESET}")
+    print(f"{DIM}{'-'*term_width}{RESET}")
+
+    for row in rows:
+        _id, ts, agent, cwd, cmd, rc, out, sid = row
+        rel_time = format_relative_time(ts)
+        time_badge = color_relative_time(rel_time, time_w)
+        clean_c = clean_command(cmd)
+        if len(clean_c) > 300:
+            clean_c = clean_c[:300] + "…"
+
+        cmd_lines = clean_c.splitlines() or [""]
+        print(f"{time_badge} {cmd_lines[0]}")
+        for l in cmd_lines[1:]:
+            print(f"{indent}{l}")
+
+    print(f"{DIM}{'-'*term_width}{RESET}")
+    print(f"Showing {len(rows)} commands. (Use {CYAN}-s/--short{RESET} for short, {CYAN}-F/--full{RESET} for full, {CYAN}--stats{RESET} for analytics, {CYAN}-f{RESET} to follow)\n")
 
 
 def show_statistics(conn):
@@ -452,6 +481,20 @@ def follow_mode(conn, args):
             if rows:
                 if args.full:
                     display_full_records(rows)
+                elif args.short:
+                    for row in rows:
+                        _id, ts, agent, cwd, cmd, rc, out, sid = row
+                        last_id = _id
+                        rel_time = format_relative_time(ts)
+                        time_b = color_relative_time(rel_time, 10)
+                        clean_c = clean_command(cmd)
+                        if len(clean_c) > 300:
+                            clean_c = clean_c[:300] + "…"
+                        indent = " " * 11
+                        lines = clean_c.splitlines() or [""]
+                        print(f"{time_b} {lines[0]}")
+                        for l in lines[1:]:
+                            print(f"{indent}{l}")
                 else:
                     for row in rows:
                         _id, ts, agent, cwd, cmd, rc, out, sid = row
@@ -478,9 +521,10 @@ def main():
     )
     parser.add_argument("query", nargs="?", default="", help="Search query in command string")
     parser.add_argument("-n", "--limit", type=int, default=25, help="Number of records to show (default: 25, 0 for all)")
+    parser.add_argument("-s", "--short", action="store_true", help="Display short view: relative time and command (truncated to 300 chars)")
     parser.add_argument("-F", "--full", action="store_true", help="Display full details (ID, timestamp, agent, full directory path, formatted full command, exit code, formatted output)")
     parser.add_argument("-a", "--agent", help="Filter by agent (kilo, cline, copilot, antigravity, opencode, aider, pi, dsh)")
-    parser.add_argument("-s", "--search", help="Search query (alternative to positional argument)")
+    parser.add_argument("-q", "--search", "--query", dest="search", help="Search query (alternative to positional argument)")
     parser.add_argument("-d", "--dir", "--cwd", dest="cwd", help="Filter by working directory")
     parser.add_argument("-e", "--failed", "--errors", action="store_true", help="Show only failed commands (exit_code != 0)")
     parser.add_argument("--since", help="Filter commands after datetime (e.g. 'today', 'yesterday', '1h', '7d', '2026-10-29')")
@@ -616,6 +660,8 @@ def main():
     # Check display mode
     if args.full:
         display_full_records(rows)
+    elif args.short:
+        display_short_table(rows)
     else:
         display_default_table(rows)
 
