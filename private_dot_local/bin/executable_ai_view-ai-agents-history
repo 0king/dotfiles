@@ -128,7 +128,7 @@ def format_rc(rc):
 
 
 def format_last_dir(path, width=14):
-    """Get the last directory component of the full path."""
+    """Get the last directory component of the full path, formatted and colored."""
     if not path:
         res = "~"
     else:
@@ -140,7 +140,10 @@ def format_last_dir(path, width=14):
             res = b or "/"
     if len(res) > width:
         res = "…" + res[-(width - 1):]
-    return f"{res:<{width}}"
+    padded = f"{res:<{width}}"
+    if not COLOR:
+        return padded
+    return f"{BLUE}{padded}{RESET}"
 
 
 def clean_command(cmd):
@@ -221,10 +224,10 @@ def display_full_records(rows):
         rc_disp = format_rc(rc)
 
         print(f"\n{BOLD}{CYAN}=== [ID #{_id}] {ts_clean} | {agent_color}{agent.upper()}{RESET}{BOLD}{CYAN} | Exit: {rc_disp}{BOLD}{CYAN} ==={RESET}")
-        print(f"{BOLD}Directory:{RESET} {cwd}")
+        print(f"{BOLD}Directory:{RESET} {BLUE}{cwd or ''}{RESET}")
         if sid:
             print(f"{BOLD}Session:{RESET}   {sid}")
-        print(f"{BOLD}Command:{RESET}\n{clean_c}")
+        print(f"{BOLD}Command:{RESET}\n{YELLOW}{clean_c}{RESET}")
         if clean_o:
             print(f"{BOLD}Output:{RESET}\n{clean_o}")
     print()
