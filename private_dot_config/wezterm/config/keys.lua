@@ -118,6 +118,16 @@ function M.apply_to_config(config)
 	-- Convenience wrappers for common scroll distances
 	local function scroll_full_page(direction)
 		return wezterm.action_callback(function(window, pane)
+			local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
+			if is_alt then
+				-- In fullscreen apps like Neovim/less, pass full page scroll keys directly to the app
+				if direction < 0 then
+					pane:send_text("\x02") -- Ctrl+B (Page Up)
+				else
+					pane:send_text("\x06") -- Ctrl+F (Page Down)
+				end
+				return
+			end
 			local dims = pane:get_dimensions()
 			local page_lines = dims.viewport_rows or 24
 			smooth_scroll(window, pane, page_lines * direction)
@@ -126,6 +136,16 @@ function M.apply_to_config(config)
 
 	local function scroll_half_page(direction)
 		return wezterm.action_callback(function(window, pane)
+			local is_alt = pane.is_alt_screen_active and pane:is_alt_screen_active()
+			if is_alt then
+				-- In fullscreen apps like Neovim/less, pass half page scroll keys directly to the app
+				if direction < 0 then
+					pane:send_text("\x15") -- Ctrl+U (Half Page Up)
+				else
+					pane:send_text("\x04") -- Ctrl+D (Half Page Down)
+				end
+				return
+			end
 			local dims = pane:get_dimensions()
 			local half = math.floor((dims.viewport_rows or 24) / 2)
 			smooth_scroll(window, pane, half * direction)
@@ -352,11 +372,18 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "PageUp", mods = "CTRL|SHIFT", action = scroll_full_page(-1) })
 	table.insert(config.keys, { key = "PageDown", mods = "CTRL|SHIFT", action = scroll_full_page(1) })
 
-	-- Half-Page Scrolling (Animated Smooth Scrolling - Vim-style Ctrl+Shift+U/D)
+	-- Half-Page Scrolling (Animated Smooth Scrolling)
+	-- Primary: Alt + PageUp / Alt + PageDown (Works reliably across all Linux/Wayland environments without OS conflicts)
+	table.insert(config.keys, { key = "PageUp", mods = "ALT", action = scroll_half_page(-1) })
+	table.insert(config.keys, { key = "PageDown", mods = "ALT", action = scroll_half_page(1) })
+
+	-- Vim-style Ctrl + Shift + U / D (Handles physical keys and character symbols)
 	table.insert(config.keys, { key = "u", mods = "CTRL|SHIFT", action = scroll_half_page(-1) })
 	table.insert(config.keys, { key = "U", mods = "CTRL|SHIFT", action = scroll_half_page(-1) })
+	table.insert(config.keys, { key = "phys:u", mods = "CTRL|SHIFT", action = scroll_half_page(-1) })
 	table.insert(config.keys, { key = "d", mods = "CTRL|SHIFT", action = scroll_half_page(1) })
 	table.insert(config.keys, { key = "D", mods = "CTRL|SHIFT", action = scroll_half_page(1) })
+	table.insert(config.keys, { key = "phys:d", mods = "CTRL|SHIFT", action = scroll_half_page(1) })
 
 	-- Unified Boundary Scrolling (handles normal viewport and Copy Mode cursor)
 	table.insert(config.keys, { key = "Home", mods = "SHIFT", action = scroll_to_top })
