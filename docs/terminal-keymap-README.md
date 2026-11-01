@@ -23,6 +23,12 @@ Standardized keybindings, clipboard behaviors, and Vim navigation across **Kitty
 | **Scroll to Bottom** | `Shift + End`<br>`Ctrl + Shift + End` | `scroll_to_bottom` | `scroll_end` | `ScrollToBottom` | `ScrollToBottom` |
 | **Search Buffer** | `Ctrl + Shift + F` | `start_search` | `show_scrollback` | `SearchForward` | `Search(...)` |
 | **New Window** | `Ctrl + Shift + N` | `new_window` | `new_os_window` | `CreateNewWindow` | `SpawnWindow` |
+| **Command Palette** | `Ctrl + Shift + P` | Native / Quick Access | `command_palette` | — | Native Palette |
+| **Previous Prompt** | `Ctrl + Shift + ,` | `jump_to_prompt:-1` | `scroll_to_prompt -1 3` | — | — |
+| **Next Prompt** | `Ctrl + Shift + .` | `jump_to_prompt:1` | `scroll_to_prompt 1` | — | — |
+| **Hints Kitten** | `Ctrl + Shift + ;` | — | `kitten hints` (`f/c/d/l/w/h/n/y`) | — | — |
+| **Move Tab Backward** | `Ctrl + Shift + Alt + Left` / `,` | `move_tab:-1` | `move_tab_backward` | — | `MoveTabRelative(-1)` |
+| **Move Tab Forward** | `Ctrl + Shift + Alt + Right` / `.` | `move_tab:1` | `move_tab_forward` | — | `MoveTabRelative(1)` |
 
 ---
 
@@ -56,6 +62,12 @@ Activates modal keyboard navigation across all four terminals using two compleme
 ### 4. Safe Scrolling & Override Protection
 - Both standard Arrow keys (`Up`/`Down`) and Vim navigation keys (`K`/`J`) with `Ctrl + Shift` scroll line-by-line.
 - **WezTerm Safety**: In WezTerm, `Ctrl + Shift + K` defaults to `ClearScrollback 'ScrollbackOnly'` (which deletes terminal history). This dotfiles configuration explicitly overrides this binding to `ScrollByLine(-1)`, protecting you from accidental history loss.
+
+### 5. Command Palette, Prompt Navigation & Tab Management
+- **Command Palette (`Ctrl + Shift + P`)**: Built-in fuzzy command search and trigger across Kitty and WezTerm.
+- **Hints Kitten (`Ctrl + Shift + ;`)**: In Kitty, screen text picker actions (paths, line numbers, hashes, URLs) are mapped under the `Ctrl + Shift + ;` prefix (e.g. `Ctrl + Shift + ; > f` to pick a path, `n` for line numbers).
+- **Prompt Navigation (`Ctrl + Shift + ,` / `Ctrl + Shift + .`)**: Jump between previous and next shell prompts in terminal scrollback. Standard `Ctrl + P` and `Ctrl + N` are left unmapped by Kitty so shell history navigation remains conflict-free.
+- **Tab Reordering (`Ctrl + Shift + Alt + Left/Right` or `Comma/Dot`)**: Move active tabs left or right interactively without colliding with prompt navigation shortcuts.
 
 ---
 

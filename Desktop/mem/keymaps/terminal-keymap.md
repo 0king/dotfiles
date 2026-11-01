@@ -14,3 +14,7 @@
 | Scroll to bottom | `Shift + End` / `Ctrl + Shift + End` |
 | Search buffer | `Ctrl + Shift + F` |
 | New window | `Ctrl + Shift + N` |
+| Command palette | `Ctrl + Shift + P` |
+| Prompt previous / next | `Ctrl + Shift + ,` / `Ctrl + Shift + .` |
+| Hints kitten | `Ctrl + Shift + ;` |
+| Move tab backward / forward | `Ctrl + Shift + Alt + Left` / `Right` (or `,` / `.`) |
