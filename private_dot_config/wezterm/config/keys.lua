@@ -49,6 +49,92 @@ function M.apply_to_config(config)
 		end)
 	end
 
+	-- ═══════════════════════════════════════════════════════════════════
+	-- Smooth Scroll Animation Engine
+	-- Simulates Neovide-like ease-out scrolling by stepping through
+	-- lines on rapid timers. WezTerm doesn't support pixel-level
+	-- scrolling, but line-stepping at high FPS with deceleration
+	-- produces a convincing animation.
+	-- ═══════════════════════════════════════════════════════════════════
+	local scroll_token = 0
+
+	local function smooth_scroll(window, pane, total_lines)
+		-- Cancel any in-flight animation by bumping the token
+		scroll_token = scroll_token + 1
+		local my_token = scroll_token
+
+		local direction = total_lines > 0 and 1 or -1
+		local remaining = math.abs(total_lines)
+
+		if remaining == 0 then
+			return
+		end
+
+		-- Ease-out schedule: scroll more lines per step at the start,
+		-- fewer at the end. Each entry is {lines_this_step, delay_seconds}.
+		-- Total duration ≈ 120ms for a full page (~40 lines).
+		local steps = {}
+		local lines_so_far = 0
+
+		-- Build steps using a quadratic ease-out curve
+		local num_steps = math.min(remaining, 10) -- cap steps at 10
+		for i = 1, num_steps do
+			-- Ease-out: more lines early, fewer later
+			-- Progress goes from 0 to 1; ease-out = 1 - (1-t)^2
+			local t_prev = (i - 1) / num_steps
+			local t_curr = i / num_steps
+			local ease_prev = 1 - (1 - t_prev) * (1 - t_prev)
+			local ease_curr = 1 - (1 - t_curr) * (1 - t_curr)
+
+			local target = math.floor(ease_curr * remaining + 0.5)
+			local lines_this_step = target - lines_so_far
+
+			if lines_this_step > 0 then
+				-- Delay grows with each step (ease-out deceleration)
+				local delay = i * 0.014 -- ~14ms between steps
+				table.insert(steps, { lines = lines_this_step, delay = delay })
+				lines_so_far = lines_so_far + lines_this_step
+			end
+		end
+
+		-- Ensure we account for any rounding remainder
+		if lines_so_far < remaining and #steps > 0 then
+			local last = steps[#steps]
+			last.lines = last.lines + (remaining - lines_so_far)
+		end
+
+		-- Fire each step on a timer
+		for _, step in ipairs(steps) do
+			wezterm.time.call_after(step.delay, function()
+				-- Abort if a newer scroll animation has started
+				if scroll_token ~= my_token then
+					return
+				end
+				window:perform_action(
+					act.ScrollByLine(step.lines * direction),
+					pane
+				)
+			end)
+		end
+	end
+
+	-- Convenience wrappers for common scroll distances
+	local function scroll_full_page(direction)
+		return wezterm.action_callback(function(window, pane)
+			local dims = pane:get_dimensions()
+			local page_lines = dims.viewport_rows or 24
+			smooth_scroll(window, pane, page_lines * direction)
+		end)
+	end
+
+	local function scroll_half_page(direction)
+		return wezterm.action_callback(function(window, pane)
+			local dims = pane:get_dimensions()
+			local half = math.floor((dims.viewport_rows or 24) / 2)
+			smooth_scroll(window, pane, half * direction)
+		end)
+	end
+
 	-- Action: Single unified Select All command
 	-- Identifies pane state, selects everything beyond the viewport (from Row 1, Column 1 to bottom), and copies it
 	local select_all = wezterm.action_callback(function(window, pane)
@@ -263,11 +349,17 @@ function M.apply_to_config(config)
 	table.insert(config.keys, { key = "j", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
 	table.insert(config.keys, { key = "J", mods = "CTRL|SHIFT", action = act.ScrollByLine(1) })
 
-	-- Unified Page Scrolling
-	table.insert(config.keys, { key = "PageUp", mods = "SHIFT", action = act.ScrollByPage(-1) })
-	table.insert(config.keys, { key = "PageDown", mods = "SHIFT", action = act.ScrollByPage(1) })
-	table.insert(config.keys, { key = "PageUp", mods = "CTRL|SHIFT", action = act.ScrollByPage(-1) })
-	table.insert(config.keys, { key = "PageDown", mods = "CTRL|SHIFT", action = act.ScrollByPage(1) })
+	-- Unified Page Scrolling (Animated Smooth Scrolling)
+	table.insert(config.keys, { key = "PageUp", mods = "SHIFT", action = scroll_full_page(-1) })
+	table.insert(config.keys, { key = "PageDown", mods = "SHIFT", action = scroll_full_page(1) })
+	table.insert(config.keys, { key = "PageUp", mods = "CTRL|SHIFT", action = scroll_full_page(-1) })
+	table.insert(config.keys, { key = "PageDown", mods = "CTRL|SHIFT", action = scroll_full_page(1) })
+
+	-- Half-Page Scrolling (Animated Smooth Scrolling - Vim-style Ctrl+Shift+U/D)
+	table.insert(config.keys, { key = "u", mods = "CTRL|SHIFT", action = scroll_half_page(-1) })
+	table.insert(config.keys, { key = "U", mods = "CTRL|SHIFT", action = scroll_half_page(-1) })
+	table.insert(config.keys, { key = "d", mods = "CTRL|SHIFT", action = scroll_half_page(1) })
+	table.insert(config.keys, { key = "D", mods = "CTRL|SHIFT", action = scroll_half_page(1) })
 
 	-- Unified Boundary Scrolling (handles normal viewport and Copy Mode cursor)
 	table.insert(config.keys, { key = "Home", mods = "SHIFT", action = scroll_to_top })
@@ -446,22 +538,22 @@ function M.apply_to_config(config)
 			{
 				brief = "Scroll Page Up (pin)",
 				icon = "md_bookmark",
-				action = act.ScrollByPage(-1),
+				action = scroll_full_page(-1),
 			},
 			{
 				brief = "Scroll Page Down (pin)",
 				icon = "md_bookmark",
-				action = act.ScrollByPage(1),
+				action = scroll_full_page(1),
 			},
 			{
 				brief = "Scroll Half Page Up (pin)",
 				icon = "md_bookmark",
-				action = act.ScrollByPage(-0.5),
+				action = scroll_half_page(-1),
 			},
 			{
 				brief = "Scroll Half Page Down (pin)",
 				icon = "md_bookmark",
-				action = act.ScrollByPage(0.5),
+				action = scroll_half_page(1),
 			},
 			{
 				brief = "Scroll Line Up (pin)",
