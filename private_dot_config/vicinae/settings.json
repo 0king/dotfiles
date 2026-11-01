@@ -182,7 +182,7 @@
          }
       },
       "media": {
-         "enabled": false,
+         "enabled": true,
          "entrypoints": {
             "next-track": {
                "enabled": false
@@ -190,14 +190,18 @@
             "now-playing": {
                "enabled": false
             },
+            "play-pause": {
+               "enabled": false
+            },
             "previous-track": {
                "enabled": false
             },
             "toggle-mute": {
-               "alias": "v4"
+               "alias": "v"
             },
             "volume-0": {
-               "alias": "v3"
+               "alias": "v3",
+               "enabled": false
             },
             "volume-100": {
                "alias": "v1"
@@ -268,7 +272,7 @@
          "enabled": false
       },
       "wm": {
-         "enabled": false,
+         "enabled": true,
          "entrypoints": {
             "switch-windows": {
                "alias": "w"
