@@ -490,12 +490,12 @@ function M.apply_to_config(config)
 				action = select_all,
 			},
 			{
-				brief = "Vim Mode (pin) (QuickSelectMode) (ESC-quit) <C-S-space>",
+				brief = "Vim Mode (pin) [CopyMode] (ESC to quit) <C-S-space>",
 				icon = "md_bookmark",
 				action = act.ActivateCopyMode,
 			},
 			{
-				brief = "Highlight Mode (pin)",
+				brief = "Highlight Mode (pin) [QuickSelectMode]",
 				doc = "Highlight URLs, paths, and git hashes",
 				icon = "md_bookmark",
 				action = act.QuickSelect,
@@ -512,7 +512,7 @@ function M.apply_to_config(config)
 			-- 	action = view_scrollback_pager,
 			-- },
 			{
-				brief = "Open Scrollback with Line Numbers (pin) (q=quit) <C-S-h>",
+				brief = "Open Scrollback with Line Numbers (pin) (q to quit) <C-S-h>",
 				--doc = "Opens scrollback buffer with line numbers in Neovim (press q to quit)",
 				icon = "md_format_list_numbered",
 				action = view_scrollback_numbered,
