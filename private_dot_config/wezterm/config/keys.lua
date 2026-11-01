@@ -91,7 +91,7 @@ function M.apply_to_config(config)
 
 			if lines_this_step > 0 then
 				-- Delay grows with each step (ease-out deceleration)
-				local delay = i * 0.014 -- ~14ms between steps
+				local delay = i * 0.028 -- ~14ms between steps
 				table.insert(steps, { lines = lines_this_step, delay = delay })
 				lines_so_far = lines_so_far + lines_this_step
 			end
@@ -110,10 +110,7 @@ function M.apply_to_config(config)
 				if scroll_token ~= my_token then
 					return
 				end
-				window:perform_action(
-					act.ScrollByLine(step.lines * direction),
-					pane
-				)
+				window:perform_action(act.ScrollByLine(step.lines * direction), pane)
 			end)
 		end
 	end
