@@ -228,4 +228,19 @@ chezmoi() {
     fi
 }
 
+# Interactive application uninstaller (apt, snap, flatpak)
+# Usage: uninstall [keyword]
+uninstall() {
+    local script="$HOME/.local/bin/ubuntu_uninstall-app.sh"
+    if [[ ! -x "$script" ]]; then
+        if command -v ubuntu_uninstall-app.sh >/dev/null 2>&1; then
+            script="$(command -v ubuntu_uninstall-app.sh)"
+        else
+            echo "Error: Uninstaller script not found at $script" >&2
+            return 1
+        fi
+    fi
+    "$script" "$@"
+}
+
 

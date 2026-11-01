@@ -13,6 +13,7 @@ putting all my scripts here and using chezmoi for sync/backup
   - `chezmoi_check-unmanaged.sh.README.md`: Detects and alerts on unmanaged/new files in managed directories during status
   - `git_create-github-repo.readme.md`: Interactive GitHub repository creator and initial commit helper
   - `kanata_update_config.README.md`: Kanata keyboard configuration updater and systemd service reloader
+  - `ubuntu_uninstall-app.sh.README.md`: Interactive app uninstaller for APT, Snap, and Flatpak with residual cleanup
   - `terminal-keymap.md`: Unified terminal keybindings and actions reference (Kitty, Alacritty, WezTerm, Ghostty)
 - **out/** (off `$PATH`): Script-generated data snapshots, audit logs, and reports
 
