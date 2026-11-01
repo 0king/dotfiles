@@ -134,7 +134,10 @@
          "preferences": {
             "eraseOnStartup": false,
             "ignorePasswords": false,
-            "monitoring": true
+            "monitoring": true,
+            "preserveTagged": true,
+            "ignoredApps": [],
+            "evictionThreshold": "3600"
          },
          "entrypoints": {
             "history": {
