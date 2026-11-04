@@ -109,7 +109,7 @@ def audit_userscript(file_path):
     # 5. DANGEROUS HOST BREAKAGE: Global monkeypatching of browser APIs
     host_patches = [
         ("window.fetch Override", r'\bwindow\.fetch\s*=',
-         "Overriding window.fetch breaks host web applications (e.g. ChatGPT chat completions, session synchronization)."),
+         "Overriding window.fetch breaks host web application requests and streaming."),
         ("document.createElement Override", r'\bdocument\.createElement\s*=',
          "Overriding document.createElement breaks host element creation (e.g. user avatar images, icons, video/audio players)."),
         ("Node.prototype.appendChild Override", r'\bNode\.prototype\.appendChild\s*=',
