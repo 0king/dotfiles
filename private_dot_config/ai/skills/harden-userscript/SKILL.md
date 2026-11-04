@@ -6,12 +6,29 @@ description: >-
 
 # Harden Userscript
 
-A systematic procedure and automated toolkit to audit, sanitize, and sandbox third-party browser userscripts.
+A systematic procedure and automated toolkit to audit, sanitize, and safely harden third-party browser userscripts without breaking host web applications.
+
+> [!WARNING]
+> ### CRITICAL: Never Monkeypatch Native Page or DOM APIs
+> **DO NOT globally override `window.fetch`, `window.XMLHttpRequest`, `document.createElement`, `Node.prototype.appendChild`, `window.WebSocket`, or `window.Worker`.**
+>
+> Userscripts share the live DOM tree (`document`, `Node.prototype`) and window context with host websites (e.g., ChatGPT, Claude, Gemini). Globally intercepting native APIs **destroys the host application itself**:
+> - Overriding `window.fetch` breaks host completions, authentication polling, and sync (e.g. `ERR_BLOCKED_BY_CLIENT`, *"chatgpt hit a snag"*).
+> - Overriding `document.createElement('img')` breaks user avatars, icons, and diagrams with unhandled exceptions in the host React tree.
+> - Overriding `Node.prototype.appendChild` breaks lazy script chunk loading in Next.js and Vite.
+>
+> **Proper hardening is non-invasive:**
+> 1. Restrict `@match` to explicit origins.
+> 2. Revoke privileged extension grants (`GM_xmlhttpRequest`, `@connect *`, `unsafeWindow`, `GM_cookie`).
+> 3. Neuter specific in-body dangerous functions (e.g. `injectScript() -> Promise.resolve()`).
+> 4. Add non-invasive fallback stubs only for ungranted extension APIs (`GM_xmlhttpRequest`).
+
+---
 
 ## Workflow
 
 ### 1. Audit the Target Userscript
-Run the automated vulnerability scanner to identify broad scopes, dangerous grants, unpinned remote resources, and network vectors:
+Run the automated vulnerability and host-safety scanner:
 
 ```bash
 python3 ~/.config/ai/skills/harden-userscript/scripts/audit_userscript.py <path-to-script.user.js>
@@ -25,9 +42,9 @@ python3 ~/.config/ai/skills/harden-userscript/scripts/audit_userscript.py <path-
 Review findings against [userscript-threat-vectors.md](references/userscript-threat-vectors.md):
 * **Universal Scope:** `@match http://*/*` or `https://*/*`
 * **Privileged Grants:** `unsafeWindow`, `GM_cookie`, `GM_xmlhttpRequest`, `@connect *`
+* **Host API Monkeypatches:** Overriding `window.fetch`, `document.createElement`, `Node.prototype.appendChild`
 * **Remote Code & Overwrites:** `@updateURL`, `@downloadURL`, unpinned GitHub `@resource`/`@require`
-* **DOM Script Injection:** `document.createElement('script')`
-* **Multi-Protocol Channels:** `RTCPeerConnection`, `sendBeacon`, `WebSocket`, `EventSource`, `Worker`, DNS prefetching
+* **DOM Script Injection:** Dynamic `<script>` loaders
 
 ---
 
@@ -35,7 +52,7 @@ Review findings against [userscript-threat-vectors.md](references/userscript-thr
 
 Edit the metadata block (`// ==UserScript==`):
 
-1. **Tighten Scope:** Replace wildcard `@match` with strictly the target origins required by the user.
+1. **Tighten Scope:** Replace wildcard `@match` with strictly the target origins required by the user (e.g., `https://chatgpt.com/*`).
 2. **Strip Dangerous Grants:** Remove `GM_cookie`, `GM_xmlhttpRequest`, `unsafeWindow`, `window.focus`, `GM_notification`, and `@connect *`.
 3. **Prevent Upstream Overwrites:** Remove `@downloadURL` and `@updateURL` so userscript managers do not replace the hardened code with upstream versions.
 4. **Remove Unpinned Dependencies:** Remove or vendor any resources pointing to mutable branches (e.g. `@main`) lacking cryptographic hashes (`#sha256=...`).
@@ -43,26 +60,46 @@ Edit the metadata block (`// ==UserScript==`):
 
 ---
 
-### 3. Inject Zero-Trust Multi-Protocol Sandbox
+### 3. Install Non-Invasive Stubs & Dependency Guards
 
-Immediately after `// ==/UserScript==`, insert the production-grade guard from [zero-trust-guard-template.js](references/zero-trust-guard-template.js):
+From [zero-trust-guard-template.js](references/zero-trust-guard-template.js):
 
-* **HTTP/HTTPS (`fetch`, `XMLHttpRequest`):** Intercepts and blocks all outbound network calls; permits local `blob:` and `data:` URLs so in-browser file exports and downloads function normally.
-* **Sockets (`WebSocket`):** Throws immediately on construction.
-* **WebRTC (`RTCPeerConnection`, `RTCDataChannel`):** Stubs peer connections to prevent UDP/TCP data channels and IP leakage.
-* **Telemetry (`navigator.sendBeacon`):** Overridden to block and return `false`.
-* **Streaming & WebTransport (`EventSource`, `WebTransport`):** Throws immediately on construction.
-* **Background Threads (`Worker`, `SharedWorker`):** Throws immediately on construction.
-* **Dynamic DOM Script & Frame Injection:** Blocks `document.createElement("script"|"iframe"|"embed"|"object")` and hooks `Node.prototype.appendChild` to block mounting `<script>` elements.
-* **Side-Channel Prefetching:** Blocks `<link rel="dns-prefetch">`, `preconnect`, and anchor `ping` attributes.
-* **Fallback Stub:** Provides a throwing fallback for `GM_xmlhttpRequest`.
+1. **Stub `GM_xmlhttpRequest` Safely (Extension-Only API):**
+   Immediately after `// ==/UserScript==`, insert a safe fallback so internal script features (like WebDAV or external registry checks) cleanly trigger their `onerror` callback instead of throwing unhandled `ReferenceError` crashes:
+   ```javascript
+   if (typeof GM_xmlhttpRequest === "undefined") {
+     globalThis.GM_xmlhttpRequest = function(opts) {
+       console.warn("[Userscript Hardening] GM_xmlhttpRequest is disabled.");
+       opts?.onerror?.(new Error("GM_xmlhttpRequest is disabled by security policy."));
+       return { abort: function() {} };
+     };
+   }
+   ```
+   *(Websites never use `GM_xmlhttpRequest`, so this never interferes with host applications.)*
+
+2. **Guard Optional Dependency Invocations:**
+   If an optional `@require` dependency was removed from the header, check the tail of the script for direct identifier invocations:
+   ```javascript
+   // Dangerous: throws ReferenceError if @require was removed
+   })(__OptionalDependency);
+
+   // Safe: guarded with typeof check and fallback stub
+   })(typeof __OptionalDependency !== "undefined" ? __OptionalDependency : {
+     noopMethod: () => ({ success: false, reason: "disabled" })
+   });
+   ```
 
 ---
 
 ### 4. Neuter In-Body Dangerous Code
 
 If the userscript has specific in-body routines that dynamically inject scripts or trigger network sync:
-1. Search for `injectScript` or `document.createElement("script")` and replace them with safe no-ops (`return Promise.resolve()`).
+1. Search for dynamic script loaders (e.g., `injectScript`) and replace the method body with a safe no-op:
+   ```javascript
+   injectScript(e, t) {
+     return Promise.resolve();
+   }
+   ```
 2. Neuter background sync managers (e.g., WebDAV sync loops, cloud patch registries).
 
 ---
@@ -76,14 +113,14 @@ node -c <path-to-script.user.js>
 ```
 
 #### B. Re-run Audit Scanner
-Confirm that all critical and high-severity issues are resolved and the sandbox is active:
+Confirm that all critical and high-severity issues are resolved and no breaking monkeypatches exist:
 ```bash
 python3 ~/.config/ai/skills/harden-userscript/scripts/audit_userscript.py <path-to-script.user.js>
 ```
 
-#### C. Run Sandbox Unit Test Suite
-Execute the 17-point automated trap verification suite against the hardened file:
+#### C. Run Hardening & Safety Unit Test Suite
+Execute the automated verification suite against the hardened file:
 ```bash
 node ~/.config/ai/skills/harden-userscript/scripts/test_userscript_sandbox.js <path-to-script.user.js>
 ```
-All 17 exfiltration and network trap assertions must pass.
+All assertions (scope restrictions, revoked grants, host API non-interference, and safe dependency bindings) must pass.
