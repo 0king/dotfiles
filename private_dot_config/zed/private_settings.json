@@ -8,7 +8,8 @@
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
   "languages": {
-    "Swift": {
+    "Swift": {      
+      "language_servers": [],
       "enable_language_server": false
     }
   },
