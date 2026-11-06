@@ -7,6 +7,10 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "current_line_highlight": "gutter",
+  "cursor_animation": {
+    "enabled": true
+  },
   "languages": {
     "Swift": {      
       "language_servers": [],
