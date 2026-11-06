@@ -33,15 +33,18 @@
       "floating_status_bar": false
    },
    "favorites": [
-      "applications:firefox-profile-1",
       "@aurelleb/store.vicinae.chromium-bookmarks:search-bookmarks",
-      "applications:neovide",
       "core:search-emojis",
+      "applications:kitty",
+      "applications:firefox-profile-1",
+      "applications:neovide",
+      "files:search",
+      "@marcjulian/store.raycast.obsidian:searchNoteCommand",
+      "applications:dev.zed.Zed",
+      "applications:antigravity_antigravity",
       "applications:obsidian-technotesvault",
       "applications:brave-origin-profile-1",
-      "applications:wezterm",
-      "files:search",
-      "@marcjulian/store.raycast.obsidian:searchNoteCommand"
+      "applications:wezterm"
    ],
    "fallbacks": [
       "shortcuts:sct-f62d4d74a866",
