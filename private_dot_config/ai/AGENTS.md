@@ -1,5 +1,9 @@
 # Global Agent Guidelines
 
+## Ask Clarifying Questions & Avoid Assumptions
+- **Ask as many clarifying questions as possible**: Never assume requirements, intent, or implementation details. If anything is ambiguous or underspecified, ask the user before proceeding.
+- **Do not assume**: Fill in no gaps on your own. Confirm behavior, scope, technologies, and constraints with the user first.
+
 ## Default Behavior & Shortcuts
 - **Do not override default behavior without asking**: Never override or disable default system, terminal, or application behaviors (e.g., built-in keybindings, default shortcuts, default shell or emulator actions) without explicitly asking the user first.
 - Always investigate and present alternative approaches before modifying default terminal or application shortcuts.
