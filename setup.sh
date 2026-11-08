@@ -199,13 +199,11 @@ backup_conflicts() {
         local target="$HOME/$rel_file"
         # If target exists and is a regular file/link NOT pointing to DOTFILES_DIR
         if [ -e "$target" ] || [ -L "$target" ]; then
-            local current_link=""
-            if [ -L "$target" ]; then
-                current_link="$(readlink "$target" || true)"
-            fi
+            local real_target=""
+            real_target="$(realpath "$target" 2>/dev/null || true)"
 
-            # If it already points to dotfiles, leave it
-            case "$current_link" in
+            # If it already points into dotfiles, leave it
+            case "$real_target" in
                 *"$DOTFILES_DIR"*) continue ;;
             esac
 
@@ -218,7 +216,7 @@ backup_conflicts() {
     done < <(cd "$pkg_dir" && find . -mindepth 1 \( -type f -o -type l \) | sed 's|^\./||')
 }
 
-if [ "$DRY_RUN" -eq 0 ]; then
+if [ "$RESTOW_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     echo "🛡️  Checking for conflicting regular files in \$HOME..."
     for pkg in "${PACKAGES[@]}"; do
         backup_conflicts "$pkg"
