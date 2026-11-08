@@ -33,6 +33,7 @@
       "floating_status_bar": false
    },
    "favorites": [
+      "@ShyAssassin/store.vicinae.vscode-recents:open-recents",
       "@aurelleb/store.vicinae.chromium-bookmarks:search-bookmarks",
       "core:search-emojis",
       "applications:kitty",
