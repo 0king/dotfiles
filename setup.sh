@@ -215,7 +215,7 @@ backup_conflicts() {
             mkdir -p "$(dirname "$backup_target")"
             mv "$target" "$backup_target"
         fi
-    done < <(cd "$pkg_dir" && find . -mindepth 1 -type f -o -type l | sed 's|^\./||')
+    done < <(cd "$pkg_dir" && find . -mindepth 1 \( -type f -o -type l \) | sed 's|^\./||')
 }
 
 if [ "$DRY_RUN" -eq 0 ]; then
