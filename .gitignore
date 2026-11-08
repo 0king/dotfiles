@@ -5,3 +5,8 @@ Thumbs.db
 *~
 *.bak
 .nvimlog
+.stow-local-ignore
+.cache/
+
+# Machine-local Git credentials
+git/.config/git/config.local

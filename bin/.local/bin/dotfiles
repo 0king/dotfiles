@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# dotfiles: Lightweight Dotfiles Management CLI (GNU Stow + Git + Gitleaks)
+# ==============================================================================
+
+set -euo pipefail
+
+DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+
+usage() {
+    cat <<EOF
+Usage: dotfiles <command> [options]
+
+Commands:
+  status, s       Show git working tree status
+  diff, d         Show uncommitted changes
+  audit           Run local Gitleaks secret leak detection
+  apply, a        Re-stow all modular packages to \$HOME
+  push, p         Audit with Gitleaks and push changes to remote
+  pull            Pull changes from remote and re-stow
+  cd              Output dotfiles directory path
+  help, -h        Show this help message
+
+Aliases (defined in zsh):
+  dfs  -> dotfiles status
+  dfa  -> dotfiles apply
+  dfd  -> dotfiles diff
+  dfp  -> dotfiles push
+  dfcd -> cd ~/dotfiles
+EOF
+}
+
+cmd="${1:-status}"
+shift || true
+
+case "$cmd" in
+    status|s)
+        git -C "$DOTFILES_DIR" status "$@"
+        ;;
+    diff|d)
+        git -C "$DOTFILES_DIR" diff "$@"
+        ;;
+    audit)
+        echo "🔍 Running Gitleaks scan on dotfiles repository..."
+        if command -v gitleaks >/dev/null 2>&1; then
+            gitleaks detect --source="$DOTFILES_DIR" -v "$@"
+        else
+            echo "❌ gitleaks is not installed. Install gitleaks to run audit." >&2
+            exit 1
+        fi
+        ;;
+    apply|a|restow)
+        "$DOTFILES_DIR/setup.sh" --restow "$@"
+        ;;
+    push|p)
+        echo "🔒 Verifying secrets with Gitleaks before push..."
+        if command -v gitleaks >/dev/null 2>&1; then
+            gitleaks detect --source="$DOTFILES_DIR" --redact
+        fi
+        echo "🚀 Pushing changes to remote..."
+        git -C "$DOTFILES_DIR" push "$@"
+        ;;
+    pull)
+        echo "📥 Pulling latest changes from remote..."
+        git -C "$DOTFILES_DIR" pull "$@"
+        echo "🔄 Re-stowing packages..."
+        "$DOTFILES_DIR/setup.sh" --restow
+        ;;
+    cd)
+        echo "$DOTFILES_DIR"
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        echo "Unknown command: $cmd" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
