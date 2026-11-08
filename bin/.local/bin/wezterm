@@ -1,1 +1,17 @@
-/home/dj/AppImages/wezterm.appimage
+#!/usr/bin/env bash
+# ==============================================================================
+# WezTerm AppImage Launcher Wrapper
+# ==============================================================================
+
+APPIMAGE="$HOME/AppImages/wezterm.appimage"
+
+if [ -x "$APPIMAGE" ]; then
+    exec "$APPIMAGE" "$@"
+elif command -v wezterm-gui >/dev/null 2>&1; then
+    exec wezterm-gui "$@"
+elif [ -x "/usr/bin/wezterm" ] && [ "/usr/bin/wezterm" != "$0" ]; then
+    exec /usr/bin/wezterm "$@"
+else
+    echo "❌ WezTerm not found at $APPIMAGE or system PATH." >&2
+    exit 1
+fi
