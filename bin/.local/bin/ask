@@ -22,6 +22,11 @@ local HOME = os.getenv("HOME") or ""
 local UID = tonumber(ffi.C.getuid())
 local SESSION_FILE = string.format("/dev/shm/ask_session_%d.json", UID)
 
+local ENABLE_THINKING = false
+local SHOW_THINKING = false
+local ENABLE_WEB_SEARCH = false
+local INCLUDE_SKILLS = false
+
 -- ============================================================================
 -- 1. CONFIGURE SCOPES (MULTI-PATH ARRAYS & MULTI-ALIAS SUPPORT)
 -- ============================================================================
@@ -59,6 +64,15 @@ local SCOPES = {
             HOME .. "/.local/bin",
         }
     },
+    skills = {
+        name = "skills",
+        aliases = { "-fs", "--find-skills", "-skills", "--skills" },
+        description = "AI Agent skills and guidelines",
+        priority = false,
+        paths = {
+            HOME .. "/.config/ai/skills",
+        }
+    },
 }
 
 local FALLBACK_DIRS = {
@@ -91,7 +105,9 @@ for scope_key, def in pairs(SCOPES) do
         if rp then
             table.insert(valid_paths, rp)
             table.insert(ALLOWED_ROOTS, rp)
-            table.insert(PRIORITY_REALPATHS, rp)
+            if def.priority ~= false then
+                table.insert(PRIORITY_REALPATHS, rp)
+            end
         end
     end
     ACTIVE_SCOPES[scope_key] = valid_paths
@@ -109,8 +125,27 @@ for _, raw_p in ipairs(FALLBACK_DIRS) do
     end
 end
 
+local EXCLUDED_ROOTS = {}
+local function add_excluded_root(raw_p)
+    local rp = realpath(raw_p)
+    if rp then table.insert(EXCLUDED_ROOTS, rp) end
+end
+add_excluded_root(HOME .. "/.config/ai/skills")
+add_excluded_root(HOME .. "/dotfiles/ai/.config/ai/skills")
+
+local function is_excluded_path(rp)
+    if INCLUDE_SKILLS then return false end
+    if not rp then return true end
+    for _, excl in ipairs(EXCLUDED_ROOTS) do
+        if rp == excl or rp:sub(1, #excl + 1) == excl .. "/" then
+            return true
+        end
+    end
+    return false
+end
+
 local function is_safe_path(rp)
-    if not rp then return false end
+    if not rp or is_excluded_path(rp) then return false end
     for _, root in ipairs(ALLOWED_ROOTS) do
         if rp == root or rp:sub(1, #root + 1) == root .. "/" then
             return true
@@ -239,7 +274,7 @@ local function run_sandboxed_cmd(cmd, timeout_sec)
 end
 
 -- ============================================================================
--- 3. FOUR BOUNDED TOOLS (find_files, grep_files, read_file_lines, web_search)
+-- 3. THREE BOUNDED LOCAL TOOLS (find_files, grep_files, read_file_lines)
 -- ============================================================================
 local function find_files(args)
     local raw_pattern = tostring(args.pattern or ""):match("^%s*(.-)%s*$")
@@ -247,8 +282,9 @@ local function find_files(args)
     if not tiers then return "Error: " .. err end
 
     local fd_bin = os.execute("command -v fd >/dev/null 2>&1") == 0 and "fd" or "fdfind"
+    local excl_skills = not INCLUDE_SKILLS and "--exclude 'ai/skills' --exclude '.config/ai/skills' " or ""
     for idx, paths in ipairs(tiers) do
-        local cmd = { fd_bin .. " -H --exclude .git --type f --max-results 45" }
+        local cmd = { fd_bin .. " -H --full-path --exclude .git " .. excl_skills .. "--type f --max-results 45" }
         for _, p in ipairs(paths) do
             table.insert(cmd, "--search-path " .. sh_quote(p))
         end
@@ -275,9 +311,10 @@ local function grep_files(args)
     local tiers, err = resolve_tiers(args.target or ".", args.scope or "priority_first")
     if not tiers then return "Error: " .. err end
 
+    local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
     for idx, paths in ipairs(tiers) do
         local cmd = {
-            "rg --hidden -g '!.git/*' -n --smart-case --max-count 5 --max-columns 180 --max-columns-preview",
+            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case --max-count 5 --max-columns 180 --max-columns-preview",
             "-e " .. sh_quote(query),
             "--"
         }
@@ -388,7 +425,7 @@ local TOOL_MAP = {
     web_search = web_search,
 }
 
-local TOOLS_SCHEMA = {
+local BASE_TOOLS_SCHEMA = {
     {
         type = "function",
         ["function"] = {
@@ -434,33 +471,79 @@ local TOOLS_SCHEMA = {
                 required = { "file_path", "start_line", "end_line" }
             }
         }
-    },
-    {
-        type = "function",
-        ["function"] = {
-            name = "web_search",
-            description = "Search the web via DuckDuckGo when local files do not contain the answer.",
-            parameters = {
-                type = "object",
-                properties = {
-                    query = { type = "string", description = "Web search query" }
-                },
-                required = { "query" }
-            }
+    }
+}
+
+local WEB_SEARCH_SCHEMA = {
+    type = "function",
+    ["function"] = {
+        name = "web_search",
+        description = "Search the web via DuckDuckGo when online documentation or external information is needed.",
+        parameters = {
+            type = "object",
+            properties = {
+                query = { type = "string", description = "Web search query" }
+            },
+            required = { "query" }
         }
     }
 }
 
+local function get_active_tools_schema()
+    local tools = {}
+    for _, t in ipairs(BASE_TOOLS_SCHEMA) do
+        table.insert(tools, t)
+    end
+    if ENABLE_WEB_SEARCH then
+        table.insert(tools, WEB_SEARCH_SCHEMA)
+    end
+    return tools
+end
+
 -- ============================================================================
 -- 4. OLLAMA IPC & /dev/shm SESSION MANAGEMENT
 -- ============================================================================
+local function clean_text(text)
+    if not text then return "" end
+    text = text:gsub("<thought>.-</thought>", "")
+    text = text:gsub("<think>.-</think>", "")
+    return text:match("^%s*(.-)%s*$") or ""
+end
+
+local function extract_thinking(msg)
+    if not msg then return nil end
+    if msg.thinking and msg.thinking:match("%S") then
+        return msg.thinking
+    end
+    if msg.content then
+        local t = msg.content:match("<thought>(.-)</thought>") or msg.content:match("<think>(.-)</think>")
+        if t and t:match("%S") then
+            return t
+        end
+    end
+    return nil
+end
+
+local function print_thinking(msg)
+    if not SHOW_THINKING then return end
+    local t = extract_thinking(msg)
+    if t then
+        local trimmed = t:match("^%s*(.-)%s*$")
+        if trimmed and trimmed ~= "" then
+            print(string.format("\27[90m--- Thinking ---\n%s\n----------------\27[0m\n", trimmed))
+        end
+    end
+end
+
 local function ollama_chat(messages, no_tools, max_predict)
     local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
+    local default_predict = ENABLE_THINKING and 1000 or 400
     local req_payload = {
         model = MODEL,
         messages = messages,
+        think = ENABLE_THINKING,
         options = {
-            num_predict = max_predict or 600,
+            num_predict = max_predict or default_predict,
             temperature = 0.1,
             num_thread = 1,
             num_gpu = 999
@@ -468,16 +551,17 @@ local function ollama_chat(messages, no_tools, max_predict)
         stream = false
     }
     if not no_tools then
-        req_payload.tools = TOOLS_SCHEMA
+        req_payload.tools = get_active_tools_schema()
     end
     local payload = cjson.encode(req_payload)
     local f = io.open(tmp_req, "w")
     f:write(payload)
     f:close()
 
+    local timeout_sec = ENABLE_THINKING and 240 or 60
     local cmd = string.format(
-        "curl -s --max-time 120 -X POST %s -H 'Content-Type: application/json' -d @%s",
-        sh_quote(CHAT_ENDPOINT), sh_quote(tmp_req)
+        "curl -s --max-time %d -X POST %s -H 'Content-Type: application/json' -d @%s",
+        timeout_sec, sh_quote(CHAT_ENDPOINT), sh_quote(tmp_req)
     )
     local h = io.popen(cmd, "r")
     local raw = h and h:read("*a") or ""
@@ -530,6 +614,9 @@ local function run_turn(messages, user_query)
         local msg = ollama_chat(messages, false)
         table.insert(messages, msg)
 
+        print_thinking(msg)
+
+        local content_clean = clean_text(msg.content)
         if msg.tool_calls and #msg.tool_calls > 0 then
             for _, call in ipairs(msg.tool_calls) do
                 local fn = call["function"].name
@@ -539,8 +626,8 @@ local function run_turn(messages, user_query)
                 local out = TOOL_MAP[fn] and TOOL_MAP[fn](fargs) or ("Unknown tool: " .. tostring(fn))
                 table.insert(messages, { role = "tool", name = fn, content = out })
             end
-        elseif msg.content and msg.content:match("%S") then
-            print(shorten_paths(msg.content))
+        elseif content_clean ~= "" then
+            print(shorten_paths(content_clean))
             save_session(messages)
             return
         else
@@ -549,9 +636,13 @@ local function run_turn(messages, user_query)
                 role = "user",
                 content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
             })
-            local synth = ollama_chat(messages, true, 1000)
-            local ans = (synth and synth.content and synth.content:match("%S")) and synth.content or (synth and synth.thinking)
-            if ans and ans ~= "" then
+            local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 500)
+            print_thinking(synth)
+            local ans = clean_text(synth and synth.content)
+            if ans == "" and synth and synth.thinking then
+                ans = clean_text(synth.thinking)
+            end
+            if ans ~= "" then
                 print(shorten_paths(ans))
                 table.insert(messages, synth)
                 save_session(messages)
@@ -565,9 +656,13 @@ local function run_turn(messages, user_query)
         role = "user",
         content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
     })
-    local synth = ollama_chat(messages, true, 1000)
-    local ans = (synth and synth.content and synth.content:match("%S")) and synth.content or (synth and synth.thinking)
-    if ans and ans ~= "" then
+    local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 500)
+    print_thinking(synth)
+    local ans = clean_text(synth and synth.content)
+    if ans == "" and synth and synth.thinking then
+        ans = clean_text(synth.thinking)
+    end
+    if ans ~= "" then
         print(shorten_paths(ans))
         table.insert(messages, synth)
         save_session(messages)
@@ -587,8 +682,20 @@ for i = 1, #arg do
         mode = "continue"
     elseif parsing_flags and (token == "-i" or token == "--interactive") then
         mode = "interactive"
+    elseif parsing_flags and (token == "-t" or token == "--think") then
+        ENABLE_THINKING = true
+    elseif parsing_flags and (token == "-st" or token == "--show-thinking") then
+        ENABLE_THINKING = true
+        SHOW_THINKING = true
+    elseif parsing_flags and (token == "-w" or token == "--web" or token == "--web-search") then
+        ENABLE_WEB_SEARCH = true
+    elseif parsing_flags and (token == "-fs" or token == "--find-skills") and PINNED_SCOPE then
+        INCLUDE_SKILLS = true
     elseif parsing_flags and parse_scope_token(token) then
         local sk, sub = parse_scope_token(token)
+        if sk == "skills" then
+            INCLUDE_SKILLS = true
+        end
         local paths = resolve_scope_paths(sk, sub)
         if #paths == 0 then
             io.stderr:write(string.format("\27[31mError: Scope '%s' (%s) path does not exist on disk.\27[0m\n", sk, token))
@@ -637,7 +744,7 @@ local initial_query = table.concat(query_parts, " ")
 if initial_query ~= "" then
     run_turn(messages, initial_query)
 elseif mode ~= "interactive" then
-    io.stderr:write("Usage:\n  ask <query>\n  ask -df <query>\n  ask -nn <query>\n  ask -c <follow-up>\n  ask -c -df <follow-up>\n")
+    io.stderr:write("Usage:\n  ask [flags] <query>\n\nFlags:\n  -fs, --find-skills   Search and include AI agent skills in ~/.config/ai/skills\n  -t, --think          Enable model thinking / reasoning (silent internal reasoning, expanded token budget)\n  -st, --show-thinking Enable thinking and show reasoning process in dimmed text before answer\n  -w, --web            Enable DuckDuckGo web search via ddgr (aliases: --web, --web-search)\n  -c, --continue       Continue previous session from /dev/shm\n  -i, --interactive    Drop into interactive multi-turn session\n  -df, -nn, ...        Scope pinning flags (-df=dotfiles, -nn=notes, etc.)\n\nExamples:\n  ask where is wezterm config?\n  ask -fs what skills are available for testing?\n  ask -fs find test-driven-development skill\n  ask -fs/git-workflow what are the commit guidelines?\n  ask -t solve this logic puzzle\n  ask -st how many r's are in strawberry?\n  ask -w what are latest features in lua 5.4?\n  ask -t -df explain how my aliases are organized\n  ask -c what was the last line of that file?\n")
     os.exit(1)
 end
 

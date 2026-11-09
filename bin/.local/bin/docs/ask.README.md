@@ -15,11 +15,18 @@
   - `-bin` / `--bin`: Scans `~/.local/bin`.
   - Subpath pinning: e.g. `ask -df/zsh where are my aliases?`.
 - **Unquoted Queries**: Natural language queries do not require surrounding quotes; Zsh `noglob` alias (`alias ask='noglob ask'`) prevents shell globbing on `?`, `*`, or `[ ]`.
-- **Bounded Search Tools**:
-  - `find_files`: `fd` with `-H` (includes hidden dotfiles) excluding `.git/`.
-  - `grep_files`: `ripgrep` with `--hidden` excluding `.git/`.
-  - `read_file_lines`: Safe line-bounded file inspection (max 80 lines).
-  - `web_search`: DuckDuckGo CLI search via `ddgr`.
+- **Bounded Local Search Tools**:
+  - `find_files`: `fd` with `-H` (includes hidden dotfiles) excluding `.git/` and AI skill directories (`~/.config/ai/skills`).
+  - `grep_files`: `ripgrep` with `--hidden` excluding `.git/` and AI skills (`!**/ai/skills/**`).
+  - `read_file_lines`: Safe line-bounded file inspection (max 80 lines) with access control rejecting attempts to read excluded scopes (e.g. `~/.config/ai/skills`).
+- **Optional Ephemeral Flags**:
+  - `-fs` / `--find-skills`: Searches AI agent skills in `~/.config/ai/skills` and lifts skill exclusion filters. Can also be scoped directly using subpaths (e.g. `ask -fs/test-driven-development read SKILL.md`).
+  - `-w` / `--web` / `--web-search`: Enables DuckDuckGo CLI web search via `ddgr` when external documentation or online facts are required. Disabled by default for strict local containment.
+  - `-t` / `--think`: Enables model reasoning / thinking mode (`think: true`) with an expanded 1000-token generation budget and extended curl timeout (240s). Thoughts remain silent and internal, displaying only the final answer. Disabled by default for sub-second responses.
+  - `-st` / `--show-thinking`: Automatically enables thinking mode and displays the model's internal stream-of-consciousness reasoning process in dimmed gray text (`\27[90m...\27[0m`) with a clear delimiter before the final answer.
+- **Non-Reasoning Direct Inference (Default)**:
+  - Configured with `think: false` and direct tool dispatch.
+  - Eliminates slow stream-of-consciousness `<thought>` generation that previously stalled queries for 30-60s on low-power GPUs (GTX 1050 Ti) and caused mid-reasoning token truncation. Returns direct tool calls and answers in ~1-4s.
 - **Session Continuity**:
   - `ask -c <follow-up>` resumes previous session from `/dev/shm/ask_session_<uid>.json` using Ollama's warm KV cache without re-prefilling past context.
   - Automatically preserves active scope locks unless a new flag is passed.
@@ -42,10 +49,26 @@ ask -df/wezterm show my keybindings
 # 3. Multi-path notes search
 ask -nn what notes do I have on project architecture?
 
-# 4. Zero-cold-start follow-up
+# 4. AI Skills search & inspection (-fs / --find-skills)
+ask -fs what skills are available for code review?
+ask -fs find test-driven-development skill
+ask -fs/test-driven-development read the first 10 lines of SKILL.md
+
+# 5. Web search (external documentation)
+ask -w what are the latest features in Lua 5.4?
+
+# 5. Deep thinking / reasoning (complex logic or puzzle)
+ask -t how many r's are in strawberry?
+ask -t -df explain the execution order of my shell startup scripts
+
+# 6. Visible reasoning process (shows thoughts in dimmed gray text)
+ask -st which is larger, 9.9 or 9.11?
+ask --show-thinking solve this logic puzzle
+
+# 7. Zero-cold-start follow-up
 ask -c what is the font size set right below that?
 
-# 5. Interactive session
+# 8. Interactive session
 ask -i
 ```
 
