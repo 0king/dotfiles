@@ -13,7 +13,8 @@ ffi.cdef[[
     int getpid(void);
 ]]
 
-local MODEL = os.getenv("ASK_MODEL") or "lfm3-agent"
+local MODEL = os.getenv("ASK_MODEL") or "lfm3:1.7b-qad-q4_0"
+local NUM_CTX = tonumber(os.getenv("ASK_NUM_CTX")) or 4096
 local OLLAMA_URL = os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434"
 if not OLLAMA_URL:match("^http") then OLLAMA_URL = "http://" .. OLLAMA_URL end
 local CHAT_ENDPOINT = OLLAMA_URL:gsub("/+$", "") .. "/api/chat"
@@ -22,6 +23,7 @@ local HOME = os.getenv("HOME") or ""
 local UID = tonumber(ffi.C.getuid())
 local SESSION_FILE = string.format("/dev/shm/ask_session_%d.json", UID)
 
+local CLI_MODEL = nil
 local ENABLE_THINKING = false
 local SHOW_THINKING = false
 local ENABLE_WEB_SEARCH = false
@@ -33,7 +35,7 @@ local INCLUDE_SKILLS = false
 local SCOPES = {
     notes = {
         name = "notes",
-        aliases = { "-nn", "--nn", "-notes", "--notes", "@notes", "@nn" },
+        aliases = { "-nn", "--nn", "-notes", "--notes", "@notes", "@nn", "nn", "notes" },
         description = "Personal notes and knowledge base",
         paths = {
             HOME .. "/Documents/Notes",
@@ -42,7 +44,7 @@ local SCOPES = {
     },
     dotfiles = {
         name = "dotfiles",
-        aliases = { "-df", "--df", "-dotfiles", "--dotfiles", "@dotfiles", "@df" },
+        aliases = { "-df", "--df", "-dotfiles", "--dotfiles", "@dotfiles", "@df", "df", "dotfiles" },
         description = "Dotfiles repository",
         paths = {
             HOME .. "/dotfiles",
@@ -50,7 +52,7 @@ local SCOPES = {
     },
     configs = {
         name = "configs",
-        aliases = { "-cfg", "--cfg", "-configs", "--configs", "@configs", "@cfg" },
+        aliases = { "-cfg", "--cfg", "-configs", "--configs", "@configs", "@cfg", "cfg", "config", "configs" },
         description = "System configurations",
         paths = {
             HOME .. "/.config",
@@ -58,7 +60,7 @@ local SCOPES = {
     },
     scripts = {
         name = "scripts",
-        aliases = { "-bin", "--bin", "-scripts", "--scripts", "@scripts", "@bin" },
+        aliases = { "-bin", "--bin", "-scripts", "--scripts", "@scripts", "@bin", "bin", "scripts" },
         description = "Local binaries and scripts",
         paths = {
             HOME .. "/.local/bin",
@@ -66,7 +68,7 @@ local SCOPES = {
     },
     skills = {
         name = "skills",
-        aliases = { "-fs", "--find-skills", "-skills", "--skills" },
+        aliases = { "-fs", "--find-skills", "-skills", "--skills", "skills" },
         description = "AI Agent skills and guidelines",
         priority = false,
         paths = {
@@ -274,8 +276,74 @@ local function run_sandboxed_cmd(cmd, timeout_sec)
 end
 
 -- ============================================================================
--- 3. THREE BOUNDED LOCAL TOOLS (find_files, grep_files, read_file_lines)
+-- 3. SPECULATIVE PRE-GREP & THREE BOUNDED LOCAL TOOLS
 -- ============================================================================
+local STOPWORDS = {
+    ["where"]=true, ["what"]=true, ["how"]=true, ["when"]=true, ["which"]=true, ["who"]=true, ["why"]=true,
+    ["is"]=true, ["are"]=true, ["was"]=true, ["were"]=true, ["do"]=true, ["does"]=true, ["did"]=true,
+    ["can"]=true, ["could"]=true, ["should"]=true, ["would"]=true, ["the"]=true, ["a"]=true, ["an"]=true,
+    ["in"]=true, ["on"]=true, ["at"]=true, ["to"]=true, ["for"]=true, ["of"]=true, ["with"]=true, ["from"]=true,
+    ["by"]=true, ["about"]=true, ["into"]=true, ["my"]=true, ["me"]=true, ["our"]=true, ["your"]=true,
+    ["file"]=true, ["files"]=true, ["folder"]=true, ["dir"]=true, ["directory"]=true, ["config"]=true,
+    ["configured"]=true, ["setting"]=true, ["settings"]=true, ["set"]=true, ["show"]=true, ["find"]=true,
+    ["check"]=true, ["tell"]=true, ["list"]=true, ["get"]=true, ["used"]=true, ["use"]=true, ["using"]=true,
+    ["please"]=true, ["look"]=true, ["see"]=true, ["open"]=true, ["read"]=true, ["give"]=true
+}
+
+local function speculative_pre_grep(user_query)
+    local keywords = {}
+    for w in user_query:gmatch("[a-zA-Z0-9_%-%.]+") do
+        local lw = w:lower()
+        if #lw >= 3 and not STOPWORDS[lw] then
+            table.insert(keywords, w)
+        end
+    end
+    if #keywords == 0 then return nil end
+
+    local paths = PINNED_PATHS
+    if not paths or #paths == 0 then
+        paths = PRIORITY_REALPATHS
+    end
+    if not paths or #paths == 0 then return nil end
+
+    local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
+    local rg_base = "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case -C 4 --max-count 3 --max-columns 160 --max-columns-preview"
+
+    local patterns = {}
+    -- If multiple keywords, try co-occurrence on the same line first (e.g. wezterm.*font)
+    if #keywords >= 2 then
+        table.insert(patterns, keywords[1] .. ".*" .. keywords[2] .. "|" .. keywords[2] .. ".*" .. keywords[1])
+    end
+
+    -- Sort keywords by descending length so specific terms take priority
+    local sorted_kw = {}
+    for _, kw in ipairs(keywords) do table.insert(sorted_kw, kw) end
+    table.sort(sorted_kw, function(a, b) return #a > #b end)
+
+    local kw_subset = {}
+    for idx = 1, math.min(3, #sorted_kw) do
+        table.insert(kw_subset, sorted_kw[idx])
+    end
+    table.insert(patterns, table.concat(kw_subset, "|"))
+
+    local out = ""
+    for _, pat in ipairs(patterns) do
+        local cmd = { rg_base, "-e " .. sh_quote(pat), "--" }
+        for _, p in ipairs(paths) do table.insert(cmd, sh_quote(p)) end
+        out = run_sandboxed_cmd(table.concat(cmd, " "), 2)
+        if out ~= "" then break end
+    end
+
+    if out == "" then return nil end
+
+    local lines = {}
+    for line in out:gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+        if #lines >= 36 then break end
+    end
+    return shorten_paths(table.concat(lines, "\n"))
+end
+
 local function find_files(args)
     local raw_pattern = tostring(args.pattern or ""):match("^%s*(.-)%s*$")
     local tiers, err = resolve_tiers(args.target or ".", args.scope or "priority_first")
@@ -314,7 +382,7 @@ local function grep_files(args)
     local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
     for idx, paths in ipairs(tiers) do
         local cmd = {
-            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case --max-count 5 --max-columns 180 --max-columns-preview",
+            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case -C 5 --max-count 4 --max-columns 160 --max-columns-preview",
             "-e " .. sh_quote(query),
             "--"
         }
@@ -324,12 +392,12 @@ local function grep_files(args)
             local lines = {}
             for line in out:gmatch("[^\r\n]+") do table.insert(lines, line) end
             local sliced = {}
-            for i = 1, math.min(35, #lines) do table.insert(sliced, lines[i]) end
+            for i = 1, math.min(42, #lines) do table.insert(sliced, lines[i]) end
             local label = PINNED_LABEL and ("[" .. PINNED_LABEL .. "]\n")
                 or ((idx == 1 and #tiers > 1) and "[Priority Scopes]\n" or "[Fallback Scopes]\n")
             local res = label .. shorten_paths(table.concat(sliced, "\n"))
-            if #lines > 35 then
-                res = res .. string.format("\n... (%d more matches omitted; refine query)", #lines - 35)
+            if #lines > 42 then
+                res = res .. string.format("\n... (%d more lines omitted)", #lines - 42)
             end
             return res
         end
@@ -429,28 +497,13 @@ local BASE_TOOLS_SCHEMA = {
     {
         type = "function",
         ["function"] = {
-            name = "find_files",
-            description = "Find files by filename substring or regex across allowed scopes.",
-            parameters = {
-                type = "object",
-                properties = {
-                    pattern = { type = "string", description = "Filename pattern or regex (use '.' for all)" },
-                    target = { type = "string", description = "'.' for default target, or a scope alias like '-df', '-nn'" }
-                },
-                required = { "pattern" }
-            }
-        }
-    },
-    {
-        type = "function",
-        ["function"] = {
             name = "grep_files",
-            description = "Search file contents with ripgrep across allowed scopes.",
+            description = "Grep file contents (returns match + surrounding lines).",
             parameters = {
                 type = "object",
                 properties = {
-                    query = { type = "string", description = "Keyword or regex to search inside files" },
-                    target = { type = "string", description = "'.' for default target, or a scope alias / file path" }
+                    query = { type = "string", description = "Keyword or regex" },
+                    target = { type = "string", description = "'.' or scope alias like '-df', '-nn'" }
                 },
                 required = { "query" }
             }
@@ -459,14 +512,29 @@ local BASE_TOOLS_SCHEMA = {
     {
         type = "function",
         ["function"] = {
-            name = "read_file_lines",
-            description = "Read specific line numbers (max 80 lines) from a file.",
+            name = "find_files",
+            description = "Find filenames by substring/regex.",
             parameters = {
                 type = "object",
                 properties = {
-                    file_path = { type = "string", description = "File path or scope/subpath" },
-                    start_line = { type = "integer", description = "1-indexed start line" },
-                    end_line = { type = "integer", description = "End line" }
+                    pattern = { type = "string", description = "Filename pattern" },
+                    target = { type = "string", description = "'.' or scope alias like '-df', '-nn'" }
+                },
+                required = { "pattern" }
+            }
+        }
+    },
+    {
+        type = "function",
+        ["function"] = {
+            name = "read_file_lines",
+            description = "Read line range from a file.",
+            parameters = {
+                type = "object",
+                properties = {
+                    file_path = { type = "string" },
+                    start_line = { type = "integer" },
+                    end_line = { type = "integer" }
                 },
                 required = { "file_path", "start_line", "end_line" }
             }
@@ -478,12 +546,10 @@ local WEB_SEARCH_SCHEMA = {
     type = "function",
     ["function"] = {
         name = "web_search",
-        description = "Search the web via DuckDuckGo when online documentation or external information is needed.",
+        description = "Search web via DuckDuckGo.",
         parameters = {
             type = "object",
-            properties = {
-                query = { type = "string", description = "Web search query" }
-            },
+            properties = { query = { type = "string" } },
             required = { "query" }
         }
     }
@@ -537,14 +603,15 @@ end
 
 local function ollama_chat(messages, no_tools, max_predict)
     local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
-    local default_predict = ENABLE_THINKING and 1000 or 400
+    local default_predict = ENABLE_THINKING and 1000 or 180
     local req_payload = {
         model = MODEL,
         messages = messages,
         think = ENABLE_THINKING,
         options = {
+            num_ctx = NUM_CTX,
             num_predict = max_predict or default_predict,
-            temperature = 0.1,
+            temperature = 0.0,
             num_thread = 1,
             num_gpu = 999
         },
@@ -558,7 +625,7 @@ local function ollama_chat(messages, no_tools, max_predict)
     f:write(payload)
     f:close()
 
-    local timeout_sec = ENABLE_THINKING and 240 or 60
+    local timeout_sec = ENABLE_THINKING and 240 or 35
     local cmd = string.format(
         "curl -s --max-time %d -X POST %s -H 'Content-Type: application/json' -d @%s",
         timeout_sec, sh_quote(CHAT_ENDPOINT), sh_quote(tmp_req)
@@ -596,18 +663,27 @@ local function save_session(messages)
             pinned_scope = PINNED_SCOPE,
             pinned_label = PINNED_LABEL,
             pinned_subpath = PINNED_SUBPATH,
+            model = MODEL,
             messages = messages
         }))
         f:close()
     end
 end
 
-local function run_turn(messages, user_query)
-    local scope_announcement = nil
+local function run_turn(messages, user_query, is_fresh)
+    local prompt = user_query
     if PINNED_LABEL and PINNED_PATHS and #PINNED_PATHS > 0 then
-        scope_announcement = string.format("[Scope locked to %s: %s]", PINNED_LABEL, table.concat(PINNED_PATHS, ", "))
+        prompt = string.format("[Scope locked to %s: %s] %s", PINNED_LABEL, table.concat(PINNED_PATHS, ", "), user_query)
     end
-    local prompt = scope_announcement and (scope_announcement .. " " .. user_query) or user_query
+
+    if is_fresh then
+        local pre_hits = speculative_pre_grep(user_query)
+        if pre_hits and pre_hits ~= "" then
+            io.stderr:write("\27[90m  -> [pre-grep hit]\27[0m\n")
+            prompt = prompt .. "\n\n[Pre-grepped matches]:\n" .. pre_hits .. "\n\n(If the pre-grepped matches above answer the question, answer directly now. Do not call any tools.)"
+        end
+    end
+
     table.insert(messages, { role = "user", content = prompt })
 
     for turn = 1, 4 do
@@ -636,7 +712,7 @@ local function run_turn(messages, user_query)
                 role = "user",
                 content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
             })
-            local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 500)
+            local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 180)
             print_thinking(synth)
             local ans = clean_text(synth and synth.content)
             if ans == "" and synth and synth.thinking then
@@ -656,7 +732,7 @@ local function run_turn(messages, user_query)
         role = "user",
         content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
     })
-    local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 500)
+    local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 180)
     print_thinking(synth)
     local ans = clean_text(synth and synth.content)
     if ans == "" and synth and synth.thinking then
@@ -670,13 +746,14 @@ local function run_turn(messages, user_query)
 end
 
 -- ============================================================================
--- 5. FLEXIBLE CLI PARSER (Unquoted queries + Scope Flags + -c / -i)
+-- 5. FLEXIBLE CLI PARSER (Unquoted queries + Scope Flags + -c / -i / -llm)
 -- ============================================================================
 local mode = "oneshot"
 local query_parts = {}
 local parsing_flags = true
+local i = 1
 
-for i = 1, #arg do
+while i <= #arg do
     local token = arg[i]
     if parsing_flags and (token == "-c" or token == "--continue") then
         mode = "continue"
@@ -691,6 +768,18 @@ for i = 1, #arg do
         ENABLE_WEB_SEARCH = true
     elseif parsing_flags and (token == "-fs" or token == "--find-skills") and PINNED_SCOPE then
         INCLUDE_SKILLS = true
+    elseif parsing_flags and (token == "-llm" or token == "--llm") then
+        i = i + 1
+        if i <= #arg then
+            CLI_MODEL = arg[i]
+            MODEL = CLI_MODEL
+        else
+            io.stderr:write("\27[31mError: -llm requires a model name argument\27[0m\n")
+            os.exit(1)
+        end
+    elseif parsing_flags and (token:match("^%-llm=(.+)") or token:match("^%-%-llm=(.+)")) then
+        CLI_MODEL = token:match("^%-%-?llm=(.+)")
+        MODEL = CLI_MODEL
     elseif parsing_flags and parse_scope_token(token) then
         local sk, sub = parse_scope_token(token)
         if sk == "skills" then
@@ -709,7 +798,14 @@ for i = 1, #arg do
         parsing_flags = false
         table.insert(query_parts, token)
     end
+    i = i + 1
 end
+
+local SYS_INSTRUCTIONS = [[You are a terse CLI file assistant.
+Rules:
+1. If [Pre-grepped matches] in the prompt already answer the question, answer IMMEDIATELY without calling tools.
+2. Otherwise call `grep_files` (which includes surrounding lines) or `find_files`. Call `read_file_lines` only if more lines are strictly required.
+3. Output telegraphic answers: cite `path:line`, show the exact setting/code, and explain in 1-2 short sentences max. No preamble.]]
 
 local active_summary = {}
 for _, def in pairs(SCOPES) do
@@ -718,13 +814,16 @@ for _, def in pairs(SCOPES) do
         table.insert(active_summary, def.aliases[1] .. "=" .. table.concat(v, ";"))
     end
 end
-local sys_context = "Available scopes: " .. table.concat(active_summary, ", ")
+local sys_context = SYS_INSTRUCTIONS .. "\n\nAvailable scopes: " .. table.concat(active_summary, ", ")
 
 local messages = nil
 if mode == "continue" then
     local saved = load_session()
     if saved and saved.messages then
         messages = saved.messages
+        if not CLI_MODEL and saved.model then
+            MODEL = saved.model
+        end
         if not PINNED_SCOPE and saved.pinned_scope then
             PINNED_SCOPE = saved.pinned_scope
             PINNED_LABEL = saved.pinned_label
@@ -742,9 +841,9 @@ end
 
 local initial_query = table.concat(query_parts, " ")
 if initial_query ~= "" then
-    run_turn(messages, initial_query)
+    run_turn(messages, initial_query, mode ~= "continue")
 elseif mode ~= "interactive" then
-    io.stderr:write("Usage:\n  ask [flags] <query>\n\nFlags:\n  -fs, --find-skills   Search and include AI agent skills in ~/.config/ai/skills\n  -t, --think          Enable model thinking / reasoning (silent internal reasoning, expanded token budget)\n  -st, --show-thinking Enable thinking and show reasoning process in dimmed text before answer\n  -w, --web            Enable DuckDuckGo web search via ddgr (aliases: --web, --web-search)\n  -c, --continue       Continue previous session from /dev/shm\n  -i, --interactive    Drop into interactive multi-turn session\n  -df, -nn, ...        Scope pinning flags (-df=dotfiles, -nn=notes, etc.)\n\nExamples:\n  ask where is wezterm config?\n  ask -fs what skills are available for testing?\n  ask -fs find test-driven-development skill\n  ask -fs/git-workflow what are the commit guidelines?\n  ask -t solve this logic puzzle\n  ask -st how many r's are in strawberry?\n  ask -w what are latest features in lua 5.4?\n  ask -t -df explain how my aliases are organized\n  ask -c what was the last line of that file?\n")
+    io.stderr:write("Usage:\n  ask [flags] <query>\n\nFlags:\n  -llm, --llm <model>  Switch Ollama model for query (e.g. lfm3:1.7b-qad-q4_0, lfm3-agent)\n  -fs, --find-skills   Search and include AI agent skills in ~/.config/ai/skills\n  -t, --think          Enable model thinking / reasoning (silent internal reasoning, expanded token budget)\n  -st, --show-thinking Enable thinking and show reasoning process in dimmed text before answer\n  -w, --web            Enable DuckDuckGo web search via ddgr (aliases: --web, --web-search)\n  -c, --continue       Continue previous session from /dev/shm\n  -i, --interactive    Drop into interactive multi-turn session\n  -df, -nn, ...        Scope pinning flags (-df=dotfiles, -nn=notes, etc.)\n\nExamples:\n  ask where is wezterm config?\n  ask -df where are my aliases?\n  ask -llm lfm3-agent -df where are my aliases?\n  ask -fs what skills are available for testing?\n  ask -fs find test-driven-development skill\n  ask -fs/git-workflow what are the commit guidelines?\n  ask -t solve this logic puzzle\n  ask -st how many r's are in strawberry?\n  ask -w what are latest features in lua 5.4?\n  ask -t -df explain how my aliases are organized\n  ask -c what was the last line of that file?\n")
     os.exit(1)
 end
 
@@ -755,6 +854,6 @@ if mode == "interactive" then
         io.flush()
         local line = io.read("*l")
         if not line or line == "q" or line == "exit" or line == "" then break end
-        run_turn(messages, line)
+        run_turn(messages, line, false)
     end
 end
