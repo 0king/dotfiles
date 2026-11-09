@@ -195,6 +195,10 @@ local PINNED_PATHS = nil
 
 local function resolve_tiers(target, scope)
     target = (target or "."):match("^%s*(.-)%s*$")
+    if target:find(":") then
+        local post = target:match(":(.+)$")
+        if post and post ~= "" then target = post:match("^%s*(.-)%s*$") end
+    end
 
     -- 1. Default / auto target
     if target == "" or target == "." or target == "auto" or target == PINNED_LABEL then
@@ -222,14 +226,24 @@ local function resolve_tiers(target, scope)
     end
 
     -- 3. Specific path (relative or absolute) inside allowed roots
+    local clean_sub = target:gsub("^[%-%.]+", "")
     local candidates = { target }
+    if clean_sub ~= "" and clean_sub ~= target then
+        table.insert(candidates, clean_sub)
+    end
     if PINNED_PATHS then
         for _, p in ipairs(PINNED_PATHS) do
             table.insert(candidates, 1, p .. "/" .. target)
+            if clean_sub ~= "" and clean_sub ~= target then
+                table.insert(candidates, 1, p .. "/" .. clean_sub)
+            end
         end
     end
     for _, root in ipairs(ALLOWED_ROOTS) do
         table.insert(candidates, root .. "/" .. target)
+        if clean_sub ~= "" and clean_sub ~= target then
+            table.insert(candidates, root .. "/" .. clean_sub)
+        end
     end
     for _, cand in ipairs(candidates) do
         local rp = realpath(cand)
@@ -276,74 +290,8 @@ local function run_sandboxed_cmd(cmd, timeout_sec)
 end
 
 -- ============================================================================
--- 3. SPECULATIVE PRE-GREP & THREE BOUNDED LOCAL TOOLS
+-- 3. THREE BOUNDED LOCAL TOOLS (find_files, grep_files, read_file_lines)
 -- ============================================================================
-local STOPWORDS = {
-    ["where"]=true, ["what"]=true, ["how"]=true, ["when"]=true, ["which"]=true, ["who"]=true, ["why"]=true,
-    ["is"]=true, ["are"]=true, ["was"]=true, ["were"]=true, ["do"]=true, ["does"]=true, ["did"]=true,
-    ["can"]=true, ["could"]=true, ["should"]=true, ["would"]=true, ["the"]=true, ["a"]=true, ["an"]=true,
-    ["in"]=true, ["on"]=true, ["at"]=true, ["to"]=true, ["for"]=true, ["of"]=true, ["with"]=true, ["from"]=true,
-    ["by"]=true, ["about"]=true, ["into"]=true, ["my"]=true, ["me"]=true, ["our"]=true, ["your"]=true,
-    ["file"]=true, ["files"]=true, ["folder"]=true, ["dir"]=true, ["directory"]=true, ["config"]=true,
-    ["configured"]=true, ["setting"]=true, ["settings"]=true, ["set"]=true, ["show"]=true, ["find"]=true,
-    ["check"]=true, ["tell"]=true, ["list"]=true, ["get"]=true, ["used"]=true, ["use"]=true, ["using"]=true,
-    ["please"]=true, ["look"]=true, ["see"]=true, ["open"]=true, ["read"]=true, ["give"]=true
-}
-
-local function speculative_pre_grep(user_query)
-    local keywords = {}
-    for w in user_query:gmatch("[a-zA-Z0-9_%-%.]+") do
-        local lw = w:lower()
-        if #lw >= 3 and not STOPWORDS[lw] then
-            table.insert(keywords, w)
-        end
-    end
-    if #keywords == 0 then return nil end
-
-    local paths = PINNED_PATHS
-    if not paths or #paths == 0 then
-        paths = PRIORITY_REALPATHS
-    end
-    if not paths or #paths == 0 then return nil end
-
-    local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
-    local rg_base = "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case -C 4 --max-count 3 --max-columns 160 --max-columns-preview"
-
-    local patterns = {}
-    -- If multiple keywords, try co-occurrence on the same line first (e.g. wezterm.*font)
-    if #keywords >= 2 then
-        table.insert(patterns, keywords[1] .. ".*" .. keywords[2] .. "|" .. keywords[2] .. ".*" .. keywords[1])
-    end
-
-    -- Sort keywords by descending length so specific terms take priority
-    local sorted_kw = {}
-    for _, kw in ipairs(keywords) do table.insert(sorted_kw, kw) end
-    table.sort(sorted_kw, function(a, b) return #a > #b end)
-
-    local kw_subset = {}
-    for idx = 1, math.min(3, #sorted_kw) do
-        table.insert(kw_subset, sorted_kw[idx])
-    end
-    table.insert(patterns, table.concat(kw_subset, "|"))
-
-    local out = ""
-    for _, pat in ipairs(patterns) do
-        local cmd = { rg_base, "-e " .. sh_quote(pat), "--" }
-        for _, p in ipairs(paths) do table.insert(cmd, sh_quote(p)) end
-        out = run_sandboxed_cmd(table.concat(cmd, " "), 2)
-        if out ~= "" then break end
-    end
-
-    if out == "" then return nil end
-
-    local lines = {}
-    for line in out:gmatch("[^\r\n]+") do
-        table.insert(lines, line)
-        if #lines >= 36 then break end
-    end
-    return shorten_paths(table.concat(lines, "\n"))
-end
-
 local function find_files(args)
     local raw_pattern = tostring(args.pattern or ""):match("^%s*(.-)%s*$")
     local tiers, err = resolve_tiers(args.target or ".", args.scope or "priority_first")
@@ -352,7 +300,7 @@ local function find_files(args)
     local fd_bin = os.execute("command -v fd >/dev/null 2>&1") == 0 and "fd" or "fdfind"
     local excl_skills = not INCLUDE_SKILLS and "--exclude 'ai/skills' --exclude '.config/ai/skills' " or ""
     for idx, paths in ipairs(tiers) do
-        local cmd = { fd_bin .. " -H --full-path --exclude .git " .. excl_skills .. "--type f --max-results 45" }
+        local cmd = { fd_bin .. " -H --exclude .git " .. excl_skills .. "--type f --max-results 60" }
         for _, p in ipairs(paths) do
             table.insert(cmd, "--search-path " .. sh_quote(p))
         end
@@ -365,9 +313,12 @@ local function find_files(args)
         end
         local out = run_sandboxed_cmd(table.concat(cmd, " "), 5)
         if out ~= "" then
+            local lines = {}
+            for line in out:gmatch("[^\r\n]+") do table.insert(lines, line) end
             local label = PINNED_LABEL and ("[" .. PINNED_LABEL .. "]\n")
                 or ((idx == 1 and #tiers > 1) and "[Priority Scopes]\n" or "[Fallback Scopes]\n")
-            return label .. shorten_paths(out)
+            local count_header = string.format("[Found %d matching file%s]\n", #lines, #lines == 1 and "" or "s")
+            return label .. count_header .. shorten_paths(out)
         end
     end
     return "No files matching '" .. raw_pattern .. "' found."
@@ -379,11 +330,15 @@ local function grep_files(args)
     local tiers, err = resolve_tiers(args.target or ".", args.scope or "priority_first")
     if not tiers then return "Error: " .. err end
 
+    -- Allow anchored queries to match indented lines in blocks
+    local rg_query = query:gsub("^%^([%a_]+)", "^%%s*%1")
+
     local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
+    local max_lines = 80
     for idx, paths in ipairs(tiers) do
         local cmd = {
-            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case -C 5 --max-count 4 --max-columns 160 --max-columns-preview",
-            "-e " .. sh_quote(query),
+            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case --max-columns 200 --max-columns-preview",
+            "-e " .. sh_quote(rg_query),
             "--"
         }
         for _, p in ipairs(paths) do table.insert(cmd, sh_quote(p)) end
@@ -391,13 +346,62 @@ local function grep_files(args)
         if out ~= "" then
             local lines = {}
             for line in out:gmatch("[^\r\n]+") do table.insert(lines, line) end
+
+            local active_count = 0
+            local comment_count = 0
+            local unique_defs = {}
+            local def_type = nil
+
+            for _, line in ipairs(lines) do
+                local content = line:match(":%d+:(.*)$") or line:match("^%d+:(.*)$") or line
+                local trimmed = content:match("^%s*(.-)%s*$")
+                if trimmed:match("^[#]") or trimmed:match("^//") or trimmed:match("^%-%-") then
+                    comment_count = comment_count + 1
+                else
+                    active_count = active_count + 1
+                    local a_name = trimmed:match("^alias%s+%-g%s+[%'\"]?([%w_%-%.:]+)[%'\"]?%s*=")
+                        or trimmed:match("^alias%s+[%'\"]?([%w_%-%.:]+)[%'\"]?%s*=")
+                    if a_name then
+                        def_type = "alias"
+                        unique_defs[a_name] = true
+                    else
+                        local e_name = trimmed:match("^export%s+([%w_]+)%s*=")
+                        if e_name then
+                            def_type = "export"
+                            unique_defs[e_name] = true
+                        else
+                            local f_name = trimmed:match("^function%s+([%w_%-:]+)%s*%(")
+                                or trimmed:match("^([%w_%-:]+)%s*%(%s*%)%s*{")
+                            if f_name then
+                                def_type = "function"
+                                unique_defs[f_name] = true
+                            end
+                        end
+                    end
+                end
+            end
+
+            local unique_count = 0
+            for _ in pairs(unique_defs) do unique_count = unique_count + 1 end
+
+            local count_header
+            if def_type and unique_count > 0 and unique_count ~= #lines then
+                count_header = string.format("[Found %d unique %s names across %d active lines (%d commented, %d total matching lines)]\n",
+                    unique_count, def_type, active_count, comment_count, #lines)
+            elseif comment_count > 0 then
+                count_header = string.format("[Found %d matching lines: %d active, %d commented]\n",
+                    #lines, active_count, comment_count)
+            else
+                count_header = string.format("[Found %d matching line%s]\n", #lines, #lines == 1 and "" or "s")
+            end
+
             local sliced = {}
-            for i = 1, math.min(42, #lines) do table.insert(sliced, lines[i]) end
+            for i = 1, math.min(max_lines, #lines) do table.insert(sliced, lines[i]) end
             local label = PINNED_LABEL and ("[" .. PINNED_LABEL .. "]\n")
                 or ((idx == 1 and #tiers > 1) and "[Priority Scopes]\n" or "[Fallback Scopes]\n")
-            local res = label .. shorten_paths(table.concat(sliced, "\n"))
-            if #lines > 42 then
-                res = res .. string.format("\n... (%d more lines omitted)", #lines - 42)
+            local res = label .. count_header .. shorten_paths(table.concat(sliced, "\n"))
+            if #lines > max_lines then
+                res = res .. string.format("\n... (%d more matches omitted)", #lines - max_lines)
             end
             return res
         end
@@ -408,15 +412,29 @@ end
 local function read_file_lines(args)
     local target = tostring(args.file_path or ""):match("^%s*(.-)%s*$")
     if target == "" then return "Error: empty file_path" end
+    if target:find(":") then
+        local post = target:match(":(.+)$")
+        if post and post ~= "" then target = post:match("^%s*(.-)%s*$") end
+    end
 
+    local clean_sub = target:gsub("^[%-%.]+", "")
     local candidates = { target }
+    if clean_sub ~= "" and clean_sub ~= target then
+        table.insert(candidates, clean_sub)
+    end
     if PINNED_PATHS then
         for _, p in ipairs(PINNED_PATHS) do
             table.insert(candidates, 1, p .. "/" .. target)
+            if clean_sub ~= "" and clean_sub ~= target then
+                table.insert(candidates, 1, p .. "/" .. clean_sub)
+            end
         end
     end
     for _, root in ipairs(ALLOWED_ROOTS) do
         table.insert(candidates, root .. "/" .. target)
+        if clean_sub ~= "" and clean_sub ~= target then
+            table.insert(candidates, root .. "/" .. clean_sub)
+        end
     end
 
     local full_path = nil
@@ -433,6 +451,17 @@ local function read_file_lines(args)
         if sk and sub then
             local sp_paths = resolve_scope_paths(sk, sub)
             if #sp_paths > 0 then full_path = sp_paths[1] end
+        end
+    end
+
+    if not full_path and PINNED_PATHS then
+        local stripped = target:gsub("^[%-%.%w]+/", "")
+        for _, p in ipairs(PINNED_PATHS) do
+            local rp = realpath(p .. "/" .. stripped)
+            if rp and is_safe_path(rp) then
+                full_path = rp
+                break
+            end
         end
     end
 
@@ -498,12 +527,12 @@ local BASE_TOOLS_SCHEMA = {
         type = "function",
         ["function"] = {
             name = "grep_files",
-            description = "Grep file contents (returns match + surrounding lines).",
+            description = "Search file contents by regex or keyword across files.",
             parameters = {
                 type = "object",
                 properties = {
-                    query = { type = "string", description = "Keyword or regex" },
-                    target = { type = "string", description = "'.' or scope alias like '-df', '-nn'" }
+                    query = { type = "string", description = "Keyword or regex pattern to search for (e.g. 'alias ')" },
+                    target = { type = "string", description = "Subdirectory, file path, or '.' (e.g. 'zsh', 'wezterm', '.')" }
                 },
                 required = { "query" }
             }
@@ -513,12 +542,12 @@ local BASE_TOOLS_SCHEMA = {
         type = "function",
         ["function"] = {
             name = "find_files",
-            description = "Find filenames by substring/regex.",
+            description = "Find file paths by filename glob or substring.",
             parameters = {
                 type = "object",
                 properties = {
-                    pattern = { type = "string", description = "Filename pattern" },
-                    target = { type = "string", description = "'.' or scope alias like '-df', '-nn'" }
+                    pattern = { type = "string", description = "Filename pattern or glob (e.g. '*alias*', '*.zsh', 'kitty.conf')" },
+                    target = { type = "string", description = "Subdirectory or '.' (e.g. 'zsh', '.')" }
                 },
                 required = { "pattern" }
             }
@@ -528,13 +557,13 @@ local BASE_TOOLS_SCHEMA = {
         type = "function",
         ["function"] = {
             name = "read_file_lines",
-            description = "Read line range from a file.",
+            description = "Read a specific line range from a file.",
             parameters = {
                 type = "object",
                 properties = {
-                    file_path = { type = "string" },
-                    start_line = { type = "integer" },
-                    end_line = { type = "integer" }
+                    file_path = { type = "string", description = "File path to inspect" },
+                    start_line = { type = "integer", description = "Start line (1-indexed)" },
+                    end_line = { type = "integer", description = "End line" }
                 },
                 required = { "file_path", "start_line", "end_line" }
             }
@@ -603,7 +632,7 @@ end
 
 local function ollama_chat(messages, no_tools, max_predict)
     local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
-    local default_predict = ENABLE_THINKING and 1000 or 180
+    local default_predict = ENABLE_THINKING and 1000 or 90
     local req_payload = {
         model = MODEL,
         messages = messages,
@@ -625,7 +654,7 @@ local function ollama_chat(messages, no_tools, max_predict)
     f:write(payload)
     f:close()
 
-    local timeout_sec = ENABLE_THINKING and 240 or 35
+    local timeout_sec = ENABLE_THINKING and 240 or 75
     local cmd = string.format(
         "curl -s --max-time %d -X POST %s -H 'Content-Type: application/json' -d @%s",
         timeout_sec, sh_quote(CHAT_ENDPOINT), sh_quote(tmp_req)
@@ -670,23 +699,91 @@ local function save_session(messages)
     end
 end
 
-local function run_turn(messages, user_query, is_fresh)
+local function is_monologue(text)
+    if not text or text == "" then return false end
+    local lower = text:lower()
+    local patterns = {
+        "the user asks",
+        "the user is asking",
+        "we need to",
+        "we should",
+        "let me ",
+        "let's ",
+        "the previous grep",
+        "the previous search",
+        "i need to",
+        "i should",
+        "i will ",
+        "i'll ",
+    }
+    for _, pat in ipairs(patterns) do
+        if lower:find(pat, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function has_tool_results(messages)
+    for _, m in ipairs(messages) do
+        if m.role == "tool" then return true end
+    end
+    return false
+end
+
+local function synthesize_answer(messages)
+    local flat_messages = {}
+    for _, m in ipairs(messages) do
+        if m.role == "system" then
+            table.insert(flat_messages, { role = "system", content = m.content })
+        elseif m.role == "user" then
+            table.insert(flat_messages, { role = "user", content = m.content })
+        elseif m.role == "assistant" then
+            if m.tool_calls and #m.tool_calls > 0 then
+                local call_descs = {}
+                for _, c in ipairs(m.tool_calls) do
+                    local fn = c["function"].name
+                    local fargs = c["function"].arguments
+                    if type(fargs) == "table" then fargs = cjson.encode(fargs) end
+                    table.insert(call_descs, string.format("[%s(%s)]", fn, tostring(fargs)))
+                end
+                table.insert(flat_messages, { role = "assistant", content = table.concat(call_descs, "\n") })
+            elseif m.content and m.content ~= "" and not is_monologue(m.content) then
+                table.insert(flat_messages, { role = "assistant", content = m.content })
+            end
+        elseif m.role == "tool" then
+            table.insert(flat_messages, { role = "user", content = string.format("[Tool Result from %s]:\n%s", m.name or "tool", m.content or "") })
+        end
+    end
+    table.insert(flat_messages, {
+        role = "user",
+        content = "Based on the tool results above, state the final concise answer directly in one single sentence. Cite the exact count and file path from the header. Never repeat yourself or write multiple paragraphs. No preamble."
+    })
+    local synth = ollama_chat(flat_messages, true, ENABLE_THINKING and 1000 or 100)
+    print_thinking(synth)
+    local ans = clean_text(synth and synth.content)
+    if ans == "" and synth and synth.thinking then
+        ans = clean_text(synth.thinking)
+    end
+    if ans:find("\n\n") then
+        local first_para = ans:match("^(.-)\n\n")
+        if first_para and #first_para > 20 then
+            ans = first_para:match("^%s*(.-)%s*$")
+        end
+    end
+    return ans
+end
+
+local function run_turn(messages, user_query)
     local prompt = user_query
     if PINNED_LABEL and PINNED_PATHS and #PINNED_PATHS > 0 then
         prompt = string.format("[Scope locked to %s: %s] %s", PINNED_LABEL, table.concat(PINNED_PATHS, ", "), user_query)
     end
 
-    if is_fresh then
-        local pre_hits = speculative_pre_grep(user_query)
-        if pre_hits and pre_hits ~= "" then
-            io.stderr:write("\27[90m  -> [pre-grep hit]\27[0m\n")
-            prompt = prompt .. "\n\n[Pre-grepped matches]:\n" .. pre_hits .. "\n\n(If the pre-grepped matches above answer the question, answer directly now. Do not call any tools.)"
-        end
-    end
-
     table.insert(messages, { role = "user", content = prompt })
 
-    for turn = 1, 4 do
+    local seen_sigs = {}
+    for turn = 1, 3 do
         local msg = ollama_chat(messages, false)
         table.insert(messages, msg)
 
@@ -694,6 +791,22 @@ local function run_turn(messages, user_query, is_fresh)
 
         local content_clean = clean_text(msg.content)
         if msg.tool_calls and #msg.tool_calls > 0 then
+            local call_parts = {}
+            for _, call in ipairs(msg.tool_calls) do
+                local fn = call["function"].name
+                local fargs = call["function"].arguments
+                if type(fargs) == "string" then fargs = cjson.decode(fargs) or {} end
+                local q = (fargs.query or fargs.pattern or ""):gsub("^%^%s*", ""):gsub("%s+$", "")
+                local tgt = fargs.target or fargs.file_path or ""
+                table.insert(call_parts, string.format("%s:%s:%s", fn, q, tgt))
+            end
+            local current_sig = table.concat(call_parts, ";")
+            if seen_sigs[current_sig] then
+                -- Redundant loop detected: break to synthesize answer
+                break
+            end
+            seen_sigs[current_sig] = true
+
             for _, call in ipairs(msg.tool_calls) do
                 local fn = call["function"].name
                 local fargs = call["function"].arguments
@@ -702,45 +815,37 @@ local function run_turn(messages, user_query, is_fresh)
                 local out = TOOL_MAP[fn] and TOOL_MAP[fn](fargs) or ("Unknown tool: " .. tostring(fn))
                 table.insert(messages, { role = "tool", name = fn, content = out })
             end
-        elseif content_clean ~= "" then
-            print(shorten_paths(content_clean))
-            save_session(messages)
-            return
         else
-            -- Model generated only thinking or empty content, force synthesis
-            table.insert(messages, {
-                role = "user",
-                content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
-            })
-            local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 180)
-            print_thinking(synth)
-            local ans = clean_text(synth and synth.content)
-            if ans == "" and synth and synth.thinking then
-                ans = clean_text(synth.thinking)
-            end
-            if ans ~= "" then
-                print(shorten_paths(ans))
-                table.insert(messages, synth)
+            -- No tool calls returned by model
+            if has_tool_results(messages) then
+                -- Tools have been executed in earlier turns; synthesize clean final answer
+                local ans = synthesize_answer(messages)
+                if ans and ans ~= "" and not is_monologue(ans) then
+                    print(shorten_paths(ans))
+                    table.insert(messages, { role = "assistant", content = ans })
+                    save_session(messages)
+                    return
+                end
+            elseif content_clean ~= "" and not is_monologue(content_clean) then
+                -- No tools needed and valid non-monologue answer generated directly
+                print(shorten_paths(content_clean))
                 save_session(messages)
                 return
+            elseif turn < 3 then
+                -- Model produced monologue without tool calls and without tool results yet; nudge
+                table.insert(messages, {
+                    role = "user",
+                    content = "Please execute the tool call (find_files or grep_files) using the provided tools now."
+                })
             end
         end
     end
 
-    -- If loop reached max tool iterations without generating a final text response, synthesize:
-    table.insert(messages, {
-        role = "user",
-        content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
-    })
-    local synth = ollama_chat(messages, true, ENABLE_THINKING and 1000 or 180)
-    print_thinking(synth)
-    local ans = clean_text(synth and synth.content)
-    if ans == "" and synth and synth.thinking then
-        ans = clean_text(synth.thinking)
-    end
-    if ans ~= "" then
+    -- Loop ended or redundant loop broke: synthesize final response
+    local ans = synthesize_answer(messages)
+    if ans and ans ~= "" then
         print(shorten_paths(ans))
-        table.insert(messages, synth)
+        table.insert(messages, { role = "assistant", content = ans })
         save_session(messages)
     end
 end
@@ -803,8 +908,8 @@ end
 
 local SYS_INSTRUCTIONS = [[You are a terse CLI file assistant.
 Rules:
-1. If [Pre-grepped matches] in the prompt already answer the question, answer IMMEDIATELY without calling tools.
-2. Otherwise call `grep_files` (which includes surrounding lines) or `find_files`. Call `read_file_lines` only if more lines are strictly required.
+1. When asked about an application and setting (e.g. 'wezterm font', 'zsh alias', 'tmux prefix'), call `grep_files` with target set to the app (e.g. target='wezterm', target='zsh') and query set to the setting keyword (e.g. query='font', query='alias ').
+2. When answering count or summary questions, cite the exact numbers from the tool header (e.g. unique names, active lines, or matching lines). Never guess or manually recount.
 3. Output telegraphic answers: cite `path:line`, show the exact setting/code, and explain in 1-2 short sentences max. No preamble.]]
 
 local active_summary = {}
@@ -841,7 +946,7 @@ end
 
 local initial_query = table.concat(query_parts, " ")
 if initial_query ~= "" then
-    run_turn(messages, initial_query, mode ~= "continue")
+    run_turn(messages, initial_query)
 elseif mode ~= "interactive" then
     io.stderr:write("Usage:\n  ask [flags] <query>\n\nFlags:\n  -llm, --llm <model>  Switch Ollama model for query (e.g. lfm3:1.7b-qad-q4_0, lfm3-agent)\n  -fs, --find-skills   Search and include AI agent skills in ~/.config/ai/skills\n  -t, --think          Enable model thinking / reasoning (silent internal reasoning, expanded token budget)\n  -st, --show-thinking Enable thinking and show reasoning process in dimmed text before answer\n  -w, --web            Enable DuckDuckGo web search via ddgr (aliases: --web, --web-search)\n  -c, --continue       Continue previous session from /dev/shm\n  -i, --interactive    Drop into interactive multi-turn session\n  -df, -nn, ...        Scope pinning flags (-df=dotfiles, -nn=notes, etc.)\n\nExamples:\n  ask where is wezterm config?\n  ask -df where are my aliases?\n  ask -llm lfm3-agent -df where are my aliases?\n  ask -fs what skills are available for testing?\n  ask -fs find test-driven-development skill\n  ask -fs/git-workflow what are the commit guidelines?\n  ask -t solve this logic puzzle\n  ask -st how many r's are in strawberry?\n  ask -w what are latest features in lua 5.4?\n  ask -t -df explain how my aliases are organized\n  ask -c what was the last line of that file?\n")
     os.exit(1)
@@ -854,6 +959,6 @@ if mode == "interactive" then
         io.flush()
         local line = io.read("*l")
         if not line or line == "q" or line == "exit" or line == "" then break end
-        run_turn(messages, line, false)
+        run_turn(messages, line)
     end
 end

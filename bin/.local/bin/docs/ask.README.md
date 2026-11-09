@@ -12,11 +12,18 @@
   - `-llm <model>` / `--llm <model>` (or `-llm=<model>`): Switch Ollama models on the fly (e.g. `ask -llm lfm3-agent ...` or `ask -llm hadad/LFM2.5-1.2B:Q4_K_M ...`).
   - Automatically persisted across session continuations (`ask -c`).
   - Fallback environment variable: `ASK_MODEL`.
-- **Zero-Hop Speculative Pre-Grep (< 10 ms)**:
-  - On Turn 1 of fresh queries, extracts query keywords (filtering stopwords) and executes a sub-10ms `rg` pass across pinned or priority scopes.
-  - Automatically injects matches and context into Turn 1 prompt, allowing the model to answer immediately in a single pass without extra tool hops.
-- **Context-Aware `grep_files` (`-C 5`)**:
-  - When tool calls are required, `grep_files` returns matching lines plus 5 lines of surrounding context, eliminating secondary `read_file_lines` round-trips.
+- **Clean Direct Tool Dispatch**:
+  - Eliminates brittle Turn 1 keyword pre-grepping that previously poisoned prompt context with red herrings from unrelated files. The model invokes targeted `find_files` or `grep_files` directly with fast, bounded search passes.
+- **High-Fidelity Match Discovery & Definition Analysis (`grep_files`)**:
+  - Automatically identifies language definition patterns (`alias`, `export`, `function`) across matching lines.
+  - Computes exact tallies of unique definition names, active lines, and commented lines (e.g. `[Found 50 unique alias names across 55 active lines (1 commented, 56 total matching lines)]`).
+  - Rewrites anchored queries like `^alias` to `^\s*alias` so indented definitions inside conditional or helper blocks are fully captured.
+- **Flexible Path & Glob Matching (`find_files`)**:
+  - Searches file paths using `fd -H` without full-path glob constraints, enabling natural filename patterns like `*alias*`, `*.zsh`, or `kitty.conf`.
+- **Loop Protection & Monologue Suppression**:
+  - Normalizes tool call signatures (`seen_sigs`) to detect repeated grep/search loops instantly and break out of redundant turns, eliminating 20–40s hangs down to single-hop completion.
+  - Filters internal reasoning and monologue leakages (`is_monologue`) such as "the user asks", "let me search", and "we need to find" from escaping to stdout.
+  - Automatically triggers clean text synthesis when tools have finished running, rendering direct, single-paragraph answers in under 1.5 seconds.
 - **Directory Scopes & Dash Flags**:
   - `-df` / `--df`: Locks search strictly to `~/dotfiles` (e.g. `ask -df where is wezterm config?`).
   - `-nn` / `--nn`: Scans personal notes across multi-path arrays (`~/Documents/Notes`, etc.).
@@ -26,7 +33,7 @@
 - **Unquoted Queries**: Natural language queries do not require surrounding quotes; Zsh `noglob` alias (`alias ask='noglob ask'`) prevents shell globbing on `?`, `*`, or `[ ]`.
 - **Bounded Local Search Tools**:
   - `find_files`: `fd` with `-H` (includes hidden dotfiles) excluding `.git/` and AI skill directories (`~/.config/ai/skills`).
-  - `grep_files`: `ripgrep` with `--hidden` and `-C 5` context excluding `.git/` and AI skills (`!**/ai/skills/**`).
+  - `grep_files`: `ripgrep` with `--hidden` excluding `.git/` and AI skills (`!**/ai/skills/**`).
   - `read_file_lines`: Safe line-bounded file inspection (max 80 lines) with access control rejecting attempts to read excluded scopes (e.g. `~/.config/ai/skills`).
 - **Optional Ephemeral Flags**:
   - `-fs` / `--find-skills`: Searches AI agent skills in `~/.config/ai/skills` and lifts skill exclusion filters. Can also be scoped directly using subpaths (e.g. `ask -fs/test-driven-development read SKILL.md`).
