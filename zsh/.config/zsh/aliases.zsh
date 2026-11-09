@@ -28,6 +28,7 @@ alias czma='chezmoi merge-all'
 
 # ai agents
 alias oc='opencode'
+alias ask='noglob ask'
 
 # git
 alias gs='git status'

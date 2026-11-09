@@ -1,0 +1,653 @@
+#!/usr/bin/env luajit
+local ffi = require("ffi")
+local cjson = require("cjson.safe")
+
+if cjson.encode_empty_table_as_object then
+    cjson.encode_empty_table_as_object(false)
+end
+
+ffi.cdef[[
+    char *realpath(const char *path, char *resolved_path);
+    void free(void *ptr);
+    int getuid(void);
+    int getpid(void);
+]]
+
+local MODEL = os.getenv("ASK_MODEL") or "lfm3-agent"
+local OLLAMA_URL = os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434"
+if not OLLAMA_URL:match("^http") then OLLAMA_URL = "http://" .. OLLAMA_URL end
+local CHAT_ENDPOINT = OLLAMA_URL:gsub("/+$", "") .. "/api/chat"
+
+local HOME = os.getenv("HOME") or ""
+local UID = tonumber(ffi.C.getuid())
+local SESSION_FILE = string.format("/dev/shm/ask_session_%d.json", UID)
+
+-- ============================================================================
+-- 1. CONFIGURE SCOPES (MULTI-PATH ARRAYS & MULTI-ALIAS SUPPORT)
+-- ============================================================================
+local SCOPES = {
+    notes = {
+        name = "notes",
+        aliases = { "-nn", "--nn", "-notes", "--notes", "@notes", "@nn" },
+        description = "Personal notes and knowledge base",
+        paths = {
+            HOME .. "/Documents/Notes",
+            HOME .. "/Documents/notes_secondary_placeholder",
+        }
+    },
+    dotfiles = {
+        name = "dotfiles",
+        aliases = { "-df", "--df", "-dotfiles", "--dotfiles", "@dotfiles", "@df" },
+        description = "Dotfiles repository",
+        paths = {
+            HOME .. "/dotfiles",
+        }
+    },
+    configs = {
+        name = "configs",
+        aliases = { "-cfg", "--cfg", "-configs", "--configs", "@configs", "@cfg" },
+        description = "System configurations",
+        paths = {
+            HOME .. "/.config",
+        }
+    },
+    scripts = {
+        name = "scripts",
+        aliases = { "-bin", "--bin", "-scripts", "--scripts", "@scripts", "@bin" },
+        description = "Local binaries and scripts",
+        paths = {
+            HOME .. "/.local/bin",
+        }
+    },
+}
+
+local FALLBACK_DIRS = {
+    HOME .. "/Documents",
+    HOME .. "/Desktop/projects",
+}
+
+-- ============================================================================
+-- 2. SANDBOX, PATH RESOLUTION & SCOPE PINNING
+-- ============================================================================
+local function realpath(p)
+    if not p or p == "" then return nil end
+    if p:sub(1, 1) == "~" then p = HOME .. p:sub(2) end
+    local ptr = ffi.C.realpath(p, nil)
+    if ptr == nil then return nil end
+    local res = ffi.string(ptr)
+    ffi.C.free(ptr)
+    return res
+end
+
+local ACTIVE_SCOPES = {}
+local ALIAS_MAP = {}
+local ALLOWED_ROOTS = {}
+local PRIORITY_REALPATHS = {}
+
+for scope_key, def in pairs(SCOPES) do
+    local valid_paths = {}
+    for _, raw_p in ipairs(def.paths) do
+        local rp = realpath(raw_p)
+        if rp then
+            table.insert(valid_paths, rp)
+            table.insert(ALLOWED_ROOTS, rp)
+            table.insert(PRIORITY_REALPATHS, rp)
+        end
+    end
+    ACTIVE_SCOPES[scope_key] = valid_paths
+    for _, alias in ipairs(def.aliases) do
+        ALIAS_MAP[alias] = scope_key
+    end
+end
+
+local ACTIVE_FALLBACK = {}
+for _, raw_p in ipairs(FALLBACK_DIRS) do
+    local rp = realpath(raw_p)
+    if rp then
+        table.insert(ACTIVE_FALLBACK, rp)
+        table.insert(ALLOWED_ROOTS, rp)
+    end
+end
+
+local function is_safe_path(rp)
+    if not rp then return false end
+    for _, root in ipairs(ALLOWED_ROOTS) do
+        if rp == root or rp:sub(1, #root + 1) == root .. "/" then
+            return true
+        end
+    end
+    return false
+end
+
+-- Matches a token against known aliases or subpaths (e.g. "-df", "--nn", "-df/zsh")
+local function parse_scope_token(token)
+    if not token or token == "" then return nil end
+    if ALIAS_MAP[token] then
+        return ALIAS_MAP[token], nil, token
+    end
+    for alias, scope_key in pairs(ALIAS_MAP) do
+        if token:sub(1, #alias + 1) == alias .. "/" then
+            local sub = token:sub(#alias + 2):gsub("^/+", "")
+            return scope_key, sub, alias
+        end
+    end
+    return nil
+end
+
+local function resolve_scope_paths(scope_key, subpath)
+    local bases = ACTIVE_SCOPES[scope_key] or {}
+    if not subpath or subpath == "" then
+        return bases
+    end
+    local resolved = {}
+    for _, base in ipairs(bases) do
+        local cand = base .. "/" .. subpath
+        local rp = realpath(cand)
+        if rp and is_safe_path(rp) then
+            table.insert(resolved, rp)
+        end
+    end
+    return resolved
+end
+
+-- Global scope pinning state
+local PINNED_SCOPE = nil
+local PINNED_LABEL = nil
+local PINNED_SUBPATH = nil
+local PINNED_PATHS = nil
+
+local function resolve_tiers(target, scope)
+    target = (target or "."):match("^%s*(.-)%s*$")
+
+    -- 1. Default / auto target
+    if target == "" or target == "." or target == "auto" or target == PINNED_LABEL then
+        if PINNED_PATHS and #PINNED_PATHS > 0 then
+            return { PINNED_PATHS }
+        end
+        if scope == "all" then
+            local combined = {}
+            for _, p in ipairs(PRIORITY_REALPATHS) do table.insert(combined, p) end
+            for _, p in ipairs(ACTIVE_FALLBACK) do table.insert(combined, p) end
+            return { combined }
+        end
+        local tiers = {}
+        if #PRIORITY_REALPATHS > 0 then table.insert(tiers, PRIORITY_REALPATHS) end
+        if #ACTIVE_FALLBACK > 0 then table.insert(tiers, ACTIVE_FALLBACK) end
+        return tiers
+    end
+
+    -- 2. Direct alias / subpath resolution (e.g. "-df", "-df/zsh", "--nn")
+    local sk, sub = parse_scope_token(target)
+    if sk then
+        local sp_paths = resolve_scope_paths(sk, sub)
+        if #sp_paths > 0 then return { sp_paths } end
+        return nil, "Scope or subpath not found: " .. target
+    end
+
+    -- 3. Specific path (relative or absolute) inside allowed roots
+    local candidates = { target }
+    if PINNED_PATHS then
+        for _, p in ipairs(PINNED_PATHS) do
+            table.insert(candidates, 1, p .. "/" .. target)
+        end
+    end
+    for _, root in ipairs(ALLOWED_ROOTS) do
+        table.insert(candidates, root .. "/" .. target)
+    end
+    for _, cand in ipairs(candidates) do
+        local rp = realpath(cand)
+        if rp and is_safe_path(rp) then
+            return { { rp } }
+        end
+    end
+
+    -- 4. If PINNED_PATHS is active and nothing resolved, fallback to PINNED_PATHS for searches
+    if PINNED_PATHS and #PINNED_PATHS > 0 then
+        return { PINNED_PATHS }
+    end
+
+    return nil, "Access denied or path not found: " .. target
+end
+
+local function sh_quote(s)
+    s = tostring(s or ""):gsub("%z", "")
+    return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+local function shorten_paths(text)
+    for _, def in pairs(SCOPES) do
+        local primary_alias = def.aliases[1]
+        local valid = ACTIVE_SCOPES[def.name] or {}
+        for _, rp in ipairs(valid) do
+            text = text:gsub(rp:gsub("(%W)", "%%%1"), primary_alias)
+        end
+    end
+    if HOME ~= "" then
+        text = text:gsub(HOME:gsub("(%W)", "%%%1"), "~")
+    end
+    return text
+end
+
+local function run_sandboxed_cmd(cmd, timeout_sec)
+    local t = tonumber(timeout_sec) or 5
+    local full_cmd = string.format("timeout %ds %s </dev/null 2>/dev/null", t, cmd)
+    local h = io.popen(full_cmd, "r")
+    if not h then return "" end
+    local out = h:read("*a") or ""
+    h:close()
+    return out:match("^%s*(.-)%s*$")
+end
+
+-- ============================================================================
+-- 3. FOUR BOUNDED TOOLS (find_files, grep_files, read_file_lines, web_search)
+-- ============================================================================
+local function find_files(args)
+    local raw_pattern = tostring(args.pattern or ""):match("^%s*(.-)%s*$")
+    local tiers, err = resolve_tiers(args.target or ".", args.scope or "priority_first")
+    if not tiers then return "Error: " .. err end
+
+    local fd_bin = os.execute("command -v fd >/dev/null 2>&1") == 0 and "fd" or "fdfind"
+    for idx, paths in ipairs(tiers) do
+        local cmd = { fd_bin .. " -H --exclude .git --type f --max-results 45" }
+        for _, p in ipairs(paths) do
+            table.insert(cmd, "--search-path " .. sh_quote(p))
+        end
+        if raw_pattern ~= "" and raw_pattern ~= "." and raw_pattern ~= "*" and raw_pattern ~= ".*" then
+            if raw_pattern:find("[*?]") then
+                table.insert(cmd, "--glob -- " .. sh_quote(raw_pattern))
+            else
+                table.insert(cmd, "-- " .. sh_quote(raw_pattern))
+            end
+        end
+        local out = run_sandboxed_cmd(table.concat(cmd, " "), 5)
+        if out ~= "" then
+            local label = PINNED_LABEL and ("[" .. PINNED_LABEL .. "]\n")
+                or ((idx == 1 and #tiers > 1) and "[Priority Scopes]\n" or "[Fallback Scopes]\n")
+            return label .. shorten_paths(out)
+        end
+    end
+    return "No files matching '" .. raw_pattern .. "' found."
+end
+
+local function grep_files(args)
+    local query = tostring(args.query or "")
+    if query == "" then return "Error: empty query" end
+    local tiers, err = resolve_tiers(args.target or ".", args.scope or "priority_first")
+    if not tiers then return "Error: " .. err end
+
+    for idx, paths in ipairs(tiers) do
+        local cmd = {
+            "rg --hidden -g '!.git/*' -n --smart-case --max-count 5 --max-columns 180 --max-columns-preview",
+            "-e " .. sh_quote(query),
+            "--"
+        }
+        for _, p in ipairs(paths) do table.insert(cmd, sh_quote(p)) end
+        local out = run_sandboxed_cmd(table.concat(cmd, " "), 5)
+        if out ~= "" then
+            local lines = {}
+            for line in out:gmatch("[^\r\n]+") do table.insert(lines, line) end
+            local sliced = {}
+            for i = 1, math.min(35, #lines) do table.insert(sliced, lines[i]) end
+            local label = PINNED_LABEL and ("[" .. PINNED_LABEL .. "]\n")
+                or ((idx == 1 and #tiers > 1) and "[Priority Scopes]\n" or "[Fallback Scopes]\n")
+            local res = label .. shorten_paths(table.concat(sliced, "\n"))
+            if #lines > 35 then
+                res = res .. string.format("\n... (%d more matches omitted; refine query)", #lines - 35)
+            end
+            return res
+        end
+    end
+    return "No matches found for '" .. query .. "'."
+end
+
+local function read_file_lines(args)
+    local target = tostring(args.file_path or ""):match("^%s*(.-)%s*$")
+    if target == "" then return "Error: empty file_path" end
+
+    local candidates = { target }
+    if PINNED_PATHS then
+        for _, p in ipairs(PINNED_PATHS) do
+            table.insert(candidates, 1, p .. "/" .. target)
+        end
+    end
+    for _, root in ipairs(ALLOWED_ROOTS) do
+        table.insert(candidates, root .. "/" .. target)
+    end
+
+    local full_path = nil
+    for _, cand in ipairs(candidates) do
+        local rp = realpath(cand)
+        if rp and is_safe_path(rp) then
+            full_path = rp
+            break
+        end
+    end
+
+    if not full_path then
+        local sk, sub = parse_scope_token(target)
+        if sk and sub then
+            local sp_paths = resolve_scope_paths(sk, sub)
+            if #sp_paths > 0 then full_path = sp_paths[1] end
+        end
+    end
+
+    if not full_path then
+        return "Error: File not found or access denied: " .. target
+    end
+
+    local is_dir = os.execute(string.format("test -d %s >/dev/null 2>&1", sh_quote(full_path))) == 0
+    if is_dir then
+        return "Error: '" .. full_path .. "' is a directory, not a readable file. Use find_files to explore files inside it."
+    end
+
+    local s_line = math.max(1, tonumber(args.start_line) or 1)
+    local e_line = math.min(s_line + 80, tonumber(args.end_line) or (s_line + 50))
+
+    local f, open_err = io.open(full_path, "r")
+    if not f then return "Error opening file: " .. tostring(open_err) end
+
+    local out = {}
+    local curr = 0
+    for line in f:lines() do
+        curr = curr + 1
+        if curr >= s_line and curr <= e_line then
+            if #line > 300 then line = line:sub(1, 300) .. "... [truncated]" end
+            table.insert(out, string.format("%d: %s", curr, line))
+        elseif curr > e_line then
+            break
+        end
+    end
+    f:close()
+    return #out > 0 and table.concat(out, "\n") or "EOF or empty line range."
+end
+
+local function web_search(args)
+    local query = tostring(args.query or "")
+    if query == "" then return "Error: empty search query" end
+    local raw = run_sandboxed_cmd("ddgr --json --np -n 4 -- " .. sh_quote(query), 8)
+    if raw ~= "" then
+        local results = cjson.decode(raw)
+        if type(results) == "table" and #results > 0 then
+            local formatted = {}
+            for _, r in ipairs(results) do
+                table.insert(formatted, string.format(
+                    "Title: %s\nURL: %s\nSnippet: %s",
+                    tostring(r.title or ""), tostring(r.url or ""), tostring(r.abstract or "")
+                ))
+            end
+            return table.concat(formatted, "\n\n")
+        end
+    end
+    return "No web results returned for '" .. query .. "'."
+end
+
+local TOOL_MAP = {
+    find_files = find_files,
+    grep_files = grep_files,
+    read_file_lines = read_file_lines,
+    web_search = web_search,
+}
+
+local TOOLS_SCHEMA = {
+    {
+        type = "function",
+        ["function"] = {
+            name = "find_files",
+            description = "Find files by filename substring or regex across allowed scopes.",
+            parameters = {
+                type = "object",
+                properties = {
+                    pattern = { type = "string", description = "Filename pattern or regex (use '.' for all)" },
+                    target = { type = "string", description = "'.' for default target, or a scope alias like '-df', '-nn'" }
+                },
+                required = { "pattern" }
+            }
+        }
+    },
+    {
+        type = "function",
+        ["function"] = {
+            name = "grep_files",
+            description = "Search file contents with ripgrep across allowed scopes.",
+            parameters = {
+                type = "object",
+                properties = {
+                    query = { type = "string", description = "Keyword or regex to search inside files" },
+                    target = { type = "string", description = "'.' for default target, or a scope alias / file path" }
+                },
+                required = { "query" }
+            }
+        }
+    },
+    {
+        type = "function",
+        ["function"] = {
+            name = "read_file_lines",
+            description = "Read specific line numbers (max 80 lines) from a file.",
+            parameters = {
+                type = "object",
+                properties = {
+                    file_path = { type = "string", description = "File path or scope/subpath" },
+                    start_line = { type = "integer", description = "1-indexed start line" },
+                    end_line = { type = "integer", description = "End line" }
+                },
+                required = { "file_path", "start_line", "end_line" }
+            }
+        }
+    },
+    {
+        type = "function",
+        ["function"] = {
+            name = "web_search",
+            description = "Search the web via DuckDuckGo when local files do not contain the answer.",
+            parameters = {
+                type = "object",
+                properties = {
+                    query = { type = "string", description = "Web search query" }
+                },
+                required = { "query" }
+            }
+        }
+    }
+}
+
+-- ============================================================================
+-- 4. OLLAMA IPC & /dev/shm SESSION MANAGEMENT
+-- ============================================================================
+local function ollama_chat(messages, no_tools, max_predict)
+    local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
+    local req_payload = {
+        model = MODEL,
+        messages = messages,
+        options = {
+            num_predict = max_predict or 600,
+            temperature = 0.1,
+            num_thread = 1,
+            num_gpu = 999
+        },
+        stream = false
+    }
+    if not no_tools then
+        req_payload.tools = TOOLS_SCHEMA
+    end
+    local payload = cjson.encode(req_payload)
+    local f = io.open(tmp_req, "w")
+    f:write(payload)
+    f:close()
+
+    local cmd = string.format(
+        "curl -s --max-time 120 -X POST %s -H 'Content-Type: application/json' -d @%s",
+        sh_quote(CHAT_ENDPOINT), sh_quote(tmp_req)
+    )
+    local h = io.popen(cmd, "r")
+    local raw = h and h:read("*a") or ""
+    if h then h:close() end
+    os.remove(tmp_req)
+
+    if not raw or raw == "" then
+        io.stderr:write("Ollama error: Connection timed out or empty response\n")
+        os.exit(1)
+    end
+
+    local res, err = cjson.decode(raw)
+    if not res or not res.message then
+        io.stderr:write("Ollama error: " .. tostring(err or raw) .. "\n")
+        os.exit(1)
+    end
+    return res.message
+end
+
+local function load_session()
+    local f = io.open(SESSION_FILE, "r")
+    if not f then return nil end
+    local data = cjson.decode(f:read("*a"))
+    f:close()
+    return data
+end
+
+local function save_session(messages)
+    local f = io.open(SESSION_FILE, "w")
+    if f then
+        f:write(cjson.encode({
+            pinned_scope = PINNED_SCOPE,
+            pinned_label = PINNED_LABEL,
+            pinned_subpath = PINNED_SUBPATH,
+            messages = messages
+        }))
+        f:close()
+    end
+end
+
+local function run_turn(messages, user_query)
+    local scope_announcement = nil
+    if PINNED_LABEL and PINNED_PATHS and #PINNED_PATHS > 0 then
+        scope_announcement = string.format("[Scope locked to %s: %s]", PINNED_LABEL, table.concat(PINNED_PATHS, ", "))
+    end
+    local prompt = scope_announcement and (scope_announcement .. " " .. user_query) or user_query
+    table.insert(messages, { role = "user", content = prompt })
+
+    for turn = 1, 4 do
+        local msg = ollama_chat(messages, false)
+        table.insert(messages, msg)
+
+        if msg.tool_calls and #msg.tool_calls > 0 then
+            for _, call in ipairs(msg.tool_calls) do
+                local fn = call["function"].name
+                local fargs = call["function"].arguments
+                if type(fargs) == "string" then fargs = cjson.decode(fargs) or {} end
+                io.stderr:write(string.format("\27[90m  -> %s(%s)\27[0m\n", fn, cjson.encode(fargs)))
+                local out = TOOL_MAP[fn] and TOOL_MAP[fn](fargs) or ("Unknown tool: " .. tostring(fn))
+                table.insert(messages, { role = "tool", name = fn, content = out })
+            end
+        elseif msg.content and msg.content:match("%S") then
+            print(shorten_paths(msg.content))
+            save_session(messages)
+            return
+        else
+            -- Model generated only thinking or empty content, force synthesis
+            table.insert(messages, {
+                role = "user",
+                content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
+            })
+            local synth = ollama_chat(messages, true, 1000)
+            local ans = (synth and synth.content and synth.content:match("%S")) and synth.content or (synth and synth.thinking)
+            if ans and ans ~= "" then
+                print(shorten_paths(ans))
+                table.insert(messages, synth)
+                save_session(messages)
+                return
+            end
+        end
+    end
+
+    -- If loop reached max tool iterations without generating a final text response, synthesize:
+    table.insert(messages, {
+        role = "user",
+        content = "Based on the tool results above, provide the final answer and exact file paths concisely now."
+    })
+    local synth = ollama_chat(messages, true, 1000)
+    local ans = (synth and synth.content and synth.content:match("%S")) and synth.content or (synth and synth.thinking)
+    if ans and ans ~= "" then
+        print(shorten_paths(ans))
+        table.insert(messages, synth)
+        save_session(messages)
+    end
+end
+
+-- ============================================================================
+-- 5. FLEXIBLE CLI PARSER (Unquoted queries + Scope Flags + -c / -i)
+-- ============================================================================
+local mode = "oneshot"
+local query_parts = {}
+local parsing_flags = true
+
+for i = 1, #arg do
+    local token = arg[i]
+    if parsing_flags and (token == "-c" or token == "--continue") then
+        mode = "continue"
+    elseif parsing_flags and (token == "-i" or token == "--interactive") then
+        mode = "interactive"
+    elseif parsing_flags and parse_scope_token(token) then
+        local sk, sub = parse_scope_token(token)
+        local paths = resolve_scope_paths(sk, sub)
+        if #paths == 0 then
+            io.stderr:write(string.format("\27[31mError: Scope '%s' (%s) path does not exist on disk.\27[0m\n", sk, token))
+            os.exit(1)
+        end
+        PINNED_SCOPE = sk
+        PINNED_LABEL = token
+        PINNED_SUBPATH = sub
+        PINNED_PATHS = paths
+    else
+        parsing_flags = false
+        table.insert(query_parts, token)
+    end
+end
+
+local active_summary = {}
+for _, def in pairs(SCOPES) do
+    local v = ACTIVE_SCOPES[def.name] or {}
+    if #v > 0 then
+        table.insert(active_summary, def.aliases[1] .. "=" .. table.concat(v, ";"))
+    end
+end
+local sys_context = "Available scopes: " .. table.concat(active_summary, ", ")
+
+local messages = nil
+if mode == "continue" then
+    local saved = load_session()
+    if saved and saved.messages then
+        messages = saved.messages
+        if not PINNED_SCOPE and saved.pinned_scope then
+            PINNED_SCOPE = saved.pinned_scope
+            PINNED_LABEL = saved.pinned_label
+            PINNED_SUBPATH = saved.pinned_subpath
+            PINNED_PATHS = resolve_scope_paths(PINNED_SCOPE, PINNED_SUBPATH)
+        end
+    else
+        io.stderr:write("\27[33m[No prior session in /dev/shm; starting fresh]\27[0m\n")
+    end
+end
+
+if not messages then
+    messages = { { role = "system", content = sys_context } }
+end
+
+local initial_query = table.concat(query_parts, " ")
+if initial_query ~= "" then
+    run_turn(messages, initial_query)
+elseif mode ~= "interactive" then
+    io.stderr:write("Usage:\n  ask <query>\n  ask -df <query>\n  ask -nn <query>\n  ask -c <follow-up>\n  ask -c -df <follow-up>\n")
+    os.exit(1)
+end
+
+if mode == "interactive" then
+    while true do
+        local prompt_label = PINNED_LABEL and ("Follow-up (" .. PINNED_LABEL .. ") > ") or "Follow-up > "
+        io.write("\n\27[36m" .. prompt_label .. "\27[0m")
+        io.flush()
+        local line = io.read("*l")
+        if not line or line == "q" or line == "exit" or line == "" then break end
+        run_turn(messages, line)
+    end
+end
