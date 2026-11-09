@@ -4,6 +4,11 @@
 # Location: .githooks/pre-commit (Activated via core.hooksPath = .githooks)
 # =========================================================
 
+DOTFILES_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if [ -x "$DOTFILES_DIR/scripts/classify-binaries.sh" ]; then
+    "$DOTFILES_DIR/scripts/classify-binaries.sh" 2>/dev/null || true
+fi
+
 if command -v gitleaks >/dev/null 2>&1; then
     gitleaks protect --staged --verbose --redact
     EXIT_CODE=$?

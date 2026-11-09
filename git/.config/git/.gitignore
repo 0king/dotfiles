@@ -1,0 +1,5 @@
+# Machine-local Git credentials & sensitive files
+config.local
+*.local
+credentials*
+*.secret

@@ -1,0 +1,5 @@
+# OS-managed target wants and snap units
+user/default.target.wants/
+user/graphical-session.target.wants/
+user/ai-memory.service
+**/snap.*

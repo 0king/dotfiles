@@ -35,6 +35,9 @@ shift || true
 
 case "$cmd" in
     status|s)
+        if [ -x "$DOTFILES_DIR/scripts/classify-binaries.sh" ]; then
+            "$DOTFILES_DIR/scripts/classify-binaries.sh" 2>/dev/null || true
+        fi
         git -C "$DOTFILES_DIR" status "$@"
         ;;
     diff|d)
@@ -50,9 +53,15 @@ case "$cmd" in
         fi
         ;;
     apply|a|restow)
+        if [ -x "$DOTFILES_DIR/scripts/classify-binaries.sh" ]; then
+            "$DOTFILES_DIR/scripts/classify-binaries.sh" 2>/dev/null || true
+        fi
         "$DOTFILES_DIR/setup.sh" --restow "$@"
         ;;
     push|p)
+        if [ -x "$DOTFILES_DIR/scripts/classify-binaries.sh" ]; then
+            "$DOTFILES_DIR/scripts/classify-binaries.sh" 2>/dev/null || true
+        fi
         echo "🔒 Verifying secrets with Gitleaks before push..."
         if command -v gitleaks >/dev/null 2>&1; then
             gitleaks detect --source="$DOTFILES_DIR" --redact

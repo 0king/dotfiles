@@ -226,6 +226,11 @@ fi
 # ------------------------------------------------------------------------------
 # 5. Stow Packages
 # ------------------------------------------------------------------------------
+if [ -x "$DOTFILES_DIR/scripts/classify-binaries.sh" ]; then
+    echo "🔍 Classifying unmanaged binaries and symlinks in bin..."
+    "$DOTFILES_DIR/scripts/classify-binaries.sh"
+fi
+
 echo "🔗 Stowing packages to \$HOME..."
 STOW_FLAGS="-v -R -t $HOME -d $DOTFILES_DIR"
 if [ "$DRY_RUN" -eq 1 ]; then

@@ -1,0 +1,92 @@
+;; Mouseless overlay + kanata precision layer (Phase 3).
+;; Installed as /etc/kanata/mouseless.kbd, sourced from unicfg.kbd via
+;;   (include "mouseless.kbd")
+;; Requirements in unicfg.kbd (see UNICFG-EDITS.md):
+;; - lyr-base: lctl slot replaced with `@ml-tap` (overlay trigger)
+;; - defcfg: linux-output-device-name + linux-dev-names-exclude
+;; Design notes (audit C1, user-accepted): ControlLeft tap (<200 ms) switches to
+;; lyr-mouseless; holding behaves as left Control. `concurrent-tap-hold yes` is
+;; required so fast modifier+key input resolves as a hold. The overlay trigger is
+;; configurable in config.yaml (`keybindings.overlay_trigger_key`); ShiftLeft has
+;; no dedicated trigger by default.
+
+(defalias
+  ;; ControlLeft tap -> overlay; hold -> left control (tap-hold-release matches
+  ;; the HRM style used in unicfg.kbd).
+  ml-tap (tap-hold-release 300 300 (layer-switch lyr-mouseless) lctl)
+)
+
+;; Clean no-HRM overlay layer: the full QWERTY letter block + space; esc exits
+;; to base. The daemon selects a cell with two keys: a level-1 column key from
+;; `asdfghjkl;`, then a level-2 row key from
+;; `qwertyuiopasdfghjkl;zxcvbnm,./` (and a third key selects the 10×3
+;; sub-cell). Every one of those 30 characters must be emitted plainly here so
+;; the temp grab can read it; otherwise `_` would fall through to base HRM
+;; aliases and delay or swallow the key.
+;; Modifiers are explicit so the base aliases (`@ml-tap`, `@sp`)
+;; cannot fire while the overlay is open; the daemon needs the real press/release
+;; events for Shift monitor-switching and Alt drag.
+;; Column counts mirror defsrc exactly (13/14/14/13/12/7).
+(deflayer lyr-mouseless
+  (layer-switch lyr-base) _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    q    w    e    r    t    y    u    i    o    p    _    _    _
+  _    a    s    d    f    g    h    j    k    l    ;    _    _
+  lsft z    x    c    v    b    n    m    ,    .    /    rsft
+  lctl lmet lalt           spc            ralt rctl rmet
+)
+
+;; Kanata-native precision layer: 1 px i/j/k/l movement plus speed toggles,
+;; esc/capslock to exit. The daemon does not grab this layer, so all unmapped
+;; cells are `_` (transparent — they type into the focused app). Only i/j/k/l
+;; (movement), esc/capslock (exit), c/v (speed) are mapped. Wheel/click cells
+;; are `_` and intentionally unmapped.
+;; Entered after a `move` when `behavior.free_mode_after_move` is true, or via
+;; the optional `keybindings.precision_trigger` tap-hold alias `ml-precision-tap`.
+;; Column counts mirror defsrc exactly (13/14/14/13/12/7).
+(deflayer lyr-mouse-precision
+  (layer-switch lyr-base) _    _    _    _    _    _    _    _    _    _    _    _
+  _                       _    _    _    _    _    _    _    _    _    _    _    _    _
+  _                       _    _    @scroll-up    _    _    _    _                   @cursor-up _    _    _    _    _
+  (layer-switch lyr-base) _    _    _    _              _    _    @mlp-left @mlp-down @mlp-right _    _    _
+  _                       _    _    @mlp-fast @mlp-slow _    _    _    _    _    _    _
+  _    _    _              @left-click              _    _    _
+)
+
+;; hold c/v to change cursor speed
+;; u = increase scroll speed
+;; o/p = scroll to top/bottom
+;; keys m/n also scroll
+;; ijkl = cursor
+;; esdf = scroll
+;; space = left click
+;; r = right click
+(deflayer lyr-mouse
+  _    _    _    _    _    _    _    _    _    _    _    _    _ ;; function row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _ ;; number row
+  _    _    _    @mwu @mr  _    @to-mwslw @to-mwfst @mmu @mtop @mbot _    _    _
+  _    _    @mwl @mwd @mwr _    _    @mml @mmd @mmr _    _    _
+  _    _    _    @fst @slw _    @mwu @mwd _    _    _    _
+  _    _    _              @ml            _    _    _
+)
+
+;; Self-contained precision aliases (not reused from unicfg @mmu/@mmd/@fst/@slw).
+(defalias
+  cursor-up (movemouse-up 20 1)
+  cursor-down (movemouse-down 20 1)
+  cursor-left (movemouse-left 20 1)
+  cursor-right (movemouse-right 20 1)
+  cursor-fast (movemouse-speed 500)
+  cursor-slow (movemouse-speed 20)
+  
+  scroll-left (mwheel-left 100 30)
+  scroll-down (mwheel-down 100 50)
+  scroll-up (mwheel-up 100 50)
+  scroll-right (mwheel-right 100 30)
+  
+  scroll-top (mwheel-up 50 30000)
+  scroll-bottom (mwheel-down 50 30000)
+  
+  left-click mlft
+  right-click mrgt 
+)

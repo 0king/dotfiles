@@ -1,1 +1,4 @@
-.antidote
+.antidote/
+.zcompdump*
+.zsh_plugins.zsh*
+*.bak

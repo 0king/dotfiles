@@ -10,6 +10,47 @@ Modern, modular, and cross-platform personal dotfiles managed with [GNU Stow](ht
 
 ---
 
+## 📂 Modular Directory Folding Architecture
+
+All configuration directories fold directly into directory symlinks in `$HOME`, leaving zero loose internal symlinks:
+
+- **15 Folded Directory Symlinks in `$HOME`**:
+  - `~/.config/ai` -> `../dotfiles/ai/.config/ai`
+  - `~/.config/alacritty` -> `../dotfiles/alacritty/.config/alacritty`
+  - `~/.config/ghostty` -> `../dotfiles/ghostty/.config/ghostty`
+  - `~/.config/git` -> `../dotfiles/git/.config/git`
+  - `~/.config/kanata` -> `../dotfiles/kanata/.config/kanata`
+  - `~/.config/kitty` -> `../dotfiles/kitty/.config/kitty`
+  - `~/.config/nvim` -> `../dotfiles/nvim/.config/nvim`
+  - `~/.config/systemd` -> `../dotfiles/systemd/.config/systemd`
+  - `~/.config/vicinae` -> `../dotfiles/vicinae/.config/vicinae`
+  - `~/.config/wezterm` -> `../dotfiles/wezterm/.config/wezterm`
+  - `~/.config/yazi` -> `../dotfiles/yazi/.config/yazi`
+  - `~/.config/zed` -> `../dotfiles/zed/.config/zed`
+  - `~/.config/zsh` -> `../dotfiles/zsh/.config/zsh`
+  - `~/.local/bin` -> `../dotfiles/bin/.local/bin`
+  - `~/Desktop/mem` -> `../../dotfiles/desktop/Desktop/mem`
+- **Only 3 Root Files in `$HOME`**:
+  - `~/.zshenv` -> `dotfiles/zsh/.zshenv`
+  - `~/.ai` -> `dotfiles/ai/.ai`
+  - `~/.aider.conf.yml` -> `dotfiles/aider/.aider.conf.yml`
+
+### Package-Local `.gitignore` Modularity
+- **Root `.gitignore`**: Contains **universal rules only** (secrets, private keys, compiled binary formats `*.so`/`*.exe`, OS noise). Zero package-specific paths.
+- **Package-Local `.gitignore` Files**: Each package encapsulates its own exclusions:
+  - `systemd/.config/systemd/.gitignore`: OS target wants, snap units, and machine-generated `ai-memory.service`.
+  - `git/.config/git/.gitignore`: Local machine credentials (`config.local`, `credentials*`).
+  - `zsh/.config/zsh/.gitignore`: Runtime caches (`.antidote/`, `.zcompdump*`, `.zsh_plugins.zsh*`).
+  - `bin/.local/bin/.gitignore`: Dynamic file-type classified ELF binaries and external symlinks.
+  - `kanata/.config/kanata/.gitignore`: Editor artifacts (`.kilo/`, `*.old`).
+  - `desktop/Desktop/mem/.gitignore`: Local chat histories (`.aider*`).
+- **Dynamic ELF Binary Classifier (`scripts/classify-binaries.sh`)**:
+  - Automatically identifies compiled ELF binaries (`\x7fELF`) and unmanaged external tool symlinks in `~/.local/bin`.
+  - Dynamically maintains `bin/.local/bin/.gitignore` without wildcard rules, ensuring user scripts are auto-tracked by default.
+  - Hooked directly into `dotfiles status`, `dotfiles apply`, `dotfiles push`, `.githooks/pre-commit`, and `setup.sh`.
+
+---
+
 ## 📂 Modular Packages (16 Packages, 180 Managed Files)
 
 ```text
@@ -37,6 +78,7 @@ Modern, modular, and cross-platform personal dotfiles managed with [GNU Stow](ht
 ├── .githooks/               # Local pre-commit hook (gitleaks)
 ├── setup.sh                 # Cross-platform dependency installer & stow bootstrap
 ├── .stow-local-ignore       # Stow exclusion rules
+├── usage.md                 # Complete GNU Stow usage guide & scenario handbook
 └── README.md                # This documentation
 ```
 
@@ -76,6 +118,8 @@ A lightweight CLI tool is provided at `~/.local/bin/dotfiles`:
 | `dotfiles push` | `dfp` | Scan with Gitleaks and push to remote |
 | `dotfiles pull` | — | Pull latest commits and re-stow |
 | `dotfiles cd` | `dfcd` | Jump to `~/dotfiles` directory |
+
+> 💡 **Need Stow Help?** See [`usage.md`](usage.md) for the exhaustive handbook covering all GNU Stow workflows, directory folding vs. unfolding, `--adopt` safety, unmanaged files, collisions, and edge case recovery.
 
 ---
 

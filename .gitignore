@@ -1,12 +1,47 @@
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
-*.bak
-.nvimlog
-.stow-local-ignore
-.cache/
+# ==============================================================================
+# Universal Dotfiles Repository Git Exclusion Rules
+# (Package-specific rules are isolated inside package-local .gitignore files)
+# ==============================================================================
 
-# Machine-local Git credentials
-git/.config/git/config.local
+# Universal Git repository exclusion
+**/.git/**
+
+# Secrets & private keys (never track)
+.ssh/id_*
+.ssh/*.pem
+.ssh/*.key
+**/.ssh/id_*
+**/.ssh/*.pem
+**/.ssh/*.key
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.secret
+**/.env
+**/.env.*
+!**/.env.example
+
+# Universal binary filtering (compiled binaries & libraries anywhere)
+*.exe
+*.bin
+*.so
+*.so.*
+*.dylib
+*.dll
+*.o
+*.a
+*.pyc
+**/__pycache__/**
+
+# Universal runtime caches & volatile dumps
+**/node_modules/**
+**/.DS_Store
+**/Thumbs.db
+**/*.bak
+**/*.swp
+**/*.swo
+**/.nvimlog
+*~
+.cache/
+.stow-local-ignore

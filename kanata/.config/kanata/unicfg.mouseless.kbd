@@ -1,0 +1,266 @@
+#|
+kanata v1.12.0, ubuntu 26
+Universal kanata config for all keyboards.
+
+# LAYERS:
+- base (with HRMs)
+- alt (hold space)
+- mouse (hold ESC or capslock)
+- media (meta + ESC)
+- bypass (meta + control + ESC)
+|#
+
+;; exclude vicinae's virtual keyb
+(defcfg
+  process-unmapped-keys yes
+  linux-device-detect-mode keyboard-only
+  concurrent-tap-hold yes
+  linux-output-device-name "kanata-mouseless"
+  linux-dev-names-exclude ("mouseless-mouse")
+)
+
+(defvirtualkeys 
+  relf24 (release-key f24) 
+)
+
+(defsrc
+  esc  f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12
+  grv  1    2    3    4    5    6    7    8    9    0    -    =    bspc
+  tab  q    w    e    r    t    y    u    i    o    p    [    ]    \
+  caps a    s    d    f    g    h    j    k    l    ;    '    ret
+  lsft z    x    c    v    b    n    m    ,    .    /    rsft
+  lctl lmet lalt           spc            ralt rmet rctl
+)
+
+(defvar
+  ;; exlude s(alt) d (ctrl) f(shft) to support multi mod tap
+  left-hand (
+    q w e r t
+    a g
+    z x c v b
+  )
+  right-hand (
+    y u i o p
+    h ;
+    n m , . /
+  )
+)
+
+(deffakekeys
+  to-base (layer-switch lyr-base)
+)
+
+;; Templates with key-timing fast-typing skip (#1455)
+(deftemplate mod-taphold-recency (char mod keys tap-time hold-time)
+  (switch 
+    ((key-timing 3 less-than 250)) (multi $char @tap) break
+    () (tap-hold-release-keys $tap-time $hold-time (multi $char @tap) $mod $keys) break
+  )
+)
+
+;; Vim HRM keys template:
+;; 1. Double-tap (press within 200 ms after tap): disables HRM and holds raw key for repetition
+;; 2. Fast-typing skip (#1455)
+;; 3. Fallback HRM tap-hold
+(deftemplate mod-vim (char mod keys tap-time hold-time)
+  (switch 
+    ((and (key-history $char 1) (key-timing 1 less-than 200))) $char break
+    ((key-timing 3 less-than 250)) (multi $char @tap) break
+    () (tap-hold-release-keys $tap-time $hold-time (multi $char @tap) $mod $keys) break
+  )
+)
+
+(defalias
+  ;; Layer toggles (with Linux tap-hold workaround (#422)) 
+  cl (multi f24 (tap-hold 0 300 esc (layer-while-held lyr-mouse)) (macro 5 (on-press tap-vkey relf24))) ;; cl = capslock 
+  sp (multi f24 (tap-hold 0 200 spc (layer-while-held lyr-alt)) (macro 5 (on-press tap-vkey relf24))) ;; sp = space 
+
+  
+  ;; --- LAYER SWITCH ACTIONS ---
+  switch-base (layer-switch lyr-base)
+  switch-bypass (layer-switch lyr-bypass)
+  switch-media (layer-switch lyr-media)
+
+  ;; --- FORK LOGIC ---
+  ;; BASE: Meta+Ctrl+Esc -> Bypass | Meta+Esc -> Media | Esc -> @cl
+  fork-bypass-media (fork @switch-media @switch-bypass (lctl rctl))
+  fork-esc-bypass-media (fork @cl @fork-bypass-media (lmet rmet))
+
+  ;; MEDIA: Meta+Ctrl+Esc -> Bypass | Meta+Esc -> Base | Esc -> @cl
+  fork-base-bypass (fork @switch-base @switch-bypass (lctl rctl))
+  fork-esc-base-bypass (fork @cl @fork-base-bypass (lmet rmet))
+
+  ;; BYPASS: Meta+Ctrl+Esc -> Base | Meta+Esc -> Normal Esc | Esc -> Normal Esc
+  fork-esc-base (fork @switch-media @switch-base (lctl rctl))
+  fork-esc-base-media (fork esc @fork-esc-base (lmet rmet))
+
+  tap (multi
+    (layer-switch lyr-nohrm)
+    (on-idle-fakekey to-base tap 20)
+  )
+
+  ;; --- HOME ROW MODS ---
+  a (t! mod-taphold-recency a lmet $left-hand 300 300)
+  s (t! mod-taphold-recency s lalt $left-hand 200 200)
+  d (t! mod-taphold-recency d lctl $left-hand 200 200)
+  f (t! mod-taphold-recency f lsft $left-hand 200 200)
+  ;; vim keys use double-tap repetition rule
+  j (t! mod-vim j rsft $right-hand 200 200)
+  k (t! mod-vim k rctl $right-hand 200 200)
+  l (t! mod-vim l ralt $right-hand 200 200)
+  ; (t! mod-taphold-recency ; rmet $right-hand 300 300)
+
+  ;; --- MOUSE SPEEDS ---
+  fst (movemouse-speed 500) 
+  slw (movemouse-speed 20)  
+
+  ;; Normal Mouse Cursor Movement
+  mmu (movemouse-up 10 5)
+  mmd (movemouse-down 10 5)
+  mml (movemouse-left 10 5)
+  mmr (movemouse-right 10 5)
+
+  ;; Normal Scrolling
+  mwl (mwheel-left 100 30)
+  mwd (mwheel-down 100 50)
+  mwu (mwheel-up 100 50)
+  mwr (mwheel-right 100 30)
+
+  ;; Fast Scrolling (holding u)
+  mwlf (mwheel-left 50 100)
+  mwdf (mwheel-down 50 200)
+  mwuf (mwheel-up 50 200)
+  mwrf (mwheel-right 50 100)
+
+  ;; Slow Scrolling (holding y)
+  mwls (mwheel-left 100 10)
+  mwds (mwheel-down 100 15)
+  mwus (mwheel-up 100 15)
+  mwrs (mwheel-right 100 10)
+
+ ;; Scroll speed layer triggers
+  to-mwfst (layer-while-held lyr-mouse-fast)
+  to-mwslw (layer-while-held lyr-mouse-slow)
+
+  ;; Scroll to top / bottom (max distance in kanata is 30000)
+  mtop (mwheel-up 50 30000)
+  mbot (mwheel-down 50 30000)
+
+  ;; Mouse clicks
+  ml mlft
+  mr mrgt 
+)
+
+(defchordsv2
+  (u i) esc 50 all-released (lyr-mouse lyr-mouse-fast lyr-mouse-slow lyr-media lyr-bypass)
+)
+
+;; Base layer with HRMs
+;; hold space for alt layer
+;; hold esc/capslock for mouse layer
+;; physical super and control are swapped
+(deflayer lyr-base
+  @fork-esc-bypass-media _    _    _    _    _    _    _    _    _    _    _    _ ;; function row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _ ;; number row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  @fork-esc-bypass-media @a   @s   @d   @f   _    _    @j   @k   @l   @;   _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  @ml-tap _    _              @sp            _    rctl rmet
+)
+
+;; ----- Alt layer (trigger = hold space) -----
+;; key c becomes space
+;; home, end = h, g
+;; tab = t
+;; pageup, pagedown = r, v
+;;
+;; esdf become Arrow keys
+;; q = backtick
+;; w = tilde
+;; a = enter
+;; x = backspace
+;; z = delete
+;; F3 = Print Scr
+;; f11/f12 = volume up and down
+;; f1/f2 = brightness up and down
+;;
+;; Problems: 
+;; -- cannot reach right function keys while pressing HRMs
+;; -- HRMs in right side only
+;; -- since we do not have HRMs in left side, do not place keys in right side
+
+(deflayer lyr-alt
+  _    brdn brup prnt _    _    _    _    _    _    _    vold volu ;; function row 
+  _    S-1  S-2  S-3  S-4  S-5  S-6  S-7  S-8  S-9  S-0  S--  S-=  _ ;; number row
+  _    grv  S-grv up   pgup tab  _    _    _    _    _    _    _    _
+  _    ret  left down rght end  home _    _    _    _    _    _
+  _    del  bspc spc  pgdn _    _    _    _    _    _    _
+  _    _    _              _              _    _    _
+)
+
+;; hold c/v to change cursor speed
+;; u = increase scroll speed
+;; o/p = scroll to top/bottom
+;; keys m/n also scroll
+;; ijkl = cursor
+;; esdf = scroll
+;; space = left click
+;; r = right click
+(deflayer lyr-mouse
+  _    _    _    _    _    _    _    _    _    _    _    _    _ ;; function row
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _ ;; number row
+  _    _    _    @mwu @mr  _    @to-mwslw @to-mwfst @mmu @mtop @mbot _    _    _
+  _    _    @mwl @mwd @mwr _    _    @mml @mmd @mmr _    _    _
+  _    _    _    @fst @slw _    @mwu @mwd _    _    _    _
+  _    _    _              @ml            _    _    _
+)
+
+(deflayer lyr-mouse-fast
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    @mwuf _    _    _    _    _    _    _    _    _    _
+  _    _    @mwlf @mwdf @mwrf _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    @mwuf @mwdf _    _    _    _
+  _    _    _              _              _    _    _
+)
+(deflayer lyr-mouse-slow
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    @mwus _    _    _    _    _    _    _    _    _    _
+  _    _    @mwls @mwds @mwrs _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    @mwus @mwds _    _    _    _
+  _    _    _              _              _    _    _
+)
+
+;; MEDIA LAYER (Meta + ESC)
+(deflayer lyr-media
+  @fork-esc-base-bypass _    _    _    _    _    _    _    _    _    _    _    _ ;; function row
+  _    brdn brup _    _    _    _    _    _    _    _    vold volu _ ;; number row
+  _    _    _    up   _    _    _    _    up   _    _    _    _    _
+  @fork-esc-base-bypass _    left down rght _    _    left down rght _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _              @sp            _    _    _
+)
+
+;; disable HRMs
+(deflayer lyr-nohrm
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    a    s    d    f    _    _    j    k    l    ;    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _              @sp            _    _    _
+)
+
+;; BYPASS LAYER (meta + ctrl + esc)
+;; All keys revert to raw physical output except the exit forks. 
+(deflayer lyr-bypass
+  @fork-esc-base-media _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  @fork-esc-base-media _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _              spc            _    _    _
+)
+
+(include "mouseless.kbd")
