@@ -25,7 +25,7 @@
   - Filters internal reasoning and monologue leakages (`is_monologue`) such as "the user asks", "let me search", and "we need to find" from escaping to stdout.
   - Automatically triggers clean text synthesis when tools have finished running, rendering direct, single-paragraph answers in under 1.5 seconds.
 - **Directory Scopes & Dash Flags**:
-  - `-df` / `--df`: Locks search strictly to `~/dotfiles` (e.g. `ask -df where is wezterm config?`).
+  - `-df` / `--df`: Locks search strictly to `~/dotfiles` (e.g. `ask -df where is starship config?`).
   - `-nn` / `--nn`: Scans personal notes across multi-path arrays (`~/Documents/Notes`, etc.).
   - `-cfg` / `--cfg`: Scans `~/.config`.
   - `-bin` / `--bin`: Scans `~/.local/bin`.
@@ -55,12 +55,12 @@
 
 ```bash
 # 1. Unquoted general priority search (speculative zero-hop)
-ask where is my wezterm font configured?
+ask where is my shell prompt configured?
 
 # 2. Scope-pinned queries (single dash, double dash, or subpaths)
 ask -df where are my zsh aliases?
 ask --df where are my zsh aliases?
-ask -df/wezterm show my keybindings
+ask -df/kitty show my keybindings
 
 # 3. Dynamic model switching (-llm / --llm)
 ask -llm lfm3-agent -df where are my zsh aliases?

@@ -331,7 +331,7 @@ local function grep_files(args)
     if not tiers then return "Error: " .. err end
 
     -- Allow anchored queries to match indented lines in blocks
-    local rg_query = query:gsub("^%^([%a_]+)", "^%%s*%1")
+    local rg_query = query:gsub("^%^([%a_]+)", "^\\s*%1")
 
     local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
     local max_lines = 80
@@ -632,7 +632,7 @@ end
 
 local function ollama_chat(messages, no_tools, max_predict)
     local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
-    local default_predict = ENABLE_THINKING and 1000 or 90
+    local default_predict = ENABLE_THINKING and 1000 or 120
     local req_payload = {
         model = MODEL,
         messages = messages,
@@ -757,7 +757,7 @@ local function synthesize_answer(messages)
     end
     table.insert(flat_messages, {
         role = "user",
-        content = "Based on the tool results above, state the final concise answer directly in one single sentence. Cite the exact count and file path from the header. Never repeat yourself or write multiple paragraphs. No preamble."
+        content = "Based on the tool results above, provide the final answer concisely in 1-2 short sentences. Rely on tool summary headers for any counts or totals. Cite relevant file paths and line numbers. No preamble."
     })
     local synth = ollama_chat(flat_messages, true, ENABLE_THINKING and 1000 or 100)
     print_thinking(synth)
@@ -817,8 +817,12 @@ local function run_turn(messages, user_query)
             end
         else
             -- No tool calls returned by model
-            if has_tool_results(messages) then
-                -- Tools have been executed in earlier turns; synthesize clean final answer
+            if content_clean ~= "" and not is_monologue(content_clean) then
+                print(shorten_paths(content_clean))
+                save_session(messages)
+                return
+            elseif has_tool_results(messages) then
+                -- Model produced monologue or empty content with tool results available: synthesize
                 local ans = synthesize_answer(messages)
                 if ans and ans ~= "" and not is_monologue(ans) then
                     print(shorten_paths(ans))
@@ -826,11 +830,6 @@ local function run_turn(messages, user_query)
                     save_session(messages)
                     return
                 end
-            elseif content_clean ~= "" and not is_monologue(content_clean) then
-                -- No tools needed and valid non-monologue answer generated directly
-                print(shorten_paths(content_clean))
-                save_session(messages)
-                return
             elseif turn < 3 then
                 -- Model produced monologue without tool calls and without tool results yet; nudge
                 table.insert(messages, {
@@ -908,9 +907,9 @@ end
 
 local SYS_INSTRUCTIONS = [[You are a terse CLI file assistant.
 Rules:
-1. When asked about an application and setting (e.g. 'wezterm font', 'zsh alias', 'tmux prefix'), call `grep_files` with target set to the app (e.g. target='wezterm', target='zsh') and query set to the setting keyword (e.g. query='font', query='alias ').
-2. When answering count or summary questions, cite the exact numbers from the tool header (e.g. unique names, active lines, or matching lines). Never guess or manually recount.
-3. Output telegraphic answers: cite `path:line`, show the exact setting/code, and explain in 1-2 short sentences max. No preamble.]]
+1. Use `find_files` to discover paths and `grep_files` to search contents. Search for specific settings, keys, or patterns rather than broad names, and scope `target` to relevant subdirectories when known.
+2. Rely on tool outputs and summary headers for counts or totals; do not recount lines manually.
+3. Output telegraphic answers: cite `path:line`, show the exact setting or code, and explain concisely in 1-2 short sentences. No preamble.]]
 
 local active_summary = {}
 for _, def in pairs(SCOPES) do
