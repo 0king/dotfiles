@@ -1,0 +1,16 @@
+[Unit]
+Description=kanata-tray (tray icon for kanata)
+Documentation=https://github.com/rszyma/kanata-tray
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/kanata-tray
+Environment=KANATA_TRAY_LOG_DIR=%h/.local/state/kanata-tray
+Environment=KANATA_TRAY_CONFIG_DIR=%h/.config/kanata-tray
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -45,3 +45,4 @@
 *~
 .cache/
 .stow-local-ignore
+.aider*
