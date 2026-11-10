@@ -24,6 +24,64 @@ the user's desktop session:
 The daemon does **not** launch `kanata`. It connects to kanata's TCP server and
 sends newline-delimited JSON commands.
 
+## Protocol coverage matrix
+
+What was searched, and what the tree contains. "None" means no code path or
+capability was found by the static checks below, not that the protocol is
+impossible in principle (see [Limits of this check](#limits-of-this-check)).
+
+| Protocol / family | How it was checked | Result in this tree |
+|-------------------|--------------------|---------------------|
+| TCP over IPv4/IPv6 | Rust `TcpStream`/`TcpListener`, `std::net`, `tokio::net`, `socket2` use, lockfile | One outbound `TcpStream::connect` to kanata; listeners only in tests |
+| UDP | `UdpSocket`, `sendto`/`recvfrom`, `SOCK_DGRAM` | None |
+| Raw IP / ICMP | `libc::socket`, `SOCK_RAW`, `nix::sys::socket`, `ping` | None |
+| DNS | `ToSocketAddrs`, `lookup_host`, resolver crates, `dig`/`nslookup`/`host` | No explicit lookup; OS resolver only if `--host` is a hostname |
+| HTTP / HTTPS | `reqwest`/`ureq`/`hyper`/`curl`, `http` crates, JS `fetch`/`XMLHttpRequest` | None |
+| TLS / SSL | `rustls`, `native-tls`, `openssl`, `webpki`, `ring` | None |
+| HTTP/2 and gRPC | `h2`, `tonic`, `grpc`, `prost` service code | None |
+| WebSocket | `tungstenite`, JS `WebSocket`, `Soup` | None |
+| QUIC / HTTP/3 | `quinn`, `quiche`, `s2n-quic` | None |
+| SSH / SFTP / SCP | `ssh2`, `openssh`, `ssh`/`scp`/`sftp` commands | None |
+| FTP / TFTP | FTP crates, `ftp`/`tftp` commands | None |
+| SMTP / IMAP / POP3 | `lettre`, mail crates, `sendmail` | None |
+| Database wire protocols | `sqlx`, `postgres`, `mysql`, `mongodb`, `rusqlite` | None |
+| Redis / Memcached | `redis`, `memcache` crates | None |
+| MQTT / AMQP / NATS / ZeroMQ | `rumqtt`, `lapin`, `async-nats`, `zmq` | None |
+| NTP / time sync | time-sync crates, `ntp`/`chrony` calls | None |
+| Netlink | `netlink`, `rtnetlink`, `neli` | None |
+| Bluetooth | BlueZ D-Bus APIs, `bluetoothctl`, `bluer` | None |
+| D-Bus session bus | zbus/ksni, `Gio.DBus` | Yes, local `AF_UNIX` session bus only |
+| D-Bus system bus | zbus system connection | Yes, logind read-only queries/signals only |
+| Unix domain sockets | `UnixStream`/`UnixListener`, `AF_UNIX` | Yes, Wayland and D-Bus; no daemon listener outside tests |
+| X11 | `x11rb::connect`, `DISPLAY` handling | Yes, local Unix socket by default; TCP only with a remote `DISPLAY` |
+| Wayland | `wayland-client`, `UnixStream` | Yes, local compositor socket only |
+
+The scanner enforces the same families as patterns (`network` rules in
+`scripts/scan_kanata_switcher.py`), so a new API or crate in any row above
+shows up as an unexpected finding unless it is added to the accepted baseline.
+
+## Limits of this check
+
+This is a static review of this checkout, not a packet capture. It does **not**
+prove the absence of all network traffic:
+
+1. **Transitive dependency source was not audited.** `Cargo.lock` contains no
+   HTTP/TLS/DNS/SSH/WebSocket/gRPC/database/queue crate, but a full
+   `cargo tree --locked` could not run offline in this environment (`ksni` was
+   missing from the local index). A dependency can implement a protocol without
+   a recognizable crate name.
+2. **External helper binaries are not audited.** `gnome-extensions`,
+   `gsettings`, `dconf`, and `glib-compile-schemas` are trusted local desktop
+   tools; they use D-Bus/GSettings, but their own code is outside this repo.
+3. **Separate programs are out of scope.** `kanata`, GNOME Shell, KWin, and the
+   X11/Wayland compositors have their own network behavior.
+4. **Environment overrides can add TCP.** Besides `--host` and remote
+   `$DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` can name a TCP bus address; zbus and
+   Gio would honor it. That is an operator/environment choice, not code in this
+   tree.
+5. **No runtime trace was performed.** Packet capture/`strace` verification is
+   listed below and requires explicit approval plus an isolated environment.
+
 ## Runtime IP network
 
 ### `kanata-tcp-client`
