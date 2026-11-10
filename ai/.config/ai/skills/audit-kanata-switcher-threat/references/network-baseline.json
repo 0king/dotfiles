@@ -1,0 +1,505 @@
+{
+  "schema_version": 1,
+  "repo": "github.com/7mind/kanata-switcher",
+  "repo_package": "kanata-switcher",
+  "audited_commit": "69578672fce32ac5b69aed393f6981d4fbad3999",
+  "audited_commit_short": "6957867",
+  "audited_tag": "v1.2.0",
+  "audited_date": "2026-11-10",
+  "reviewed_scope": "Static review of the checked-out tree at v1.2.0: Rust sources, build.rs, GNOME extension JS, shell scripts, Nix flake/modules, CI workflow, git metadata, Cargo manifest/lockfile, and committed assets. No runtime execution.",
+  "expected_network": [
+    {
+      "id": "gnome-session-bus",
+      "file": "src/daemon/backends/gnome.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "GNOME backend queries the session bus for the focused window."
+    },
+    {
+      "id": "kde-session-bus",
+      "file": "src/daemon/backends/kde/mod.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "KDE backend uses the session bus for KWin scripting/focus queries."
+    },
+    {
+      "id": "wayland-display-override-unix",
+      "file": "src/daemon/backends/wayland/mod.rs",
+      "direction": "outbound",
+      "protocol": "unix",
+      "transport": "unix",
+      "endpoint": "socket_path",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Display override resolves $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY and connects to that local unix socket."
+    },
+    {
+      "id": "wayland-connect-to-env",
+      "file": "src/daemon/backends/wayland/mod.rs",
+      "direction": "local",
+      "protocol": "wayland",
+      "transport": "unix",
+      "endpoint": "Wayland compositor unix socket",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "WaylandConnection::connect_to_env uses the compositor socket named by WAYLAND_DISPLAY."
+    },
+    {
+      "id": "x11-display-connection",
+      "file": "src/daemon/backends/x11.rs",
+      "direction": "local",
+      "protocol": "x11",
+      "transport": "unix",
+      "endpoint": "$DISPLAY (unix socket; TCP only if DISPLAY names a remote host)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "x11rb connects to $DISPLAY; normal local X11 uses a unix socket. A remote DISPLAY would be operator-controlled."
+    },
+    {
+      "id": "control-client-session-bus",
+      "file": "src/daemon/control/client.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "CLI control client talks to the daemon over the session bus."
+    },
+    {
+      "id": "control-service-session-bus",
+      "file": "src/daemon/control/persistent.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Persistent control D-Bus service; request/response over the session bus only."
+    },
+    {
+      "id": "control-server-session-bus",
+      "file": "src/daemon/control/server.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Daemon-side control service resolution over the session bus."
+    },
+    {
+      "id": "logind-system-bus",
+      "file": "src/daemon/display_override.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "system bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Reads the active session from logind over the system bus. Read-only."
+    },
+    {
+      "id": "gnome-extension-probe-session-bus",
+      "file": "src/daemon/gnome_ext/detection.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Probes whether the GNOME extension is enabled over the session bus."
+    },
+    {
+      "id": "kanata-tcp-client",
+      "file": "src/daemon/kanata.rs",
+      "direction": "outbound",
+      "protocol": "tcp",
+      "transport": "tcp",
+      "endpoint": "{host}:{port}",
+      "endpoint_class": "configurable",
+      "tls": false,
+      "enabled_by": "--host (default 127.0.0.1) / --port (default 10000)",
+      "notes": "Only real outbound IP socket. Host/port come from --host/--port; default is 127.0.0.1:10000. No TLS, no HTTP, newline-delimited JSON to kanata."
+    },
+    {
+      "id": "logind-lifecycle-system-bus",
+      "file": "src/daemon/lifecycle/logind.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "system bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Subscribes to logind PrepareForSleep/lock signals over the system bus."
+    },
+    {
+      "id": "sni-guard-session-bus",
+      "file": "src/daemon/sni/guard.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "StatusNotifierItem/DBusMenu guard over the session bus."
+    },
+    {
+      "id": "sni-indicator-session-bus",
+      "file": "src/daemon/sni/indicator.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "ksni registers a StatusNotifierItem on the session bus."
+    },
+    {
+      "id": "capabilities-session-bus",
+      "file": "src/daemon/supervisor/capabilities.rs",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "Desktop capability detection over the session bus."
+    },
+    {
+      "id": "gnome-extension-session-bus",
+      "file": "src/gnome-extension/extension.js",
+      "direction": "local",
+      "protocol": "dbus",
+      "transport": "unix",
+      "endpoint": "session bus (D-Bus over unix socket)",
+      "endpoint_class": "unix",
+      "tls": false,
+      "enabled_by": "always when this backend runs",
+      "notes": "GNOME Shell extension uses Gio.DBus only; no network APIs."
+    }
+  ],
+  "expected_non_ip_ipc": [
+    {
+      "component": "D-Bus (zbus/ksni/Gio.DBus)",
+      "mechanism": "session and system bus over unix sockets",
+      "ip_network": false,
+      "notes": "Used for desktop integration, control API, logind lifecycle, SNI, and extension probing. No TCP D-Bus addresses."
+    },
+    {
+      "component": "Wayland (wayland-client)",
+      "mechanism": "AF_UNIX socket from $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY",
+      "ip_network": false
+    },
+    {
+      "component": "X11 (x11rb)",
+      "mechanism": "$DISPLAY; local unix socket by default",
+      "ip_network": false,
+      "notes": "A remote DISPLAY (host:0) would make X11 use TCP, but that is an explicit operator choice."
+    }
+  ],
+  "expected_exec": [
+    {
+      "id": "build.rs-glib-compile-schemas",
+      "file": "build.rs",
+      "api": "Command::new",
+      "command": "glib-compile-schemas",
+      "count": 1,
+      "command_class": "program",
+      "build_time": true,
+      "notes": "Build script compiles the bundled GNOME schema at build time."
+    },
+    {
+      "id": "src-daemon-gnome_ext-detection.rs-gnome-extensions",
+      "file": "src/daemon/gnome_ext/detection.rs",
+      "api": "Command::new",
+      "command": "gnome-extensions",
+      "count": 1,
+      "command_class": "program",
+      "build_time": false,
+      "notes": "Queries extension status with the standard GNOME CLI."
+    },
+    {
+      "id": "src-daemon-gnome_ext-detection.rs-gsettings",
+      "file": "src/daemon/gnome_ext/detection.rs",
+      "api": "Command::new",
+      "command": "gsettings",
+      "count": 1,
+      "command_class": "program",
+      "build_time": false,
+      "notes": "Reads the extension-enabled key with the standard GNOME CLI."
+    },
+    {
+      "id": "src-daemon-gnome_ext-embed.rs-glib-compile-schemas",
+      "file": "src/daemon/gnome_ext/embed.rs",
+      "api": "Command::new",
+      "command": "glib-compile-schemas",
+      "count": 1,
+      "command_class": "program",
+      "build_time": false,
+      "notes": "Compiles the embedded schema in a temp dir before install."
+    },
+    {
+      "id": "src-daemon-gnome_ext-install.rs-gnome-extensions",
+      "file": "src/daemon/gnome_ext/install.rs",
+      "api": "Command::new",
+      "command": "gnome-extensions",
+      "count": 3,
+      "command_class": "program",
+      "build_time": false,
+      "notes": "Packs, installs, and enables the bundled extension using the standard GNOME CLI."
+    },
+    {
+      "id": "src-daemon-sni-settings.rs-dconf",
+      "file": "src/daemon/sni/settings.rs",
+      "api": "Command::new",
+      "command": "dconf",
+      "count": 2,
+      "command_class": "program",
+      "build_time": false,
+      "notes": "Reads/writes the SNI visibility preference via the standard dconf CLI."
+    }
+  ],
+  "expected_fs_writes": [
+    {
+      "id": "build.rs-fs-copy",
+      "file": "build.rs",
+      "api": "fs::copy",
+      "count": 3,
+      "target_class": "temp/build",
+      "build_time": true,
+      "notes": "Copies bundled GNOME extension assets into OUT_DIR."
+    },
+    {
+      "id": "build.rs-fs-create_dir_all",
+      "file": "build.rs",
+      "api": "fs::create_dir_all",
+      "count": 2,
+      "target_class": "temp/build",
+      "build_time": true,
+      "notes": "Creates the OUT_DIR gnome-extension tree."
+    },
+    {
+      "id": "src-daemon-autostart.rs-fs-create_dir_all",
+      "file": "src/daemon/autostart.rs",
+      "api": "fs::create_dir_all",
+      "count": 1,
+      "target_class": "autostart",
+      "build_time": false,
+      "notes": "Creates ~/.config/autostart when the user enables autostart."
+    },
+    {
+      "id": "src-daemon-autostart.rs-fs-remove_file",
+      "file": "src/daemon/autostart.rs",
+      "api": "fs::remove_file",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Removes the autostart entry when the user disables it."
+    },
+    {
+      "id": "src-daemon-autostart.rs-fs-write",
+      "file": "src/daemon/autostart.rs",
+      "api": "fs::write",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Writes the kanata-switcher autostart .desktop entry."
+    },
+    {
+      "id": "src-daemon-backends-kde-mod.rs-fs-remove_file",
+      "file": "src/daemon/backends/kde/mod.rs",
+      "api": "fs::remove_file",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Cleans up the KWin scripting helper."
+    },
+    {
+      "id": "src-daemon-backends-kde-mod.rs-fs-write",
+      "file": "src/daemon/backends/kde/mod.rs",
+      "api": "fs::write",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Writes a short-lived KWin scripting helper under /tmp; deleted on Drop."
+    },
+    {
+      "id": "src-daemon-backends-kde-probe.rs-fs-remove_file",
+      "file": "src/daemon/backends/kde/probe.rs",
+      "api": "fs::remove_file",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Removes the KWin probe script."
+    },
+    {
+      "id": "src-daemon-backends-kde-probe.rs-fs-write",
+      "file": "src/daemon/backends/kde/probe.rs",
+      "api": "fs::write",
+      "count": 2,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Writes short-lived KWin probe scripts under /tmp."
+    },
+    {
+      "id": "src-daemon-gnome_ext-embed.rs-fs-create_dir_all",
+      "file": "src/daemon/gnome_ext/embed.rs",
+      "api": "fs::create_dir_all",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Creates the schema subdirectory in the temp extension tree."
+    },
+    {
+      "id": "src-daemon-gnome_ext-embed.rs-fs-write",
+      "file": "src/daemon/gnome_ext/embed.rs",
+      "api": "fs::write",
+      "count": 9,
+      "target_class": "gnome-extension",
+      "build_time": false,
+      "notes": "Writes embedded extension files into a temp directory before packing."
+    },
+    {
+      "id": "src-daemon-gnome_ext-install.rs-fs-create_dir_all",
+      "file": "src/daemon/gnome_ext/install.rs",
+      "api": "fs::create_dir_all",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Creates a temp staging directory for the embedded extension."
+    },
+    {
+      "id": "src-daemon-gnome_ext-install.rs-tempfile-tempdir",
+      "file": "src/daemon/gnome_ext/install.rs",
+      "api": "tempfile::tempdir",
+      "count": 1,
+      "target_class": "unknown",
+      "build_time": false,
+      "notes": "Creates the temp staging directory itself."
+    }
+  ],
+  "direct_crates": [
+    "tokio =1.49.0",
+    "serde =1.0.228",
+    "serde_json =1.0.149",
+    "regex =1.12.2",
+    "zbus =5.13.2",
+    "clap =4.5.54",
+    "dirs =5.0.1",
+    "tempfile =3.24.0",
+    "libc =0.2.180",
+    "futures-util =0.3.31",
+    "wayland-client =0.31.12",
+    "wayland-protocols-wlr =0.3.10",
+    "wayland-backend =0.3.12",
+    "wayland-scanner =0.31.8",
+    "x11rb =0.13.2",
+    "ksni =0.2.2",
+    "noto-sans-mono-bitmap =0.3.2",
+    "uuid =1.20.0"
+  ],
+  "dev_crates": [
+    "proptest =1.9.0",
+    "tokio-test =0.4.5",
+    "wayland-server =0.31.11",
+    "wayland-protocols-wlr =0.3.10"
+  ],
+  "expected_ci_actions": [
+    "7mind/github-env@minimal"
+  ],
+  "allowed_urls": [
+    {
+      "url": "https://github.com/7mind/kanata-switcher.git",
+      "file": "src/daemon/gnome_ext/mod.rs",
+      "notes": "Printed install instructions only; never fetched by the daemon."
+    }
+  ],
+  "expected_build_time_network": [
+    {
+      "id": "cargo-registry",
+      "trigger": "cargo build/test with a cold cache",
+      "endpoint": "crates.io / static.crates.io (HTTPS)",
+      "notes": "Versions are pinned with = in Cargo.toml and Cargo.lock has 212 crates.io-only packages (no git sources)."
+    },
+    {
+      "id": "nix-flake-inputs",
+      "trigger": "nix build/develop",
+      "endpoint": "github.com inputs pinned by flake.lock + cache.nixos.org",
+      "notes": "flake.lock and tests/flake.lock pin rev+narHash. No fetchers with secrets."
+    },
+    {
+      "id": "github-actions",
+      "trigger": "CI on push/pull request/tag",
+      "endpoint": "GitHub Actions marketplace / GitHub API",
+      "notes": "Single workflow, permissions: contents: read, no pull_request_target, no secrets. Action is ref-pinned, not SHA-pinned."
+    }
+  ],
+  "accepted_findings": [
+    {
+      "rule": "CI-ACTION-UNPINNED",
+      "file": ".github/workflows/ci.yml",
+      "line": 22,
+      "reason": "Reviewed: only 7mind/github-env@minimal; workflow has contents: read, no secrets, no pull_request_target. SHA-pinning would still be an improvement."
+    },
+    {
+      "rule": "PERSISTENCE-STRING",
+      "file": "systemd/kanata-switcher.service",
+      "line": 2,
+      "reason": "Reviewed: comment in the shipped example unit telling the user where to install it; part of the documented feature."
+    },
+    {
+      "rule": "NIX-EXEC-ARGS-UNQUOTED",
+      "file": "flake.nix",
+      "line": 637,
+      "reason": "Reviewed low-risk hardening note: ExecStart is built from typed Nix options; values come from the operator config, not remote input. Quote arguments if/when Nix module options accept arbitrary strings."
+    },
+    {
+      "rule": "NIX-EXEC-ARGS-UNQUOTED",
+      "file": "flake.nix",
+      "line": 676,
+      "reason": "Same as the per-user systemd unit above."
+    }
+  ],
+  "hashes": {
+    "Cargo.toml": "c3dd819d35e2e82e165a87ac206e5059d3fbe45410accbde8b608af573cbb9e3",
+    "Cargo.lock": "cf415dcef67e07e262412a460e116a235f210d092d76c702d30c8326b6ac85e1",
+    "flake.nix": "94a83947bbe7b9be1c0d7512f7f8a8a3b4500ae540cf5ac2e1cbbda817427fc7",
+    "flake.lock": "9705aabfeb70cb843ffdd9829203d5734bc1e67438adbe7b968c57951eb1d5c3",
+    "tests/flake.lock": "a77ad621d8466d143ad7a3dd3461f774da02c4e94d985c6da164b60a7d6aa10e",
+    "build.rs": "802705d4e02b1b52603b963dadf39b5c5ba57ec7c7c86a0711f38f527ba196ec",
+    ".github/workflows/ci.yml": "2c565ec6125bf6356c01f2d7f767a694ed766442c47c83afa25f5bc899737e93",
+    "install-gnome-shell-ext.sh": "a0ff520cc7068f05487f07b8dcd8aa4b84cbe06e8b858df97ae571411ef3ff24",
+    "build.sh": "32c810050e876386feb6ba779de5784b8de2d9c0817b7c72106709d6ebbd8351",
+    "run.sh": "bff816f08364a38dab753cc85ee2f454b789c058d6ef2ccb6bc1d9307e95d718",
+    "systemd/kanata-switcher.service": "34cc2987a0cf4103847baf97f28763d4ef6e21dc497a78bab07e95a9d699a682"
+  },
+  "notes": [
+    "Baseline is a point-in-time snapshot, not a trust anchor. Re-derive it only after reviewing a diff.",
+    "Any new network sink, remote host, exec sink, write sink, CI action, crate, or binary asset is a review event.",
+    "The daemon never spawns kanata: it only connects to the operator-supplied host:port over plain TCP.",
+    "No HTTP client, TLS, UDP, explicit DNS resolver API, SMTP, SSH, WebSocket, gRPC, telemetry, or auto-update code exists at this commit."
+  ]
+}
