@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "repo": "github.com/rszyma/kanata-tray",
+  "audited_commit": "138545c67bf66a7cf6507e85ea62fc3234cbf0e2",
+  "audited_commit_short": "138545c",
+  "audited_date": "2026-11-10",
+  "reviewed_scope": "Static review of the checked-out tree, git metadata, Go module graph, GitHub Actions workflows, Nix files, and committed image assets. No runtime execution.",
+  "expected_network": [
+    {
+      "id": "control-server-inbound-http",
+      "file": "app/controlserver/tcp_control_server.go",
+      "symbol": "RunControlServer",
+      "direction": "inbound",
+      "protocol": "http",
+      "transport": "tcp",
+      "endpoint": "127.0.0.1:${general.control_server_port:-8100}",
+      "endpoint_class": "loopback",
+      "tls": false,
+      "enabled_by": "general.control_server_enable = true (default false)",
+      "auth": "none",
+      "data": "preset start/stop/toggle commands; JSON status response",
+      "notes": "Plain HTTP/1.1, any method accepted, no Origin/Host validation. Local-only attack surface, but any local process or a browser page can trigger state changes (CSRF/DNS-rebinding style)."
+    },
+    {
+      "id": "pprof-inbound-http",
+      "file": "pprof.go",
+      "symbol": "init",
+      "direction": "inbound",
+      "protocol": "http",
+      "transport": "tcp",
+      "endpoint": "localhost:6060",
+      "endpoint_class": "loopback",
+      "tls": false,
+      "enabled_by": "go build -tags pprof (not part of default build)",
+      "auth": "none",
+      "data": "net/http/pprof runtime profiles and goroutine dumps",
+      "notes": "Development-only build tag. Exposes sensitive process internals; never ship a release with this tag."
+    },
+    {
+      "id": "kanata-tcp-client-outbound",
+      "file": "runner/tcp_client/tcp_client.go",
+      "symbol": "connFn",
+      "direction": "outbound",
+      "protocol": "tcp",
+      "transport": "tcp",
+      "endpoint": "localhost:${tcp_port:-5829}",
+      "endpoint_class": "loopback",
+      "tls": false,
+      "enabled_by": "when a preset starts kanata",
+      "auth": "none",
+      "data": "newline-delimited JSON: {\"RequestLayerNames\":{}} outbound; LayerChange/LayerNames/ConfigFileReload inbound",
+      "notes": "Host is hard-coded to localhost; only the port is configurable per preset. No arbitrary payload or exfiltration path in app code."
+    }
+  ],
+  "expected_exec": [
+    {
+      "id": "open-preset-log",
+      "file": "app/app.go",
+      "api": "open.Start",
+      "command_class": "opener",
+      "notes": "Opens the per-preset temp log file with the OS default handler."
+    },
+    {
+      "id": "open-config-folder",
+      "file": "app/app.go",
+      "api": "open.Start",
+      "command_class": "opener",
+      "notes": "Opens the config folder with the OS file manager."
+    },
+    {
+      "id": "open-tray-log",
+      "file": "app/app.go",
+      "api": "open.Start",
+      "command_class": "opener",
+      "notes": "Opens kanata-tray's own log file."
+    },
+    {
+      "id": "exec-kanata-and-hooks",
+      "file": "runner/runner.go",
+      "api": "exec.CommandContext",
+      "command_class": "variable",
+      "notes": "Shared helper used for the configured kanata executable and for config-defined hooks. Arbitrary local code execution is a documented feature, not a network path."
+    }
+  ],
+  "expected_non_ip_ipc": [
+    {
+      "component": "github.com/getlantern/systray",
+      "platforms": "linux",
+      "mechanism": "GTK3 / libayatana-appindicator over D-Bus and the display server socket",
+      "ip_network": false,
+      "notes": "GUI library; no socket()/connect()/HTTP in the imported package. The example/ and webview_example/ directories are separate binaries and are not imported."
+    },
+    {
+      "component": "github.com/getlantern/systray",
+      "platforms": "darwin",
+      "mechanism": "Cocoa/AppKit event loop (Mach ports, window server)",
+      "ip_network": false
+    },
+    {
+      "component": "github.com/getlantern/systray",
+      "platforms": "windows",
+      "mechanism": "Win32 Shell_NotifyIcon message loop",
+      "ip_network": false
+    }
+  ],
+  "expected_build_time_network": [
+    {
+      "id": "go-module-download",
+      "trigger": "go build / go run / nix build with a cold module cache",
+      "endpoint": "proxy.golang.org or direct VCS hosts (HTTPS/SSH)",
+      "notes": "Integrity is enforced by go.sum. Check for a replace directive or a changed go.sum before trusting a build."
+    },
+    {
+      "id": "nix-flake-input",
+      "trigger": "nix build / nix develop",
+      "endpoint": "github.com/NixOS/nixpkgs (pinned by flake.lock) and cache.nixos.org",
+      "notes": "flake.lock pins narHash + rev. The flake input ref is nixpkgs-unstable but the lock is the effective pin."
+    },
+    {
+      "id": "github-actions",
+      "trigger": "CI on push/pull_request/tag",
+      "endpoint": "GitHub Actions marketplace, GitHub API, cachix.org",
+      "notes": "Actions are tag-pinned, not SHA-pinned. Release job can publish artifacts. No pull_request_target workflow. Cachix token is only used on push to main."
+    }
+  ],
+  "direct_modules": [
+    "github.com/elliotchance/orderedmap/v2 v2.2.0",
+    "github.com/expr-lang/expr v1.17.8",
+    "github.com/getlantern/systray v1.2.2",
+    "github.com/go-chi/chi/v5 v5.2.1",
+    "github.com/k0kubun/pp/v3 v3.2.0",
+    "github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f",
+    "github.com/kr/pretty v0.3.1",
+    "github.com/labstack/gommon v0.4.2",
+    "github.com/mattn/go-isatty v0.0.20",
+    "github.com/pelletier/go-toml/v2 v2.4.0",
+    "github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966",
+    "github.com/spf13/pflag v1.0.6"
+  ],
+  "expected_ci_actions": [
+    "actions/checkout@v4",
+    "actions/setup-go@v4",
+    "actions/upload-artifact@v4",
+    "actions/download-artifact@v4",
+    "cachix/install-nix-action@v31",
+    "cachix/cachix-action@v16",
+    "taiki-e/install-action@just",
+    "softprops/action-gh-release@v1"
+  ],
+  "doc_only_urls": [
+    "https://raw.githubusercontent.com/rszyma/kanata-tray/main/doc/config_schema.json",
+    "https://github.com/rszyma/kanata-tray",
+    "https://github.com/jtroo/kanata",
+    "https://expr-lang.org/docs/language-definition",
+    "https://developer.apple.com/documentation/foundation/bundle/image(forresource:)"
+  ],
+  "hashes": {
+    "go.mod": "de2545308f78fdf24f7b9626620dd0ab22da1285091fb1edc24f7b62e86b01e7",
+    "go.sum": "2a06ac51aac041046c3ad19e6cb48d6ba023bddecf0420f1af119ac4dffed832",
+    "flake.lock": "ea6095d8d8d2dd0509d9678b75af2e48b453ec65dbfffb386492e157d40b2bf2",
+    "flake.nix": "6ca50028c77b1c82bd8efa9aa7340551a65c2d560863a422765e17307b374804",
+    "justfile": "d12945f3ed0f5e127d7ba2d3eaa0741733759b6af52114b88e00fa96f0f8840f"
+  },
+  "notes": [
+    "Baseline is a point-in-time snapshot, not a trust anchor. Re-derive it only after reviewing a diff.",
+    "Any new network import, remote host, exec sink, CI action, or binary asset is a review event.",
+    "The control server and pprof listeners are inbound-only and loopback-bound; they are not exfiltration paths.",
+    "The app has no outbound HTTP client, DNS resolver, UDP, TLS, SMTP, SSH, WebSocket, gRPC, or auto-update code."
+  ]
+}
