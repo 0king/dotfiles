@@ -2,8 +2,8 @@ FROM lfm3:1.7b-qad-q4_0
 
 PARAMETER num_ctx 8192
 PARAMETER temperature 0.0
-PARAMETER num_predict 2048
-PARAMETER num_thread 1
+PARAMETER num_predict 1536
+PARAMETER num_thread 2
 PARAMETER num_gpu 999
 
 SYSTEM """

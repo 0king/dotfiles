@@ -94,12 +94,7 @@
       },
       "@marcjulian/store.raycast.obsidian": {
          "preferences": {
-            "configFileName": ".obsidian",
-            "vaultPath": null,
-            "excludedFolders": null,
-            "removeYAML": null,
-            "removeLatex": null,
-            "removeLinks": null
+            "configFileName": ".obsidian"
          },
          "entrypoints": {
             "appendTaskCommand": {
@@ -153,6 +148,13 @@
             "defaultModel": "none",
             "instructions": "",
             "enableTools": true
+         }
+      },
+      "applications": {
+         "entrypoints": {
+            "org.gnome.Nautilus": {
+               "alias": "ex"
+            }
          }
       },
       "browser-extension": {

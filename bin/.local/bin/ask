@@ -15,6 +15,7 @@ ffi.cdef[[
 
 local MODEL = os.getenv("ASK_MODEL") or "lfm3:1.7b-qad-q4_0"
 local NUM_CTX = tonumber(os.getenv("ASK_NUM_CTX")) or 8192
+local NUM_THREAD = tonumber(os.getenv("ASK_NUM_THREAD")) or 2
 local OLLAMA_URL = os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434"
 if not OLLAMA_URL:match("^http") then OLLAMA_URL = "http://" .. OLLAMA_URL end
 local CHAT_ENDPOINT = OLLAMA_URL:gsub("/+$", "") .. "/api/chat"
@@ -632,7 +633,7 @@ end
 
 local function ollama_chat(messages, no_tools, max_predict, force_think)
     local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
-    local default_predict = tonumber(os.getenv("ASK_NUM_PREDICT")) or (ENABLE_THINKING and 2048 or 512)
+    local default_predict = tonumber(os.getenv("ASK_NUM_PREDICT")) or (ENABLE_THINKING and 1536 or 512)
     local will_think = ENABLE_THINKING
     if force_think ~= nil then will_think = force_think end
     local req_payload = {
@@ -643,7 +644,7 @@ local function ollama_chat(messages, no_tools, max_predict, force_think)
             num_ctx = NUM_CTX,
             num_predict = max_predict or default_predict,
             temperature = 0.0,
-            num_thread = 1,
+            num_thread = NUM_THREAD,
             num_gpu = 999
         },
         stream = false
@@ -761,7 +762,8 @@ local function synthesize_answer(messages)
         role = "user",
         content = "Based on the tool results above, provide an accurate, complete, and factually verified answer. Cite relevant file paths and line numbers (path:line), quote the exact configuration or code where applicable, and explain key details clearly. Rely on tool summary headers for any counts or totals. Avoid preamble or filler."
     })
-    local synth = ollama_chat(flat_messages, true, 2048, false)
+    io.stderr:write("\27[90m  -> Synthesizing verified answer...\27[0m\n")
+    local synth = ollama_chat(flat_messages, true, 1536, false)
     print_thinking(synth)
     local ans = clean_text(synth and synth.content)
     if ans == "" and synth and synth.thinking then

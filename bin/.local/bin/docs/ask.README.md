@@ -112,32 +112,30 @@ Managed in `~/dotfiles` under GNU Stow:
 | --- | --- | --- | --- |
 | **Model Weights** | `lfm3:1.7b` (`Q4_K_M`) | **100% GPU VRAM** (~1.1 GB) | `num_gpu = 999` (Zero CPU fallback). |
 | **KV Cache** | 16k context window (`q8_0`) | **100% GPU VRAM** (~102 MB) | `OLLAMA_KV_CACHE_TYPE=q8_0` (Zero RAM allocation). |
-| **CUDA Dispatch** | `llama-server` worker | Single CPU thread | `num_thread = 1` (Eliminates CPU spinlocks). |
-| **Kernel Cgroups** | `systemd/ollama.service` | Hard Host RAM & CPU limits | `CPUQuota=80%`, `MemoryMax=1.6G`, `Nice=19`, `batch`. |
+| **CUDA Dispatch** | `llama-server` worker | 2 CPU threads | `num_thread = 2` (Low-latency CUDA dispatch, no driver lock starvation). |
+| **Kernel Cgroups** | `systemd/ollama.service` | Host RAM bounds & priority safety | `Nice=10`, `MemoryHigh=2500M`, `MemoryMax=3000M`. |
 
 ### Systemd Hardware Isolation & Cgroup Configuration
 
-To isolate Ollama to GPU execution and strictly constrain host CPU and RAM utilization, configure the systemd unit drop-in at `/etc/systemd/system/ollama.service.d/override.conf`:
+To isolate Ollama to GPU execution, prevent CFS priority inversions against Wayland/GNOME Shell, and constrain host RAM utilization, configure the systemd unit drop-in at `/etc/systemd/system/ollama.service.d/override.conf`:
 
 ```bash
 sudo tee /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
 [Service]
-# --- GPU & VRAM Offload (100% GPU offload) ---
+# --- GPU & VRAM Offload (100% GPU offload on GTX 1050 Ti) ---
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_KEEP_ALIVE=30m"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_GPU_OVERHEAD=256MiB"
+Environment="OLLAMA_GPU_OVERHEAD=268435456"
 
-# --- Hard CPU Limits (Never lag the desktop) ---
-CPUQuota=80%
-Nice=19
-CPUSchedulingPolicy=batch
+# --- CPU Scheduling (Low-latency CUDA dispatch, no driver lock starvation) ---
+Nice=10
 
-# --- Hard Host RAM Limits ---
-MemoryHigh=1200M
-MemoryMax=1600M
+# --- Host RAM Bounds (Prevent swap thrashing) ---
+MemoryHigh=2500M
+MemoryMax=3000M
 EOF
 
 sudo systemctl daemon-reload
@@ -147,20 +145,40 @@ sudo systemctl restart ollama
 #### Parameter Breakdown
 
 1. **GPU & VRAM Settings**:
-   - `OLLAMA_FLASH_ATTENTION=1`: Enables Flash Attention for hybrid linear/attention operations, optimizing compute directly on CUDA cores.
+   - `OLLAMA_FLASH_ATTENTION=1`: Enables Flash Attention for hybrid linear/attention operations and enables 8-bit quantized KV cache (`q8_0`).
    - `OLLAMA_KV_CACHE_TYPE=q8_0`: Quantizes the 16k token KV cache to 8-bit in VRAM (~102 MB instead of ~400+ MB), keeping 100% of context memory inside the GPU.
    - `OLLAMA_KEEP_ALIVE=30m`: Keeps the model loaded in VRAM for 30 minutes after queries, enabling instant follow-ups (`ask -c`) without model reload delays.
    - `OLLAMA_MAX_LOADED_MODELS=1` & `OLLAMA_NUM_PARALLEL=1`: Restricts Ollama to one model and one inference stream at a time, preventing VRAM exhaustion or memory spikes on a 4 GB card.
-   - `OLLAMA_GPU_OVERHEAD=256MiB`: Preserves a safety margin of VRAM for desktop rendering and prevents Ollama from attempting to allocate beyond physical VRAM limits.
+   - `OLLAMA_GPU_OVERHEAD=268435456`: Preserves 256 MiB safety margin of VRAM for desktop rendering and Wayland/GNOME Shell compositor surfaces (in bytes integer syntax recognized by Ollama).
 
 2. **CPU & Threading Constraints**:
-   - `CPUQuota=80%`: Linux cgroup v2 hard ceiling. Enforces that Ollama's process group cannot exceed 80% of a single CPU core under any circumstance, leaving all other cores completely free.
-   - `Nice=19`: Lowest standard process priority in Linux `SCHED_OTHER`.
-   - `CPUSchedulingPolicy=batch`: Instructs the Linux kernel scheduler that Ollama is a non-interactive batch process. Any interactive desktop application, terminal, or browser immediately preempts it.
-   - `num_thread = 1` (configured in `ask` payload): Forces `llama-server` to dispatch CUDA commands with only 1 worker thread, preventing multi-core busy-wait spinlocks during CUDA stream synchronization.
+   - `Nice=10`: Lowers Ollama's process priority relative to interactive desktop apps without using `SCHED_BATCH` or `CPUQuota=80%`, preventing CFS priority inversions against NVIDIA kernel driver locks (`nvidia.ko`).
+   - `num_thread = 2` (configured in `ask` payload): Dispatches CUDA commands and processes prompt tokens efficiently without monopolizing the 12 CPU cores.
 
 3. **System RAM Bounds**:
-   - `MemoryHigh=1200M`: Warn/reclaim threshold. Linux kernel aggressively reclaims page cache if Ollama memory usage reaches 1.2 GB.
-   - `MemoryMax=1600M`: Hard kernel cgroup ceiling. Prevents memory leaks or runaway buffers from ever exceeding 1.6 GB of host RAM.
+   - `MemoryHigh=2500M`: Warn/reclaim threshold. Prevents aggressive direct page reclaim loops while providing ample room for prompt caches and CUDA pinned buffers.
+   - `MemoryMax=3000M`: Hard kernel cgroup ceiling. Prevents runaway leaks from exceeding 3 GB of host RAM while eliminating swap thrashing.
+
+---
+
+### Why the Legacy Cgroup Configuration Was Self-Defeating
+
+Earlier configurations attempted to protect desktop responsiveness using aggressive CPU quotas and strict memory ceilings (`CPUQuota=80%`, `Nice=19`, `CPUSchedulingPolicy=batch`, `MemoryHigh=1200M`). While well-intentioned, these limits caused severe system freezes through four counter-productive failure modes:
+
+1. **CFS Priority Inversion Against GNOME Shell (The Primary Freeze Trigger)**:
+   - On Linux with NVIDIA Optimus/Wayland, GNOME Shell (Mutter) coordinates display surfaces with the NVIDIA kernel driver (`nvidia.ko`).
+   - Capping Ollama to `CPUQuota=80%` with `SCHED_BATCH` caused the Linux CFS scheduler to hard-throttle Ollama 75.6% of the time.
+   - When Ollama was suspended by CFS mid-inference while holding GPU channels or driver synchronization mutexes, GNOME Shell's compositor blocked in kernel space waiting for the lock, freezing the mouse, display, and keyboard input.
+
+2. **Synchronous Memory Reclaim & Swap Thrashing**:
+   - `llama-server` context buffers and CUDA driver pinned host memory require ~1.5–2.0 GB of host RAM.
+   - Capping memory at `MemoryHigh=1200M` was breached thousands of times, forcing the kernel into synchronous direct page reclaim and swapping 182 MB of active buffers to disk, stalling system I/O.
+
+3. **Single-Thread Dispatch Bottleneck (`num_thread = 1`)**:
+   - Restricting CPU dispatch to a single thread under-utilized the 12-thread CPU and serialized prompt tokenization and CUDA stream synchronization, dragging throughput down to 5.3 tokens/second.
+
+4. **Rejected GPU Overhead Syntax (`256MiB`)**:
+   - Ollama requires overhead in raw byte integers (`268435456`). Passing `256MiB` caused Ollama to log a warning and silently fall back to `0 B`, leaving zero VRAM safety headroom for desktop rendering surfaces.
+
 
 
