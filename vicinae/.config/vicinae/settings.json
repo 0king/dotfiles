@@ -64,6 +64,9 @@
             "presets": "5m Tea, 25m Pomodoro"
          }
       },
+      "@aurelleb/store.vicinae.chromium-bookmarks": {
+         "enabled": false
+      },
       "@dagimg-dot/store.vicinae.gnome-settings": {
          "entrypoints": {
             "online-accounts": {
@@ -84,13 +87,19 @@
          "enabled": false
       },
       "@knoopx/store.vicinae.firefox": {
+         "enabled": false,
          "preferences": {
             "profile_dir": "snap/firefox/common/.mozilla/firefox/"
          }
       },
       "@marcjulian/store.raycast.obsidian": {
          "preferences": {
-            "configFileName": ".obsidian"
+            "configFileName": ".obsidian",
+            "vaultPath": null,
+            "excludedFolders": null,
+            "removeYAML": null,
+            "removeLatex": null,
+            "removeLinks": null
          },
          "entrypoints": {
             "appendTaskCommand": {
@@ -131,8 +140,23 @@
       "@skifli/store.vicinae.protonvpn": {
          "enabled": false
       },
+      "ai": {
+         "preferences": {
+            "providers": {
+               "ollama": {
+                  "type": "ollama",
+                  "fields": {
+                     "name": "Ollama"
+                  }
+               }
+            },
+            "defaultModel": "none",
+            "instructions": "",
+            "enableTools": true
+         }
+      },
       "browser-extension": {
-         "enabled": false
+         "enabled": true
       },
       "clipboard": {
          "preferences": {
@@ -166,6 +190,15 @@
             "sponsor": {
                "enabled": false
             }
+         }
+      },
+      "dictation": {
+         "preferences": {
+            "model": "none",
+            "language": "en",
+            "sound": true,
+            "pauseMedia": true,
+            "dictationAction": "paste"
          }
       },
       "files": {

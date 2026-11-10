@@ -14,7 +14,7 @@ ffi.cdef[[
 ]]
 
 local MODEL = os.getenv("ASK_MODEL") or "lfm3:1.7b-qad-q4_0"
-local NUM_CTX = tonumber(os.getenv("ASK_NUM_CTX")) or 4096
+local NUM_CTX = tonumber(os.getenv("ASK_NUM_CTX")) or 8192
 local OLLAMA_URL = os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434"
 if not OLLAMA_URL:match("^http") then OLLAMA_URL = "http://" .. OLLAMA_URL end
 local CHAT_ENDPOINT = OLLAMA_URL:gsub("/+$", "") .. "/api/chat"
@@ -24,8 +24,8 @@ local UID = tonumber(ffi.C.getuid())
 local SESSION_FILE = string.format("/dev/shm/ask_session_%d.json", UID)
 
 local CLI_MODEL = nil
-local ENABLE_THINKING = false
-local SHOW_THINKING = false
+local ENABLE_THINKING = (os.getenv("ASK_THINKING") ~= "0")
+local SHOW_THINKING = (os.getenv("ASK_SHOW_THINKING") == "1")
 local ENABLE_WEB_SEARCH = false
 local INCLUDE_SKILLS = false
 
@@ -280,7 +280,7 @@ local function shorten_paths(text)
 end
 
 local function run_sandboxed_cmd(cmd, timeout_sec)
-    local t = tonumber(timeout_sec) or 5
+    local t = tonumber(timeout_sec) or 10
     local full_cmd = string.format("timeout %ds %s </dev/null 2>/dev/null", t, cmd)
     local h = io.popen(full_cmd, "r")
     if not h then return "" end
@@ -300,7 +300,7 @@ local function find_files(args)
     local fd_bin = os.execute("command -v fd >/dev/null 2>&1") == 0 and "fd" or "fdfind"
     local excl_skills = not INCLUDE_SKILLS and "--exclude 'ai/skills' --exclude '.config/ai/skills' " or ""
     for idx, paths in ipairs(tiers) do
-        local cmd = { fd_bin .. " -H --exclude .git " .. excl_skills .. "--type f --max-results 60" }
+        local cmd = { fd_bin .. " -H --exclude .git " .. excl_skills .. "--type f --max-results 120" }
         for _, p in ipairs(paths) do
             table.insert(cmd, "--search-path " .. sh_quote(p))
         end
@@ -311,7 +311,7 @@ local function find_files(args)
                 table.insert(cmd, "-- " .. sh_quote(raw_pattern))
             end
         end
-        local out = run_sandboxed_cmd(table.concat(cmd, " "), 5)
+        local out = run_sandboxed_cmd(table.concat(cmd, " "), 10)
         if out ~= "" then
             local lines = {}
             for line in out:gmatch("[^\r\n]+") do table.insert(lines, line) end
@@ -334,15 +334,15 @@ local function grep_files(args)
     local rg_query = query:gsub("^%^([%a_]+)", "^\\s*%1")
 
     local rg_excl = not INCLUDE_SKILLS and "-g '!**/ai/skills/**' -g '!**/.config/ai/skills/**' " or ""
-    local max_lines = 80
+    local max_lines = 150
     for idx, paths in ipairs(tiers) do
         local cmd = {
-            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case --max-columns 200 --max-columns-preview",
+            "rg --hidden -g '!.git/*' " .. rg_excl .. "-n --smart-case --max-columns 500 --max-columns-preview",
             "-e " .. sh_quote(rg_query),
             "--"
         }
         for _, p in ipairs(paths) do table.insert(cmd, sh_quote(p)) end
-        local out = run_sandboxed_cmd(table.concat(cmd, " "), 5)
+        local out = run_sandboxed_cmd(table.concat(cmd, " "), 10)
         if out ~= "" then
             local lines = {}
             for line in out:gmatch("[^\r\n]+") do table.insert(lines, line) end
@@ -475,7 +475,7 @@ local function read_file_lines(args)
     end
 
     local s_line = math.max(1, tonumber(args.start_line) or 1)
-    local e_line = math.min(s_line + 80, tonumber(args.end_line) or (s_line + 50))
+    local e_line = math.min(s_line + 200, tonumber(args.end_line) or (s_line + 100))
 
     local f, open_err = io.open(full_path, "r")
     if not f then return "Error opening file: " .. tostring(open_err) end
@@ -485,7 +485,7 @@ local function read_file_lines(args)
     for line in f:lines() do
         curr = curr + 1
         if curr >= s_line and curr <= e_line then
-            if #line > 300 then line = line:sub(1, 300) .. "... [truncated]" end
+            if #line > 1000 then line = line:sub(1, 1000) .. "... [truncated]" end
             table.insert(out, string.format("%d: %s", curr, line))
         elseif curr > e_line then
             break
@@ -565,7 +565,7 @@ local BASE_TOOLS_SCHEMA = {
                     start_line = { type = "integer", description = "Start line (1-indexed)" },
                     end_line = { type = "integer", description = "End line" }
                 },
-                required = { "file_path", "start_line", "end_line" }
+                required = { "file_path" }
             }
         }
     }
@@ -630,13 +630,15 @@ local function print_thinking(msg)
     end
 end
 
-local function ollama_chat(messages, no_tools, max_predict)
+local function ollama_chat(messages, no_tools, max_predict, force_think)
     local tmp_req = string.format("/dev/shm/ask_req_%d_%d.json", UID, tonumber(ffi.C.getpid()))
-    local default_predict = ENABLE_THINKING and 1000 or 120
+    local default_predict = tonumber(os.getenv("ASK_NUM_PREDICT")) or (ENABLE_THINKING and 2048 or 512)
+    local will_think = ENABLE_THINKING
+    if force_think ~= nil then will_think = force_think end
     local req_payload = {
         model = MODEL,
         messages = messages,
-        think = ENABLE_THINKING,
+        think = will_think,
         options = {
             num_ctx = NUM_CTX,
             num_predict = max_predict or default_predict,
@@ -654,7 +656,7 @@ local function ollama_chat(messages, no_tools, max_predict)
     f:write(payload)
     f:close()
 
-    local timeout_sec = ENABLE_THINKING and 240 or 75
+    local timeout_sec = ENABLE_THINKING and 300 or 90
     local cmd = string.format(
         "curl -s --max-time %d -X POST %s -H 'Content-Type: application/json' -d @%s",
         timeout_sec, sh_quote(CHAT_ENDPOINT), sh_quote(tmp_req)
@@ -757,19 +759,13 @@ local function synthesize_answer(messages)
     end
     table.insert(flat_messages, {
         role = "user",
-        content = "Based on the tool results above, provide the final answer concisely in 1-2 short sentences. Rely on tool summary headers for any counts or totals. Cite relevant file paths and line numbers. No preamble."
+        content = "Based on the tool results above, provide an accurate, complete, and factually verified answer. Cite relevant file paths and line numbers (path:line), quote the exact configuration or code where applicable, and explain key details clearly. Rely on tool summary headers for any counts or totals. Avoid preamble or filler."
     })
-    local synth = ollama_chat(flat_messages, true, ENABLE_THINKING and 1000 or 100)
+    local synth = ollama_chat(flat_messages, true, 2048, false)
     print_thinking(synth)
     local ans = clean_text(synth and synth.content)
     if ans == "" and synth and synth.thinking then
         ans = clean_text(synth.thinking)
-    end
-    if ans:find("\n\n") then
-        local first_para = ans:match("^(.-)\n\n")
-        if first_para and #first_para > 20 then
-            ans = first_para:match("^%s*(.-)%s*$")
-        end
     end
     return ans
 end
@@ -783,7 +779,7 @@ local function run_turn(messages, user_query)
     table.insert(messages, { role = "user", content = prompt })
 
     local seen_sigs = {}
-    for turn = 1, 3 do
+    for turn = 1, 5 do
         local msg = ollama_chat(messages, false)
         table.insert(messages, msg)
 
@@ -830,11 +826,11 @@ local function run_turn(messages, user_query)
                     save_session(messages)
                     return
                 end
-            elseif turn < 3 then
+            elseif turn < 5 then
                 -- Model produced monologue without tool calls and without tool results yet; nudge
                 table.insert(messages, {
                     role = "user",
-                    content = "Please execute the tool call (find_files or grep_files) using the provided tools now."
+                    content = "Please execute the tool call (find_files, grep_files, or read_file_lines) using the provided tools now."
                 })
             end
         end
@@ -865,6 +861,8 @@ while i <= #arg do
         mode = "interactive"
     elseif parsing_flags and (token == "-t" or token == "--think") then
         ENABLE_THINKING = true
+    elseif parsing_flags and (token == "-nt" or token == "--no-think" or token == "--no-t") then
+        ENABLE_THINKING = false
     elseif parsing_flags and (token == "-st" or token == "--show-thinking") then
         ENABLE_THINKING = true
         SHOW_THINKING = true
@@ -905,11 +903,11 @@ while i <= #arg do
     i = i + 1
 end
 
-local SYS_INSTRUCTIONS = [[You are a terse CLI file assistant.
+local SYS_INSTRUCTIONS = [[You are an accurate, technical CLI file assistant.
 Rules:
-1. Use `find_files` to discover paths and `grep_files` to search contents. Search for specific settings, keys, or patterns rather than broad names, and scope `target` to relevant subdirectories when known.
-2. Rely on tool outputs and summary headers for counts or totals; do not recount lines manually.
-3. Output telegraphic answers: cite `path:line`, show the exact setting or code, and explain concisely in 1-2 short sentences. No preamble.]]
+1. Use `find_files` to discover paths and `grep_files` to search contents. When you locate a candidate file or setting, use `read_file_lines` to inspect surrounding context to confirm how the setting or logic is defined before concluding.
+2. Rely on tool outputs and summary headers for counts or totals; do not recount lines manually or guess.
+3. Provide an accurate, complete, and factually grounded answer. Cite exact paths and line numbers (`path:line`), show the exact configuration or code snippets, and explain relevant context clearly. Avoid unnecessary conversational fluff or pleasantries.]]
 
 local active_summary = {}
 for _, def in pairs(SCOPES) do
@@ -947,7 +945,7 @@ local initial_query = table.concat(query_parts, " ")
 if initial_query ~= "" then
     run_turn(messages, initial_query)
 elseif mode ~= "interactive" then
-    io.stderr:write("Usage:\n  ask [flags] <query>\n\nFlags:\n  -llm, --llm <model>  Switch Ollama model for query (e.g. lfm3:1.7b-qad-q4_0, lfm3-agent)\n  -fs, --find-skills   Search and include AI agent skills in ~/.config/ai/skills\n  -t, --think          Enable model thinking / reasoning (silent internal reasoning, expanded token budget)\n  -st, --show-thinking Enable thinking and show reasoning process in dimmed text before answer\n  -w, --web            Enable DuckDuckGo web search via ddgr (aliases: --web, --web-search)\n  -c, --continue       Continue previous session from /dev/shm\n  -i, --interactive    Drop into interactive multi-turn session\n  -df, -nn, ...        Scope pinning flags (-df=dotfiles, -nn=notes, etc.)\n\nExamples:\n  ask where is wezterm config?\n  ask -df where are my aliases?\n  ask -llm lfm3-agent -df where are my aliases?\n  ask -fs what skills are available for testing?\n  ask -fs find test-driven-development skill\n  ask -fs/git-workflow what are the commit guidelines?\n  ask -t solve this logic puzzle\n  ask -st how many r's are in strawberry?\n  ask -w what are latest features in lua 5.4?\n  ask -t -df explain how my aliases are organized\n  ask -c what was the last line of that file?\n")
+    io.stderr:write("Usage:\n  ask [flags] <query>\n\nFlags:\n  -llm, --llm <model>  Switch Ollama model for query (e.g. lfm3:1.7b-qad-q4_0, lfm3-agent)\n  -fs, --find-skills   Search and include AI agent skills in ~/.config/ai/skills\n  -t, --think          Enable model thinking / reasoning (enabled by default)\n  -nt, --no-think      Disable model thinking / reasoning for low-latency one-liners\n  -st, --show-thinking Show reasoning process in dimmed text before answer\n  -w, --web            Enable DuckDuckGo web search via ddgr (aliases: --web, --web-search)\n  -c, --continue       Continue previous session from /dev/shm\n  -i, --interactive    Drop into interactive multi-turn session\n  -df, -nn, ...        Scope pinning flags (-df=dotfiles, -nn=notes, etc.)\n\nExamples:\n  ask where is wezterm config?\n  ask -df where are my aliases?\n  ask -llm lfm3-agent -df where are my aliases?\n  ask -fs what skills are available for testing?\n  ask -fs find test-driven-development skill\n  ask -fs/git-workflow what are the commit guidelines?\n  ask -st how many r's are in strawberry?\n  ask -nt quick check for my tmux prefix\n  ask -w what are latest features in lua 5.4?\n  ask -df explain how my aliases are organized\n  ask -c what was the last line of that file?\n")
     os.exit(1)
 end
 
