@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "repo": "<repo-url>",
+  "audited_commit": "<commit-sha>",
+  "audited_commit_short": "<short-sha>",
+  "audited_date": "<YYYY-MM-DD>",
+  "reviewed_scope": "Static review of the checked-out tree, git metadata, Go module graph, GitHub Actions workflows, CI/release files, and committed image assets. No runtime execution unless stated.",
+  "expected_network": [],
+  "expected_exec": [],
+  "expected_non_ip_ipc": [],
+  "expected_build_time_network": [
+    {
+      "id": "go-module-download",
+      "trigger": "go build / go run with a cold module cache",
+      "endpoint": "proxy.golang.org or direct VCS hosts (HTTPS/SSH)",
+      "notes": "Integrity is enforced by go.sum. Check for a replace directive or a changed go.sum before trusting a build."
+    },
+    {
+      "id": "github-actions",
+      "trigger": "CI on push/pull_request/tag",
+      "endpoint": "GitHub Actions marketplace, GitHub API",
+      "notes": "Pin actions by SHA where possible. Watch for pull_request_target, secrets in PR jobs, and fetch-pipe-to-shell."
+    }
+  ],
+  "direct_modules": [],
+  "replace_directives": [],
+  "expected_ci_actions": [],
+  "doc_only_urls": [],
+  "hashes": {},
+  "notes": [
+    "Baseline is a point-in-time snapshot, not a trust anchor. Re-derive it only after reviewing a diff.",
+    "Any new network import, remote host, exec sink, CI action, or binary asset is a review event.",
+    "The localhost-only constraint: any socket/packet/connection outside 127.0.0.0/8, ::1, or a Unix domain socket is a failing finding."
+  ]
+}
