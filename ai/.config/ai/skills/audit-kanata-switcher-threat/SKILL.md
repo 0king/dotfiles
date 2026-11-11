@@ -4,9 +4,10 @@ description: >-
   Audit the kanata-switcher repository (Rust + Nix + GNOME Shell extension +
   GitHub Actions daemon for focus-based kanata layer switching) for hidden
   malware, backdoors, persistence, risky process execution, and supply-chain
-  threats, including Cargo dependency execution, release-binary tampering, and
-  a rootless dynamic network trace, and produce a complete inventory of every
-  network request or local IPC connection it can make. Use when the user asks
+  threats, including Cargo dependency execution, release-binary tampering, a
+  privileged veth/packet-capture dynamic network trace, and a nested GNOME
+  Shell extension audit, and produce a complete inventory of every network
+  request or local IPC connection it can make. Use when the user asks
   to audit this repo, asks "is kanata-switcher safe", asks what network
   connections it makes, wants a threat model or pre-install review, or asks
   to re-check a newer checkout or PR against the pinned clean baseline.
@@ -16,9 +17,10 @@ description: >-
 
 Repo-specific audit workflow. It combines a static scanner, a Cargo
 supply-chain audit, release-binary analysis, a pinned network / execution /
-filesystem baseline, a rootless dynamic network harness, and a manual review
-pass. The goal is to detect *changes* that introduce hidden behavior, not to
-re-litigate the documented features of the application.
+filesystem baseline, a privileged dynamic network harness, a nested GNOME Shell
+extension audit, and a manual review pass. The goal is to detect *changes* that
+introduce hidden behavior, not to re-litigate the documented features of the
+application.
 
 **Default target:** `/media/d_drive/dev/local-builds/kanata-switcher`
 **Audited baseline:** commit `6957867` (`69578672fce32ac5b69aed393f6981d4fbad3999`), tag `v1.2.0`, 2026-11-10
@@ -28,8 +30,10 @@ every diff after this commit before calling a checkout clean.
 **Default workflow:** static source scan → Cargo dependency audit → release
 binary analysis → baseline comparison → manual review. Dynamic execution is
 the final confirmation, not the first step, and needs explicit permission plus
-an isolated network namespace. The dynamic harness is rootless by default and
-does not install the GNOME extension or touch a live desktop session.
+root/`sudo`. The harness fails closed if privileged packet capture is
+unavailable; it does not silently downgrade to a rootless trace. The GNOME
+extension audit runs the real extension in a nested headless Shell with a
+private session bus and a mock daemon, not in the user's live session.
 
 ## What this repo is
 
@@ -53,9 +57,11 @@ The audit answers two independent questions:
 - Confirm the path. If it is not the path above, ask before scanning.
 - Confirm whether the user wants **static review only** (default) or also
   **runtime verification**. The full workflow is static + dependencies +
-  binary; runtime is opt-in. Never execute an untrusted checkout, package, or
-  release binary, and never install its GNOME extension, without explicit
-  permission and an isolated environment.
+  binary; runtime is opt-in and requires root/`sudo` for network namespaces,
+  veth, and `tcpdump`. Never execute an untrusted checkout, package, or
+  release binary, and never install its GNOME extension into a live Shell,
+  without explicit permission and an isolated environment. The GNOME audit
+  uses a nested headless Shell and does not touch the host extension state.
 - Note whether dependencies and CI/Nix files are in scope. They are part of the
   supply-chain answer even when runtime code is clean.
 - Check the checkout identity first:
@@ -278,39 +284,70 @@ rg -n 'fetchurl|fetchgit|builtins\.fetch|--impure|substituters|postInstall|insta
 rg -n 'curl|wget|base64|eval|chmod|/bin/sh|powershell|nc |ncat' .github devops qa *.sh
 ```
 
-## Step 7 — Dynamic network verification (opt-in)
+## Step 7 — Dynamic network and GNOME extension verification (opt-in, privileged)
 
-Only with explicit user approval. The harness runs the binary in a rootless
-network namespace with no route except loopback, captures every network and
-process syscall from the daemon and its children, and compares the result with
-the pinned policy. It never installs the GNOME extension and never touches a
-live desktop session unless `--host-desktop` is explicitly selected.
+Only with explicit user approval. The harness runs the target in a dedicated
+network namespace connected by a veth pair to a capture namespace, captures
+every packet on the capture side with `tcpdump`, answers DNS/TCP with
+sinkholes, monitors the private session bus and the system bus, and traces the
+source build. Packet capture is **mandatory**: if root/`sudo` or `tcpdump` is
+unavailable, the harness exits 2 instead of producing a weaker result.
 
 ```bash
 SKILL=~/.config/ai/skills/audit-kanata-switcher-threat
 "$SKILL/scripts/run_dynamic_network_audit.sh" \
   --repo <repo> --out /tmp/opencode/ks-dynamic --timeout 15
+
+# Preflight only: root, tcpdump, ip, bwrap, strace, system-bus presence.
+"$SKILL/scripts/run_dynamic_network_audit.sh" --check
+
+# Also audit the GNOME extension in a nested headless Shell.
+"$SKILL/scripts/run_dynamic_network_audit.sh" \
+  --repo <repo> --out /tmp/opencode/ks-dynamic --timeout 15 --gnome-extension
 ```
 
 What the harness does:
 
 1. Resolves the audited commit and exports a clean tree with `git archive` into
    the output directory. A dirty working tree is recorded but not executed.
-2. Runs `cargo fetch --locked` (network is allowed only for this fetch) and
-   `cargo build --release --locked --offline` into an isolated target dir.
-3. Starts `mock_kanata.py` on `127.0.0.1:<port>` inside the namespace.
-4. Runs `bwrap --unshare-net --unshare-pid --unshare-ipc --unshare-uts` with
-   `--ro-bind / /`, a private `/tmp`, a private `HOME`/`XDG_RUNTIME_DIR`, and
-   only the output directory writable. The namespace has only `lo`.
-5. Runs the daemon under `strace -ff -ttt -s 512 -v` tracing `%network`,
+2. Runs `cargo fetch --locked` on the host network under
+   `strace -ff -e trace=%network` (the only step allowed real network), then
+   `cargo build --release --locked --offline` inside the daemon namespace under
+   both `strace` and `tcpdump`.
+3. Creates two namespaces (`ks-d-*`, `ks-c-*`) with a veth pair, no NAT, no
+   forwarding, and no route to the real network. The target runs as the
+   invoking uid via `setpriv`; `bwrap` isolates pid/ipc/uts/mount but does
+   **not** use `--unshare-net`, so it inherits the root-created namespace.
+4. Starts DNS and TCP sinkholes on the capture side. DNS answers A queries with
+   the capture address and logs every query; TCP listeners on common service
+   ports accept, log a bounded payload preview, and close. The setup helper
+   writes `/etc/netns/<ns>/resolv.conf` pointing at the sinkhole, so
+   `ip netns exec` cannot fall back to a host resolver stub.
+5. Starts a private `dbus-daemon` with its socket under the output directory,
+   monitors it with `dbus-monitor`, and monitors the system bus as root when
+   `/run/dbus/system_bus_socket` exists.
+6. Starts `mock_kanata.py` on `127.0.0.1:<port>` inside the namespace.
+7. Runs the daemon under `strace -ff -ttt -s 512 -v` tracing `%network`,
    `%process`, `openat`, `open`, `memfd_create`, `io_uring_*`, `bpf`,
    `init_module`, `finit_module`, `ptrace`, `unshare`, `setns`, `keyctl`,
-   `add_key`, `request_key`, `mount`, `pivot_root`, and `chroot`.
-6. Takes `ss -tanp`, `ss -uanp`, `ss -lxnp`, and `/proc/net/{tcp,tcp6,udp,
+   `add_key`, `request_key`, `mount`, `pivot_root`, `chroot`, plus supported
+   `sendmmsg`/`recvmmsg`/`sendfile`/`splice`/`ioctl`/`openat2`/`execveat`.
+8. Takes `ss -tanp`, `ss -uanp`, `ss -lxnp`, and `/proc/net/{tcp,tcp6,udp,
    udp6,packet,netlink,unix,raw,raw6}` snapshots while the daemon runs, and
    calls `GetStatus` over the private session bus.
-7. Parses the evidence with `analyze_dynamic_logs.py` and writes
-   `report.json` / `report.md` plus the raw logs.
+9. Parses strace, pcap, sinkhole, D-Bus, build, and mock evidence with
+   `analyze_dynamic_logs.py` and writes `report.json` / `report.md`.
+10. With `--gnome-extension`, runs `run_gnome_extension_audit.sh` under
+    `<out>/gnome` and propagates its findings/harness errors into the combined
+    exit status.
+
+The GNOME sub-audit stages the extension as a private **system** extension,
+sets `allow-extension-installation false` to suppress the
+`extensions.gnome.org` update check, disables other system mode extensions,
+and starts the nested Shell under `env -i` with a minimal environment. This
+prevents host IBus/keyring/SSH variables from leaking in and removes core-Shell
+network startup noise, so any remaining IP egress is attributable to the
+audited extension.
 
 Scenarios:
 
@@ -326,13 +363,16 @@ Scenarios:
 - `--binary PATH`: audit a supplied artifact; provenance is then unverified.
 - `--command 'CMD'`: run an arbitrary probe under the same isolation; used by
   `selftest_dynamic.sh`. It skips the daemon/mock expectations.
+- `--allow-unmonitored-system-bus`: the only override for a host that
+  genuinely has no usable system-bus monitor. Record it in the report.
 
 Expected result: exactly the configured kanata TCP endpoint (default
 `127.0.0.1:10000`) over IP, plus documented local D-Bus/Wayland/X11 Unix
 sockets. No UDP, no raw/AF_PACKET socket, no IP listener, no DNS resolver
-contact, no non-loopback connect (including failed attempts), and no
-undocumented Unix socket. The analyzer is strict: a failed `connect()` is still
-a finding.
+contact, no non-loopback connect (including failed attempts), no
+target-sourced packet on the veth, no undocumented Unix socket, and no
+IP activity during the offline build. The analyzer is strict: a failed
+`connect()` is still a finding.
 
 Common rules and what they mean:
 
@@ -345,34 +385,62 @@ Common rules and what they mean:
 | `DYN-IP-BIND` / `DYN-LISTEN` / `DYN-SS-LISTENER` / `DYN-PROCNET-LISTENER` | inbound IP surface. The daemon must not listen. |
 | `DYN-UNIX-UNEXPECTED` / `DYN-UNIX-LISTENER` | undocumented Unix socket or a daemon-created Unix listener. |
 | `DYN-NETLINK` | local kernel IPC, informational; not IP egress. |
-| `DYN-SUSPICIOUS-SYSCALL` | `bpf`, module load, `ptrace`, namespace change, `memfd_create`, `io_uring`, keyring, mount. |
+| `DYN-SUSPICIOUS-SYSCALL` | `bpf`, module load, `ptrace`, namespace change, `memfd_create`, `io_uring`, keyring, mount. In the GNOME profile `memfd_create` is a note; execution from a memfd is `DYN-MEMFD-EXEC`. |
+| `DYN-MEMFD-EXEC` | `execveat` from a memfd or `/proc/self/fd/` path. Critical. |
 | `DYN-CHILD-IP-NETWORK` | a child process, not the main daemon, performed IP I/O. |
 | `DYN-NETWORK-TOOL-EXEC` / `DYN-SHELL-EXEC` | `curl`/`wget`/`ssh`/`nc` or `sh -c` execution. |
+| `DYN-PCAP-MISSING` / `DYN-BUILD-PCAP-MISSING` | privileged capture was promised but the pcap is missing. |
+| `DYN-PCAP-TCP` / `DYN-PCAP-UDP` / `DYN-PCAP-DNS` / `DYN-PCAP-DNS-QUERY` / `DYN-PCAP-ICMP` | target-sourced packets on the veth. Any of these is egress. |
+| `DYN-PCAP-ARP` / `DYN-PCAP-NDP` / `DYN-PCAP-NON-IP` | target-sourced ARP, IPv6 neighbor discovery, or unknown ethertype. |
+| `DYN-SINKHOLE-DNS` / `DYN-SINKHOLE-TCP` | a DNS query or TCP connection reached the sinkhole. |
+| `DYN-SINKHOLE-DATA` | payload bytes were sent to the sinkhole. Critical. |
+| `DYN-DBUS-SENSITIVE-DEST` / `DYN-DBUS-SENSITIVE-METHOD` | portal/systemd/NetworkManager/secret/KWin destination or `OpenURI`/`StartUnit`/`Eval`/etc. method. |
+| `DYN-DBUS-URL` / `DYN-DBUS-LOGIND-METHOD` | URL sent in a D-Bus method call, or a logind method outside the read-only allowlist. GNOME metadata URLs in signals/returns are notes. |
+| `DYN-DBUS-MONITOR-MISSING` / `DYN-DBUS-SYSTEM-EAVESDROP` | expected bus coverage is missing or only eavesdropping. |
+| `DYN-BUILD-SCRIPT-EGRESS` / `DYN-BUILD-PCAP-EGRESS` | the offline build used an IP socket or emitted a packet. Critical. |
+| `DYN-BUILD-FETCH-EGRESS` / `DYN-BUILD-FETCH-URL` | `cargo fetch` used an unexpected port or host. |
+| `DYN-BUILD-SCRIPT-URL` | the offline build log contains a URL (medium; output can echo without fetching). |
+| `DYN-GNOME-SHELL-LOG-MISSING` / `DYN-GNOME-EXTENSION-NOT-LOADED` / `DYN-GNOME-EXTENSION-NOT-ENABLED` / `DYN-GNOME-EXTENSION-ERROR` | the nested Shell did not load or enable the extension cleanly. |
+| `DYN-GNOME-MOCK-METHOD` / `DYN-GNOME-MOCK-SIGNAL` / `DYN-GNOME-FOCUS-MISSING` | the extension did not exercise the expected daemon interface. |
 | `DYN-KANATA-MISSING` / `DYN-KANATA-NO-CONNECT` | the expected kanata connection never appeared in daemon mode. |
 | `DYN-KANATA-TOO-FEW-CONNECTS` / `DYN-KANATA-TOO-MANY-CONNECTS` | connection count outside the baseline range. |
 
-Optional privileged corroboration (not required, needs root): run `tcpdump -i
-any -nn -s0 -w capture.pcap` or a `bpftrace` syscall/`kprobe` script around the
-same harness, then compare the pcap with the strace endpoints. Record that this
-was done separately; the default harness is rootless and does not claim packet
-capture.
-
-Negative-control self-test (run after changing the harness or analyzer):
+Negative controls (run after changing the harness, analyzer, scanner, or
+baseline):
 
 ```bash
-"$SKILL/scripts/selftest_dynamic.sh"
+# No root needed: 14 synthetic analyzer/scanner controls, including clean and
+# negative cases.
+"$SKILL/scripts/selftest_dynamic.sh" --synthetic-only
+
+# Root needed: 6 probes through the real veth+tcpdump+bwrap harness.
+"$SKILL/scripts/selftest_dynamic.sh" --harness-only
 ```
 
-It must detect non-loopback TCP, UDP/DNS, `AF_PACKET`, an IP listener, and a
-child-process connect, and must report a clean no-op as clean. A self-test that
-does not fail on the controls means the analyzer is broken, not that the target
-is clean.
+The harness layer must detect non-loopback TCP, UDP/DNS, `AF_PACKET`, an IP
+listener, and a child-process connect, and must report a clean no-op as clean.
+A self-test that does not fail on the controls means the analyzer is broken, not
+that the target is clean. On a host without passwordless `sudo`, run
+`--synthetic-only` and record that the privileged controls were not executed.
 
 Manual path coverage when the harness cannot run: start a mock kanata server,
 then trigger focus changes, GNOME/KDE backend startup, pause/unpause/restart,
 and autostart install/uninstall. Re-check `ss -ltnp`, `ss -lunp`, and
 `/proc/<pid>/net/*`. Do not run `--install-gnome-extension` against a live Shell
-on an untrusted checkout; it installs code into GNOME Shell.
+on an untrusted checkout; it installs code into GNOME Shell. A manual run does
+not replace packet capture; say so in the report.
+
+The dedicated GNOME extension audit can also be run alone:
+
+```bash
+"$SKILL/scripts/run_gnome_extension_audit.sh" \
+  --repo <repo> --out /tmp/opencode/ks-gnome --timeout 30
+```
+
+It scans the extension statically, pre-enables it with the GSettings keyfile
+backend, runs it in `gnome-shell --headless --wayland --no-x11` under a private
+session bus, and exercises it with a mock daemon. See
+`references/gnome-extension-audit.md`.
 
 ## Step 8 — Triage and report
 
@@ -407,10 +475,18 @@ checkout", "baseline drift at X").
 - Remote URL/IP/domain strings and suspicious keywords; provenance limits.
 
 ## Dynamic network trace
-- Scenario, namespace, timeout, commit/binary, harness output path.
+- Scenario, namespace topology, timeout, commit/binary, harness output path.
+- Privileged capture: interface, pcap files, packet count, target-sourced
+  packets (any is egress), capture failures.
+- Sinkholes: DNS queries, TCP connections, payload previews.
+- D-Bus: private/system monitor state, sensitive destinations/methods, URLs,
+  logind calls, eavesdrop fallback.
+- Build: fetch hosts/ports, offline build sockets/pcap, build-log URLs.
 - IP endpoints observed (expected kanata + anything else); UDP/raw/listeners.
 - Unix sockets observed; execs; suspicious syscalls; child-process network.
-- Analyzer result: clean / findings; self-test status.
+- Analyzer result: clean / findings; self-test status (synthetic and harness).
+- GNOME extension: static result, nested Shell load, GetFocus, mock
+  methods/signals, extension errors.
 
 ## Findings
 
@@ -435,13 +511,16 @@ List unexpected/changed/missing sinks and accepted findings; state whether the
 pinned baseline still applies.
 
 ## Limits of this audit
-Static/heuristic plus a rootless syscall trace, not a proof; no CVE/dependency-
-vulnerability scan; dynamic run not performed unless stated; dependency sources
-not cached are not deeply scanned; `--include-deps` state; GNOME Shell/KWin/
-desktop-environment behavior, compiler/runtime behavior, and privileged packet
-capture are out of scope unless explicitly recorded. A dynamic trace sees the
-paths that were exercised, not every branch; static review still owns unexercised
-code. `--host-desktop` is not the default and changes the trust boundary.
+Static/heuristic plus a privileged veth/packet-capture trace and a nested
+headless GNOME Shell run, not a proof; no CVE/dependency-vulnerability scan;
+dynamic run not performed unless stated; dependency sources not cached are not
+deeply scanned; `--include-deps` state; GNOME Shell/KWin/desktop-environment
+behavior, compiler/runtime behavior, and kernel-level compromise are out of
+scope unless explicitly recorded. A dynamic trace sees the paths that were
+exercised, not every branch; static review still owns unexercised code.
+`--host-desktop` is not the default and changes the trust boundary. If the
+privileged harness could not run (no root/`sudo`, no `tcpdump`, no system-bus
+monitor), say so explicitly and do not claim packet-level evidence.
 ```
 
 ### Severity rubric for this repo
@@ -452,20 +531,28 @@ code. `--host-desktop` is not the default and changes the trust boundary.
   extension or runs downloaded code; a non-crates.io/git/path dependency with
   no checksum; a cached `.crate` checksum mismatch; `AF_PACKET`/raw socket or
   an IP listener on a non-loopback address; an embedded ELF/PE payload in the
-  release binary.
+  release binary; a target-sourced packet on the veth; payload sent to the TCP
+  sinkhole; an IP socket or packet during the offline build; a sensitive D-Bus
+  method such as `OpenURI`, `StartUnit`, or `Eval`.
 - **High** — new remote host or outbound sink not in baseline; a listener
   changed to `0.0.0.0`; new exec sink; shell execution with data from the
   kanata peer or config; `pull_request_target` with secrets/PR code; unpinned
   Nix fetch without a hash; remote `--host` silently introduced; new
   network-capable dependency or build script; lockfile/direct-dependency drift;
   binary overlay, unexpected `NEEDED` library, or unexpected remote URL;
-  dynamic non-loopback connect (even failed), UDP/DNS, or child-process IP I/O.
+  dynamic non-loopback connect (even failed), UDP/DNS, child-process IP I/O,
+  DNS/TCP sinkhole contact, sensitive D-Bus destination, D-Bus URL in a method
+  call, or a GNOME extension that fails to load or does not exercise the daemon
+  interface.
 - **Medium** — ref-pinned GitHub Actions; missing `permissions:`; non-direct
   dependency or build-file drift after review; local D-Bus control methods with no authentication; GNOME
   auto-install enabled by default; KWin script writes under `/tmp`; unquoted
   systemd `ExecStart` args; new proc-macro/native dependency; undocumented Unix
-  socket; `memfd_create`/`io_uring`/keyring/mount syscall; suspicious binary
-  string or dangerous imported symbol not in baseline.
+  socket; `memfd_create`/`io_uring`/keyring/mount syscall (the GNOME Shell's
+  `memfd_create` is a note); suspicious binary string or dangerous imported
+  symbol not in baseline; an undocumented D-Bus destination in daemon/command
+  mode; a system-bus monitor that only eavesdrops; a URL echoed in the offline
+  build log.
 - **Low** — documentation URLs, expected D-Bus/Unix IPC, expected
   `gnome-extensions`/`gsettings`/`dconf` helper execution, expected autostart
   feature, valid committed screenshots.
@@ -501,6 +588,29 @@ their content, source, or destination changes unexpectedly.
   operator-supplied Nix strings, not remote code execution.
 - `DYN-NETLINK` / `AF_NETLINK` is local kernel IPC (address/route enumeration),
   not IP egress. `socketpair(AF_UNIX)` is internal IPC, not a socket path.
+- In the GNOME profile, `memfd_create` by `gnome-shell`/Mutter/Mesa/GLib/
+  PulseAudio is expected (dmabuf format tables, GL shader caches, Wayland cursor
+  and PulseAudio anonymous files). `DYN-MEMFD-EXEC` remains critical.
+- `ibus-*` execs, core GNOME Unix sockets (`nscd`, PipeWire, PulseAudio,
+  AT-SPI), and extension-metadata URLs in Shell signals/method returns are
+  nested-Shell startup noise, not extension egress. The analyzer records them
+  as notes or allowlisted events; new destinations/sockets still fail.
+- `DYN-DBUS-SYSTEM-ABSENT` is informational: the host has no system bus socket,
+  so there is nothing to monitor. `DYN-DBUS-SYSTEM-EAVESDROP` is not clean: it
+  means the monitor exists but coverage is incomplete.
+- In the `gnome-extension` profile, sensitive D-Bus destinations are notes
+  because a nested Shell talks to many core desktop services and the monitor
+  cannot attribute a call to the extension rather than to the Shell. Sensitive
+  methods, logind methods outside the allowlist, and URLs are still findings.
+  New extension destinations are caught by the static scanner.
+- Packets sourced by the capture-side MAC/IP (DNS answers, sinkhole replies,
+  capture-side ARP) are expected. Only packets sourced by the daemon MAC/IP are
+  target egress.
+- Empty `dns.jsonl`/`tcp.jsonl` is a clean sinkhole result. A missing log is a
+  finding; the analyzer distinguishes the two.
+- `cargo fetch` contacts crates.io/GitHub on ports 53/80/443 by design. Only an
+  unexpected host/port, or any IP activity during the offline build, is a
+  finding.
 - The mock kanata listener on `127.0.0.1:<port>` appears in `ss` and
   `/proc/net/tcp`; it is the harness, not the daemon. The analyzer allows a
   loopback listener on the configured mock port and reports every other one.
@@ -540,17 +650,24 @@ Only after reviewing the diff:
    built from the reviewed commit. Do not pin a machine-specific SHA-256 as a
    trust anchor.
 6. Update `dynamic_policy` / `expected_dynamic` (expected TCP endpoint, allowed
-   Unix globs, forbidden families, trace syscalls) and run the harness plus
-   `selftest_dynamic.sh`. The baseline is only valid if the controls still fail.
+   Unix globs, forbidden families, trace syscalls, D-Bus destinations/methods,
+   build-time hosts/ports) and `gnome_extension` (UUID, schema, imports, D-Bus
+   names, settings keys, file hashes) only for reviewed changes. Keep
+   `expected_exec_gnome` current for core Shell helpers (IBus, GVFS, portals).
+   Do not relax the GNOME profile's `memfd_create` note or the
+   `allow-extension-installation false` update-check suppression without a
+   written reason. Run both harnesses plus `selftest_dynamic.sh`. The baseline
+   is only valid if the controls still fail.
 7. Add a written `reason` to `accepted_findings` for every intentional finding
    you choose to suppress. Never suppress an unexplained critical/high finding.
 8. Re-run the static, dependency, and binary scanners with `--verbose` until
    the baseline has zero unexpected/changed/missing entries and only accepted
-   findings remain. Re-run the dynamic harness and `selftest_dynamic.sh` if
-   runtime scope was included.
+   findings remain. Re-run the privileged network harness, the GNOME extension
+   audit, and `selftest_dynamic.sh` if runtime scope was included.
 9. Update `references/network-surfaces.md`, `references/threat-model.md`,
-   `references/dynamic-analysis.md`, and `references/release-binary-analysis.md`
-   if the data flow or trust boundaries changed.
+   `references/dynamic-analysis.md`, `references/gnome-extension-audit.md`, and
+   `references/release-binary-analysis.md` if the data flow or trust
+   boundaries changed.
 
 ## Reference files
 
@@ -561,14 +678,25 @@ Only after reviewing the diff:
   runtime-verification notes.
 - `references/threat-model.md` — trust boundaries, attack surfaces, and
   repo-specific abuse cases.
-- `references/dynamic-analysis.md` — harness design, isolation model, trace
-  coverage, rule semantics, privileged capture, and limits.
+- `references/dynamic-analysis.md` — privileged harness design, veth/capture
+  topology, sinkholes, D-Bus policy, build tracing, rule semantics, and limits.
+- `references/gnome-extension-audit.md` — static extension rules, nested-Shell
+  procedure, mock daemon contract, D-Bus allowlist, and limitations.
 - `references/release-binary-analysis.md` — ELF checks, baseline invariants,
   provenance, and false positives.
 - `scripts/scan_kanata_switcher.py` — the static source scanner.
 - `scripts/scan_cargo_deps.py` — Cargo.lock/manifest/cache supply-chain audit.
 - `scripts/analyze_release_binary.py` — offline ELF/strings/payload analyzer.
-- `scripts/run_dynamic_network_audit.sh` — rootless bwrap+strace harness.
-- `scripts/analyze_dynamic_logs.py` — strace/ss/procnet/mock log analyzer.
+- `scripts/scan_gnome_extension.py` — static GNOME extension scanner.
+- `scripts/run_dynamic_network_audit.sh` — privileged veth/tcpdump/bwrap/strace
+  harness.
+- `scripts/run_gnome_extension_audit.sh` — nested headless GNOME Shell audit.
+- `scripts/netns_admin.sh` — root-only netns/veth/capture/sinkhole/monitor
+  helper.
+- `scripts/capture_sinkhole.py` — DNS and TCP sinkholes with JSONL logs.
+- `scripts/analyze_dynamic_logs.py` — strace/pcap/sinkhole/D-Bus/build/mock/
+  GNOME analyzer.
 - `scripts/mock_kanata.py` — loopback-only kanata protocol mock.
-- `scripts/selftest_dynamic.sh` — negative controls for the dynamic analyzer.
+- `scripts/mock_gnome_daemon.py` — daemon-interface mock for the extension
+  audit.
+- `scripts/selftest_dynamic.sh` — synthetic and privileged negative controls.

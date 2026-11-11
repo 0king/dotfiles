@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# Rootless dynamic network audit for kanata-switcher.
+# Privileged dynamic network audit for kanata-switcher.
 #
-# Builds the release binary from a clean `git archive` of the audited commit
-# (or accepts --binary), then runs it inside `bwrap --unshare-net` with only a
-# loopback interface. strace records every network/process syscall; `ss` and
-# /proc/net snapshots corroborate the trace. A mock kanata server on
-# 127.0.0.1:<port> satisfies the daemon's only documented IP connection.
+# The target runs as the invoking user inside a dedicated network namespace.
+# A veth pair connects that namespace to a capture namespace with no NAT and
+# no route to the real network. tcpdump on the capture-side veth is mandatory;
+# DNS and TCP sinkholes make the network look usable and log every attempt.
+# The private session bus and the system bus are monitored with dbus-monitor,
+# and a source build is traced both during `cargo fetch` (host network) and
+# during `cargo build --offline` (inside the veth namespace).
 #
-# Privileged packet capture (tcpdump/bpftrace) is deliberately NOT required.
-# For that layer, run the optional commands documented in
-# references/dynamic-analysis.md as root, with the same output directory.
+# The harness fails closed when root/sudo, tcpdump, or the system bus monitor
+# is unavailable. Use --allow-unmonitored-system-bus only for a documented
+# exception on a host that genuinely has no system bus.
 #
 # Usage:
-#   run_dynamic_network_audit.sh [--repo PATH] [--out DIR] [--host 127.0.0.1]
-#       [--port 10000] [--timeout 15] [--commit REV]
+#   run_dynamic_network_audit.sh [--repo PATH] [--out DIR] [--host HOST]
+#       [--port PORT] [--timeout SECONDS] [--commit REV]
 #       [--scenario baseline|minimal|host-desktop]
 #       [--binary PATH | --command 'CMD'] [--skip-build]
+#       [--gnome-extension] [--allow-unmonitored-system-bus]
+#       [--check] [--keep-netns]
 #
 # Exit codes: 0 = analyzer clean, 1 = findings, 2 = harness/setup error.
 
@@ -34,9 +38,13 @@ COMMAND=""
 COMMIT=""
 SKIP_BUILD=0
 MODE=daemon
+RUN_GNOME=0
+ALLOW_UNMONITORED_SYSTEM_BUS=0
+CHECK_ONLY=0
+KEEP_NETNS=0
 
 usage() {
-    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
@@ -51,6 +59,10 @@ while [[ $# -gt 0 ]]; do
         --command) COMMAND="$2"; MODE=command; shift 2 ;;
         --commit) COMMIT="$2"; shift 2 ;;
         --skip-build) SKIP_BUILD=1; shift ;;
+        --gnome-extension) RUN_GNOME=1; shift ;;
+        --allow-unmonitored-system-bus) ALLOW_UNMONITORED_SYSTEM_BUS=1; shift ;;
+        --check) CHECK_ONLY=1; shift ;;
+        --keep-netns) KEEP_NETNS=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -64,30 +76,246 @@ if [[ "$SCENARIO" != "baseline" && "$SCENARIO" != "minimal" && "$SCENARIO" != "h
     echo "error: --scenario must be baseline, minimal, or host-desktop" >&2
     exit 2
 fi
-if [[ -z "$OUT" ]]; then
+if [[ "$MODE" == "command" ]]; then
+    SKIP_BUILD=1
+fi
+if [[ -n "$OUT" ]]; then
+    mkdir -p "$OUT" || { echo "error: cannot create --out $OUT" >&2; exit 2; }
+    OUT="$(cd "$OUT" && pwd)"
+else
     mkdir -p /tmp/opencode
     OUT="$(mktemp -d /tmp/opencode/kanata-switcher-dynamic.XXXXXX)"
 fi
-OUT="$(cd "$OUT" 2>/dev/null && pwd || (mkdir -p "$OUT" && cd "$OUT" && pwd))"
-mkdir -p "$OUT"/{bin,src,target,strace,snapshots,mock,daemon,home,runtime,tmp,logs}
+mkdir -p "$OUT"/{bin,src,target,build,pcap,strace,snapshots,mock,daemon,home,runtime,tmp,logs,net,dbus,gnome}
+chmod 700 "$OUT/runtime" 2>/dev/null || true
 
 need() {
     command -v "$1" >/dev/null 2>&1 || { echo "error: required tool not found: $1" >&2; exit 2; }
 }
-need bwrap
-need strace
-need python3
-need ss
 
+need ip
+need tcpdump
+need python3
+need strace
+need ss
+need setpriv
+need dbus-monitor
+need dbus-daemon
+need bwrap
+if [[ "$SCENARIO" != "host-desktop" ]]; then
+    need gdbus
+fi
 if [[ "$MODE" == "daemon" && -z "$BINARY" && "$SKIP_BUILD" -eq 0 ]]; then
     need git
     need cargo
+    need rustc
 fi
-if [[ "$SCENARIO" != "host-desktop" ]]; then
-    need dbus-run-session
+if [[ "$RUN_GNOME" -eq 1 ]]; then
+    need gnome-shell
+    need gjs
+    need glib-compile-schemas
+    need gsettings
+    need gdbus
 fi
 
+SUDO=()
+if [[ ${EUID} -ne 0 ]]; then
+    need sudo
+    if sudo -n true 2>/dev/null; then
+        SUDO=(sudo -n)
+    elif [[ -t 0 ]]; then
+        echo "[preflight] root is required for the veth and tcpdump; requesting sudo" >&2
+        if sudo -v; then
+            SUDO=(sudo)
+        else
+            echo "error: sudo authentication failed; privileged packet capture is mandatory" >&2
+            exit 2
+        fi
+    else
+        echo "error: passwordless sudo is not available and stdin is not a TTY." >&2
+        echo "       Privileged packet capture is mandatory; run as root or configure sudo." >&2
+        exit 2
+    fi
+fi
+
+TCPDUMP_VERSION="$(tcpdump --version 2>&1 | head -n 1)"
+IP_VERSION="$(ip -V 2>&1 | head -n 1)"
+if ! tcpdump --version >/dev/null 2>&1; then
+    echo "error: tcpdump is not usable" >&2
+    exit 2
+fi
+
+if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    echo "[check] root access: ok"
+    echo "[check] tcpdump: $TCPDUMP_VERSION"
+    echo "[check] ip: $IP_VERSION"
+    echo "[check] bwrap: $(bwrap --version 2>&1 | head -n 1)"
+    echo "[check] strace: $(strace --version 2>&1 | head -n 1)"
+    echo "[check] python: $(python3 --version 2>&1)"
+    if [[ -S /run/dbus/system_bus_socket ]]; then
+        echo "[check] system bus: present"
+    else
+        echo "[check] system bus: absent"
+    fi
+    echo "[check] preflight passed"
+    exit 0
+fi
+
+SUFFIX="$$-$RANDOM"
+D_NS="ks-d-${SUFFIX}"
+C_NS="ks-c-${SUFFIX}"
+D_IF="kd$(printf '%04x' $((RANDOM % 65536)))"
+C_IF="kc$(printf '%04x' $((RANDOM % 65536)))"
+while [[ "$D_IF" == "$C_IF" ]]; do
+    C_IF="kc$(printf '%04x' $((RANDOM % 65536)))"
+done
+
+D_MAC=""
+C_MAC=""
+SINK_PIDFILE=""
+SYS_MON_PIDFILE=""
+CAP_PIDFILE=""
+SYS_MON_STATE="unknown"
+
+cleanup() {
+    local status=$?
+    trap - EXIT INT TERM
+    if [[ -n "${SYS_MON_PIDFILE}" ]]; then
+        "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" stop-pid "$SYS_MON_PIDFILE" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${SINK_PIDFILE}" ]]; then
+        "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" stop-pid "$SINK_PIDFILE" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${CAP_PIDFILE}" ]]; then
+        "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" capture-stop "$CAP_PIDFILE" >/dev/null 2>&1 || true
+    fi
+    if [[ "$KEEP_NETNS" -eq 0 ]]; then
+        "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" teardown "$D_NS" "$C_NS" >/dev/null 2>&1 || true
+    else
+        echo "[keep] network namespaces retained: $D_NS $C_NS" >&2
+    fi
+    exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+cat > "$OUT/net/resolv.conf" <<'EOF'
+nameserver 10.213.0.1
+options timeout:1 attempts:1
+EOF
+cat > "$OUT/net/hosts" <<'EOF'
+127.0.0.1 localhost
+::1 localhost
+10.213.0.2 audit-daemon
+EOF
+
+cat > "$OUT/dbus/session.conf" <<EOF
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:path=$OUT/dbus/session.sock</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow user="*"/>
+    <allow own="*"/>
+    <allow send_type="method_call"/>
+    <allow send_type="signal"/>
+    <allow send_type="method_return"/>
+    <allow send_type="error"/>
+    <allow eavesdrop="true"/>
+  </policy>
+  <servicedir>/usr/share/dbus-1/services</servicedir>
+  <servicedir>/usr/local/share/dbus-1/services</servicedir>
+  <servicedir>$OUT/home/.local/share/dbus-1/services</servicedir>
+</busconfig>
+EOF
+
+echo "[setup] daemon netns=$D_NS if=$D_IF; capture netns=$C_NS if=$C_IF"
+"${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" setup \
+    "$D_NS" "$C_NS" "$D_IF" "$C_IF" \
+    "10.213.0.2/24" "10.213.0.1/24" \
+    "fd42:6b73:6175:6469::2/64" "fd42:6b73:6175:6469::1/64" \
+    "$OUT" || { echo "error: network namespace setup failed" >&2; exit 2; }
+
+D_MAC="$(cat "$OUT/net/daemon.mac")"
+C_MAC="$(cat "$OUT/net/capture.mac")"
+echo "[setup] daemon mac=$D_MAC capture mac=$C_MAC"
+
+SINK_PIDFILE="$OUT/net/sinkhole.pid"
+"${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" sinkhole-start \
+    "$C_NS" "$(id -u)" "$(id -g)" \
+    "$SCRIPT_DIR/capture_sinkhole.py" "$SINK_PIDFILE" "$OUT/net/sinkhole.stderr.log" -- \
+    --dns-address 10.213.0.1 \
+    --dns-address6 fd42:6b73:6175:6469::1 \
+    --tcp-address 10.213.0.1 \
+    --tcp-address6 fd42:6b73:6175:6469::1 \
+    --answer-ip 10.213.0.1 \
+    --dns-log "$OUT/net/dns.jsonl" \
+    --tcp-log "$OUT/net/tcp.jsonl" \
+    --ready-file "$OUT/net/sinkhole.ready"
+for _ in $(seq 1 60); do
+    [[ -s "$OUT/net/sinkhole.ready" ]] && break
+    sleep 0.1
+done
+if [[ ! -s "$OUT/net/sinkhole.ready" ]]; then
+    echo "error: DNS/TCP sinkhole did not become ready" >&2
+    cat "$OUT/net/sinkhole.stderr.log" >&2 || true
+    exit 2
+fi
+echo "[setup] sinkhole ready"
+
+if [[ -S /run/dbus/system_bus_socket ]]; then
+    SYS_MON_PIDFILE="$OUT/dbus/system.monitor.pid"
+    if "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" system-monitor-start \
+        "$OUT/dbus/system.monitor.log" "$SYS_MON_PIDFILE"; then
+        SYS_MON_STATE="enabled"
+        if grep -qE "Falling back to eavesdropping|Failed to become monitor" "$OUT/dbus/system.monitor.log" 2>/dev/null; then
+            SYS_MON_STATE="eavesdrop-fallback"
+            echo "[warn] system bus monitor could not become a full monitor; using eavesdropping" >&2
+        fi
+    elif [[ "$ALLOW_UNMONITORED_SYSTEM_BUS" -eq 1 ]]; then
+        SYS_MON_STATE="unavailable-allowed"
+        echo "[warn] system bus monitor unavailable; continuing because --allow-unmonitored-system-bus was passed" >&2
+    else
+        echo "error: system bus monitor is mandatory." >&2
+        echo "       Use --allow-unmonitored-system-bus only for a documented exception." >&2
+        exit 2
+    fi
+else
+    SYS_MON_STATE="absent"
+    echo "[warn] no /run/dbus/system_bus_socket; system bus monitor not applicable" >&2
+fi
+
+start_capture() {
+    local pcap="$1" log="$2"
+    CAP_PIDFILE="${pcap}.pid"
+    "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" capture-start "$C_NS" "$C_IF" "$pcap" "$log" || exit 2
+}
+
+stop_capture() {
+    local pcap="$1"
+    if [[ -n "${CAP_PIDFILE}" ]]; then
+        "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" capture-stop "$CAP_PIDFILE" || true
+        CAP_PIDFILE=""
+    fi
+    local size
+    size="$(stat -c %s "$pcap" 2>/dev/null || echo 0)"
+    if [[ "$size" -lt 24 ]]; then
+        echo "error: packet capture is missing or empty: $pcap" >&2
+        cat "${pcap}.log" 2>/dev/null >&2 || true
+        exit 2
+    fi
+}
+
+TRACE_EVENTS="%network,%process,openat,open,memfd_create,io_uring_setup,io_uring_enter,io_uring_register,bpf,init_module,finit_module,ptrace,unshare,setns,keyctl,add_key,request_key,mount,pivot_root,chroot"
+for extra in openat2 execveat pidfd_getfd process_vm_readv process_vm_writev sendmmsg recvmmsg sendfile splice ioctl; do
+    if strace -qq -e trace="$extra" /bin/true >/dev/null 2>&1; then
+        TRACE_EVENTS+=",$extra"
+    fi
+done
+
 BIN="$BINARY"
+BUILD_TRACED=0
 if [[ -n "$BIN" ]]; then
     BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
     [[ -f "$BIN" ]] || { echo "error: --binary is not a file: $BIN" >&2; exit 2; }
@@ -106,15 +334,35 @@ elif [[ "$MODE" == "daemon" ]]; then
         git -C "$REPO" archive --format=tar "$COMMIT" | tar -x -C "$OUT/src" || {
             echo "error: git archive failed" >&2; exit 2;
         }
-        echo "[build] cargo fetch --locked (network allowed only for this step)"
-        cargo fetch --locked --manifest-path "$OUT/src/Cargo.toml" || {
-            echo "error: cargo fetch failed; run with network access or pre-populate CARGO_HOME" >&2; exit 2;
+        echo "[build] cargo fetch --locked under strace (host network)"
+        (
+            cd "$OUT/src" || exit 2
+            CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+                strace -ff -ttt -s 256 -v -o "$OUT/build/fetch.strace" -e trace=%network \
+                cargo fetch --locked
+        ) >"$OUT/build/fetch.log" 2>&1 || {
+            echo "error: cargo fetch failed; see $OUT/build/fetch.log" >&2
+            tail -n 40 "$OUT/build/fetch.log" >&2 || true
+            exit 2
         }
-        echo "[build] cargo build --release --locked --offline"
-        CARGO_TARGET_DIR="$OUT/target" cargo build --release --locked --offline \
-            --manifest-path "$OUT/src/Cargo.toml" || {
-            echo "error: release build failed" >&2; exit 2;
+        echo "[build] cargo build --release --locked --offline inside $D_NS under capture"
+        start_capture "$OUT/pcap/build.pcap" "$OUT/pcap/build.tcpdump.log"
+        (
+            "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" run-as "$D_NS" "$(id -u)" "$(id -g)" -- \
+                env HOME="$OUT/home" \
+                    CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+                    CARGO_TARGET_DIR="$OUT/target" \
+                    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+                    strace -ff -ttt -s 256 -v -o "$OUT/build/build.strace" -e trace=%network \
+                    cargo build --release --locked --offline --manifest-path "$OUT/src/Cargo.toml"
+        ) >"$OUT/build/build.log" 2>&1 || {
+            echo "error: release build failed; see $OUT/build/build.log" >&2
+            tail -n 60 "$OUT/build/build.log" >&2 || true
+            stop_capture "$OUT/pcap/build.pcap"
+            exit 2
         }
+        stop_capture "$OUT/pcap/build.pcap"
+        BUILD_TRACED=1
     fi
     BIN="$OUT/target/release/kanata-switcher"
     [[ -f "$BIN" ]] || { echo "error: built binary not found: $BIN" >&2; exit 2; }
@@ -138,6 +386,10 @@ DIRTY="$(git -C "$REPO" status --porcelain 2>/dev/null | head -n 20 | tr '\n' ';
 CARGO_VERSION="$(cargo --version 2>/dev/null || true)"
 RUSTC_VERSION="$(rustc --version 2>/dev/null || true)"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+SESSION_BUS_KIND="private"
+if [[ "$SCENARIO" == "host-desktop" ]]; then
+    SESSION_BUS_KIND="host"
+fi
 
 META_MODE="$MODE" META_BIN="$BIN" META_REPO="$REPO" META_OUT="$OUT" \
 META_COMMIT="$COMMIT" META_TAG="$TAG" META_DIRTY="$DIRTY" \
@@ -145,6 +397,11 @@ META_BIN_SHA="$BIN_SHA" META_LOCK_SHA="$LOCK_SHA" \
 META_HOST="$HOST" META_PORT="$PORT" META_SCENARIO="$SCENARIO" \
 META_COMMAND="$COMMAND" META_TIMESTAMP="$TIMESTAMP" \
 META_CARGO="$CARGO_VERSION" META_RUSTC="$RUSTC_VERSION" \
+META_D_MAC="$D_MAC" META_C_MAC="$C_MAC" \
+META_D_NS="$D_NS" META_C_NS="$C_NS" META_D_IF="$D_IF" META_C_IF="$C_IF" \
+META_TCPDUMP="$TCPDUMP_VERSION" META_IP="$IP_VERSION" \
+META_SYS_MON="$SYS_MON_STATE" META_BUILD_TRACED="$BUILD_TRACED" \
+META_SESSION_BUS="$SESSION_BUS_KIND" META_TRACE_EVENTS="$TRACE_EVENTS" \
 python3 - "$OUT/meta.json" <<'PY'
 import json, os, sys
 keys = {
@@ -155,11 +412,25 @@ keys = {
     "expected_port": "META_PORT", "scenario": "META_SCENARIO",
     "command": "META_COMMAND", "started_at": "META_TIMESTAMP",
     "cargo": "META_CARGO", "rustc": "META_RUSTC",
+    "daemon_mac": "META_D_MAC", "capture_mac": "META_C_MAC",
+    "daemon_ns": "META_D_NS", "capture_ns": "META_C_NS",
+    "daemon_if": "META_D_IF", "capture_if": "META_C_IF",
+    "tcpdump": "META_TCPDUMP", "ip": "META_IP",
+    "system_bus_monitor": "META_SYS_MON",
+    "build_traced": "META_BUILD_TRACED",
+    "session_bus": "META_SESSION_BUS",
+    "trace_events": "META_TRACE_EVENTS",
 }
 data = {key: os.environ.get(env, "") for key, env in keys.items()}
 data["expected_port"] = int(data["expected_port"] or 0)
-data["network_namespace"] = "bwrap --unshare-net (loopback only)"
-data["privileged_capture"] = False
+data["build_traced"] = data["build_traced"] == "1"
+data["network_namespace"] = "veth pair; no NAT; sinkhole capture"
+data["privileged_capture"] = True
+data["daemon_ip4"] = "10.213.0.2"
+data["capture_ip4"] = "10.213.0.1"
+data["daemon_ip6"] = "fd42:6b73:6175:6469::2"
+data["capture_ip6"] = "fd42:6b73:6175:6469::1"
+data["pcap_files"] = ["daemon.pcap"] + (["build.pcap"] if data["build_traced"] else [])
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
     json.dump(data, handle, indent=2, sort_keys=True)
     handle.write("\n")
@@ -178,8 +449,9 @@ cat > "$OUT/inner.sh" <<'INNER_EOF'
 #!/usr/bin/env bash
 set -uo pipefail
 OUT="$1"; BIN="$2"; MODE="$3"; PORT="$4"; HOST="$5"; TIMEOUT="$6"; SCENARIO="$7"; SKILL_DIR="$8"; COMMAND="$9"
+D_MAC="${10}"; C_MAC="${11}"
 
-mkdir -p "$OUT"/{strace,snapshots,mock,daemon,home,runtime,tmp,logs}
+mkdir -p "$OUT"/{strace,snapshots,mock,daemon,home,runtime,tmp,logs,dbus}
 export HOME="$OUT/home"
 export XDG_CONFIG_HOME="$OUT/home/.config"
 export XDG_CACHE_HOME="$OUT/home/.cache"
@@ -199,43 +471,51 @@ elif [[ "$SCENARIO" == "minimal" ]]; then
     unset XDG_CURRENT_DESKTOP WAYLAND_DISPLAY DISPLAY KDE_SESSION_VERSION GNOME_SETUP_DISPLAY
 fi
 
-STRACE_PID=""
-DAEMON_PID=""
+BUS_PID=""
+MON_PID=""
 MOCK_PID=""
+RUN_PID=""
 EXIT_CODE=0
-TRACE_EVENTS="%network,%process,openat,open,memfd_create,io_uring_setup,io_uring_enter,io_uring_register,bpf,init_module,finit_module,ptrace,unshare,setns,keyctl,add_key,request_key,mount,pivot_root,chroot"
 
-snapshot_loop() {
-    local i=0
-    while kill -0 "$STRACE_PID" 2>/dev/null; do
-        i=$((i + 1))
-        ss -tanp > "$OUT/snapshots/ss-tcp-$i.txt" 2>/dev/null || true
-        ss -uanp > "$OUT/snapshots/ss-udp-$i.txt" 2>/dev/null || true
-        ss -lxnp > "$OUT/snapshots/ss-unix-$i.txt" 2>/dev/null || true
-        for table in tcp tcp6 udp udp6 packet netlink unix raw raw6; do
-            if [[ -r "/proc/net/$table" ]]; then
-                cp "/proc/net/$table" "$OUT/snapshots/procnet-$table-$i.txt" 2>/dev/null || true
-            fi
-        done
-        sleep 0.5
-    done
+stop_bus() {
+    if [[ -n "$MON_PID" ]]; then
+        kill -TERM "$MON_PID" 2>/dev/null || true
+        wait "$MON_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$BUS_PID" ]]; then
+        kill -TERM "$BUS_PID" 2>/dev/null || true
+        for _ in $(seq 1 20); do kill -0 "$BUS_PID" 2>/dev/null || break; sleep 0.1; done
+        kill -KILL "$BUS_PID" 2>/dev/null || true
+    fi
 }
 
-stop_daemon() {
-    if [[ -n "$DAEMON_PID" ]]; then
-        kill -TERM "$DAEMON_PID" 2>/dev/null || true
+if [[ "$SCENARIO" == "host-desktop" ]]; then
+    if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+        echo "error: host-desktop requires DBUS_SESSION_BUS_ADDRESS" >&2
+        exit 2
     fi
-    for _ in $(seq 1 20); do
-        kill -0 "$STRACE_PID" 2>/dev/null || break
-        sleep 0.25
+else
+    BUS_PID="$(dbus-daemon --config-file "$OUT/dbus/session.conf" --fork --print-pid=1)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$OUT/dbus/session.sock"
+    for _ in $(seq 1 40); do
+        [[ -S "$OUT/dbus/session.sock" ]] && break
+        sleep 0.1
     done
-    if [[ -n "$DAEMON_PID" ]] && kill -0 "$DAEMON_PID" 2>/dev/null; then
-        kill -KILL "$DAEMON_PID" 2>/dev/null || true
+    if [[ ! -S "$OUT/dbus/session.sock" ]]; then
+        echo "error: private session bus did not start" >&2
+        exit 2
     fi
-    if [[ -n "$STRACE_PID" ]] && kill -0 "$STRACE_PID" 2>/dev/null; then
-        kill -KILL "$STRACE_PID" 2>/dev/null || true
-    fi
-}
+fi
+
+dbus-monitor --address "$DBUS_SESSION_BUS_ADDRESS" > "$OUT/dbus/session.monitor.log" 2>&1 &
+MON_PID=$!
+sleep 0.3
+if ! kill -0 "$MON_PID" 2>/dev/null; then
+    echo "error: session bus monitor failed" >&2
+    cat "$OUT/dbus/session.monitor.log" >&2 || true
+    stop_bus
+    exit 2
+fi
 
 if [[ "$MODE" == "daemon" ]]; then
     python3 "$SKILL_DIR/scripts/mock_kanata.py" \
@@ -250,78 +530,153 @@ if [[ "$MODE" == "daemon" ]]; then
     if [[ ! -s "$OUT/mock/port" ]]; then
         echo "error: mock kanata did not start" >&2
         kill -TERM "$MOCK_PID" 2>/dev/null || true
+        stop_bus
         exit 2
     fi
+fi
 
+BWRAP_ARGS=(
+    --unshare-pid --unshare-ipc --unshare-uts
+    --die-with-parent --new-session
+    --ro-bind / /
+    --dev /dev
+    --proc /proc
+    --tmpfs /tmp
+    --dir /tmp/opencode
+    --dir "$OUT"
+    --bind "$OUT" "$OUT"
+    --ro-bind "$OUT/net/resolv.conf" /etc/resolv.conf
+    --ro-bind "$OUT/net/hosts" /etc/hosts
+    --tmpfs /dev/shm
+    --setenv HOME "$OUT/home"
+    --setenv XDG_CONFIG_HOME "$OUT/home/.config"
+    --setenv XDG_CACHE_HOME "$OUT/home/.cache"
+    --setenv XDG_DATA_HOME "$OUT/home/.local/share"
+    --setenv TMPDIR "$OUT/tmp"
+    --setenv PATH "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    --setenv DBUS_SESSION_BUS_ADDRESS "$DBUS_SESSION_BUS_ADDRESS"
+    --setenv NO_AT_BRIDGE "1"
+    --setenv RUST_BACKTRACE "1"
+    --chdir "$OUT"
+)
+if [[ -S /run/dbus/system_bus_socket ]]; then
+    BWRAP_ARGS+=(--bind /run/dbus/system_bus_socket /run/dbus/system_bus_socket)
+fi
+if [[ "$SCENARIO" == "host-desktop" ]]; then
+    BWRAP_ARGS+=(--setenv XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}")
+    if [[ -d /tmp/.X11-unix ]]; then
+        BWRAP_ARGS+=(--ro-bind /tmp/.X11-unix /tmp/.X11-unix)
+    fi
+    if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        BWRAP_ARGS+=(--setenv WAYLAND_DISPLAY "$WAYLAND_DISPLAY")
+    fi
+    if [[ -n "${DISPLAY:-}" ]]; then
+        BWRAP_ARGS+=(--setenv DISPLAY "$DISPLAY")
+    fi
+else
+    BWRAP_ARGS+=(--setenv XDG_RUNTIME_DIR "$OUT/runtime")
+fi
+
+snapshot_loop() {
+    local i=0
+    while kill -0 "$RUN_PID" 2>/dev/null; do
+        i=$((i + 1))
+        ss -tanp > "$OUT/snapshots/ss-tcp-$i.txt" 2>/dev/null || true
+        ss -uanp > "$OUT/snapshots/ss-udp-$i.txt" 2>/dev/null || true
+        ss -lxnp > "$OUT/snapshots/ss-unix-$i.txt" 2>/dev/null || true
+        for table in tcp tcp6 udp udp6 packet netlink unix raw raw6; do
+            if [[ -r "/proc/net/$table" ]]; then
+                cp "/proc/net/$table" "$OUT/snapshots/procnet-$table-$i.txt" 2>/dev/null || true
+            fi
+        done
+        sleep 0.5
+    done
+}
+
+if [[ "$MODE" == "daemon" ]]; then
     DAEMON_ARGS=(--host "$HOST" --port "$PORT" --dbus-suffix audit --no-install-gnome-extension)
     if [[ "$SCENARIO" == "minimal" ]]; then
         DAEMON_ARGS+=(--no-indicator)
     fi
-    strace -ff -ttt -s 512 -v -o "$OUT/strace/daemon" -e trace="$TRACE_EVENTS" \
-        "$BIN" "${DAEMON_ARGS[@]}" >"$OUT/daemon/stdout.log" 2>"$OUT/daemon/stderr.log" &
-    STRACE_PID=$!
-    for _ in $(seq 1 40); do
-        DAEMON_PID="$(pgrep -P "$STRACE_PID" | head -n 1 || true)"
-        [[ -n "$DAEMON_PID" ]] && break
-        sleep 0.25
-    done
-    if [[ -z "$DAEMON_PID" ]]; then
-        DAEMON_PID="$(pgrep -f "$BIN" | head -n 1 || true)"
-    fi
-    snapshot_loop &
-    SNAPSHOT_PID=$!
-    sleep 2
-    if command -v gdbus >/dev/null 2>&1; then
-        for _ in $(seq 1 10); do
-            if gdbus call --session \
-                --dest com.github.kanata.Switcher.instances.audit \
-                --object-path /com/github/kanata/Switcher \
-                --method com.github.kanata.Switcher.GetStatus \
-                >>"$OUT/logs/gdbus.log" 2>&1; then
-                break
-            fi
-            sleep 0.5
-        done
-    fi
-    for _ in $(seq 1 "$TIMEOUT"); do
-        kill -0 "$STRACE_PID" 2>/dev/null || break
-        sleep 1
-    done
-    stop_daemon
-    wait "$STRACE_PID" 2>/dev/null || EXIT_CODE=$?
-    kill "$SNAPSHOT_PID" 2>/dev/null || true
-    wait "$SNAPSHOT_PID" 2>/dev/null || true
-    kill -TERM "$MOCK_PID" 2>/dev/null || true
-    wait "$MOCK_PID" 2>/dev/null || true
+    bwrap "${BWRAP_ARGS[@]}" \
+        strace -ff -ttt -s 512 -v -o "$OUT/strace/daemon" -e trace="$AUDIT_TRACE_EVENTS" \
+        timeout -s TERM -k 5 "$TIMEOUT" "$BIN" "${DAEMON_ARGS[@]}" \
+        >"$OUT/daemon/stdout.log" 2>"$OUT/daemon/stderr.log" &
+    RUN_PID=$!
 else
-    strace -ff -ttt -s 512 -v -o "$OUT/strace/daemon" -e trace="$TRACE_EVENTS" \
-        bash -c "$COMMAND" >"$OUT/daemon/stdout.log" 2>"$OUT/daemon/stderr.log" &
-    STRACE_PID=$!
-    for _ in $(seq 1 40); do
-        DAEMON_PID="$(pgrep -P "$STRACE_PID" | head -n 1 || true)"
-        [[ -n "$DAEMON_PID" ]] && break
-        sleep 0.05
-    done
-    snapshot_loop &
-    SNAPSHOT_PID=$!
-    for _ in $(seq 1 "$TIMEOUT"); do
-        kill -0 "$STRACE_PID" 2>/dev/null || break
-        sleep 1
-    done
-    if kill -0 "$STRACE_PID" 2>/dev/null; then
-        DAEMON_PID="$(pgrep -P "$STRACE_PID" | head -n 1 || true)"
-        stop_daemon
-    fi
-    wait "$STRACE_PID" 2>/dev/null || EXIT_CODE=$?
-    kill "$SNAPSHOT_PID" 2>/dev/null || true
-    wait "$SNAPSHOT_PID" 2>/dev/null || true
+    bwrap "${BWRAP_ARGS[@]}" \
+        strace -ff -ttt -s 512 -v -o "$OUT/strace/daemon" -e trace="$AUDIT_TRACE_EVENTS" \
+        timeout -s TERM -k 2 "$TIMEOUT" bash -c "$COMMAND" \
+        >"$OUT/daemon/stdout.log" 2>"$OUT/daemon/stderr.log" &
+    RUN_PID=$!
 fi
 
+for _ in $(seq 1 80); do
+    compgen -G "$OUT/strace/daemon.*" >/dev/null && break
+    kill -0 "$RUN_PID" 2>/dev/null || break
+    sleep 0.1
+done
+
+DAEMON_PID=""
+if compgen -G "$OUT/strace/daemon.*" >/dev/null; then
+    for f in "$OUT"/strace/daemon.*; do
+        if [[ -n "$BIN" ]] && grep -q "execve(\"$BIN\"" "$f" 2>/dev/null; then
+            DAEMON_PID="${f##*.}"
+            break
+        fi
+    done
+    if [[ -z "$DAEMON_PID" ]]; then
+        DAEMON_PID="$(for f in "$OUT"/strace/daemon.*; do echo "${f##*.}"; done | sort -n | head -n 1)"
+    fi
+fi
+DAEMON_HOST_PID=""
+if [[ -n "$BIN" ]]; then
+    DAEMON_HOST_PID="$(pgrep -f "$BIN" 2>/dev/null | head -n 1 || true)"
+fi
+
+snapshot_loop &
+SNAP_PID=$!
+
+if [[ "$MODE" == "daemon" ]]; then
+    for _ in $(seq 1 120); do
+        if gdbus call --session \
+            --dest org.freedesktop.DBus \
+            --object-path /org/freedesktop/DBus \
+            --method org.freedesktop.DBus.NameHasOwner \
+            com.github.kanata.Switcher.instances.audit 2>/dev/null | grep -q true; then
+            break
+        fi
+        kill -0 "$RUN_PID" 2>/dev/null || break
+        sleep 0.25
+    done
+    if gdbus call --session \
+        --dest com.github.kanata.Switcher.instances.audit \
+        --object-path /com/github/kanata/Switcher \
+        --method com.github.kanata.Switcher.GetStatus \
+        >>"$OUT/logs/gdbus.log" 2>&1; then
+        :
+    fi
+fi
+
+wait "$RUN_PID" 2>/dev/null
+EXIT_CODE=$?
+kill "$SNAP_PID" 2>/dev/null || true
+wait "$SNAP_PID" 2>/dev/null || true
+
+if [[ -n "$MOCK_PID" ]]; then
+    kill -TERM "$MOCK_PID" 2>/dev/null || true
+    wait "$MOCK_PID" 2>/dev/null || true
+fi
+stop_bus
+
 MODE="$MODE" BIN="$BIN" PORT="$PORT" HOST="$HOST" SCENARIO="$SCENARIO" \
-DAEMON_PID="$DAEMON_PID" STRACE_PID="$STRACE_PID" MOCK_PID="$MOCK_PID" EXIT_CODE="$EXIT_CODE" \
+DAEMON_PID="$DAEMON_PID" DAEMON_HOST_PID="$DAEMON_HOST_PID" \
+RUN_PID="$RUN_PID" MOCK_PID="$MOCK_PID" EXIT_CODE="$EXIT_CODE" \
+SESSION_BUS="$DBUS_SESSION_BUS_ADDRESS" \
 python3 - "$OUT/daemon/runtime.json" <<'PY'
 import json, os, sys
-keys = ["MODE", "BIN", "PORT", "HOST", "SCENARIO", "DAEMON_PID", "STRACE_PID", "MOCK_PID", "EXIT_CODE"]
+keys = ["MODE", "BIN", "PORT", "HOST", "SCENARIO", "DAEMON_PID", "DAEMON_HOST_PID",
+        "RUN_PID", "MOCK_PID", "EXIT_CODE", "SESSION_BUS"]
 data = {key.lower(): os.environ.get(key, "") for key in keys}
 data["exit_code"] = int(data["exit_code"] or 0)
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
@@ -331,50 +686,37 @@ PY
 INNER_EOF
 chmod +x "$OUT/inner.sh"
 
-BWRAP_ARGS=(
-    --unshare-net --unshare-pid --unshare-ipc --unshare-uts
-    --die-with-parent --new-session
-    --ro-bind / /
-    --dev /dev
-    --proc /proc
-    --tmpfs /tmp
-    --dir /tmp/opencode
-    --dir "$OUT"
-    --bind "$OUT" "$OUT"
-    --dir /dev/shm
-    --tmpfs /dev/shm
-    --setenv HOME "$OUT/home"
-    --setenv XDG_CONFIG_HOME "$OUT/home/.config"
-    --setenv XDG_CACHE_HOME "$OUT/home/.cache"
-    --setenv XDG_DATA_HOME "$OUT/home/.local/share"
-    --setenv TMPDIR "$OUT/tmp"
-    --setenv PATH "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    --chdir "$OUT"
-)
-if [[ "$SCENARIO" == "host-desktop" ]]; then
-    HOST_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-    if [[ ! -d "$HOST_RUNTIME" ]]; then
-        echo "error: --scenario host-desktop requires an existing XDG_RUNTIME_DIR ($HOST_RUNTIME)" >&2
-        exit 2
-    fi
-    BWRAP_ARGS+=(--setenv XDG_RUNTIME_DIR "$HOST_RUNTIME")
-    if [[ -d /tmp/.X11-unix ]]; then
-        BWRAP_ARGS+=(--dir /tmp/.X11-unix --ro-bind /tmp/.X11-unix /tmp/.X11-unix)
-    fi
-else
-    BWRAP_ARGS+=(--setenv XDG_RUNTIME_DIR "$OUT/runtime")
-fi
+start_capture "$OUT/pcap/daemon.pcap" "$OUT/pcap/daemon.tcpdump.log"
 
 echo "[run] scenario=$SCENARIO mode=$MODE timeout=${TIMEOUT}s out=$OUT"
 if [[ "$SCENARIO" == "host-desktop" ]]; then
-    bwrap "${BWRAP_ARGS[@]}" "$OUT/inner.sh" \
-        "$OUT" "$BIN" "$MODE" "$PORT" "$HOST" "$TIMEOUT" "$SCENARIO" "$SKILL_DIR" "$COMMAND"
+    "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" run-as "$D_NS" "$(id -u)" "$(id -g)" -- \
+        env HOME="$OUT/home" \
+            XDG_CONFIG_HOME="$OUT/home/.config" \
+            XDG_CACHE_HOME="$OUT/home/.cache" \
+            XDG_DATA_HOME="$OUT/home/.local/share" \
+            TMPDIR="$OUT/tmp" \
+            XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+            DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}" \
+            PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            AUDIT_TRACE_EVENTS="$TRACE_EVENTS" \
+            "$OUT/inner.sh" "$OUT" "$BIN" "$MODE" "$PORT" "$HOST" "$TIMEOUT" "$SCENARIO" "$SKILL_DIR" "$COMMAND" "$D_MAC" "$C_MAC"
     RUN_STATUS=$?
 else
-    bwrap "${BWRAP_ARGS[@]}" dbus-run-session -- "$OUT/inner.sh" \
-        "$OUT" "$BIN" "$MODE" "$PORT" "$HOST" "$TIMEOUT" "$SCENARIO" "$SKILL_DIR" "$COMMAND"
+    "${SUDO[@]}" "$SCRIPT_DIR/netns_admin.sh" run-as "$D_NS" "$(id -u)" "$(id -g)" -- \
+        env HOME="$OUT/home" \
+            XDG_CONFIG_HOME="$OUT/home/.config" \
+            XDG_CACHE_HOME="$OUT/home/.cache" \
+            XDG_DATA_HOME="$OUT/home/.local/share" \
+            TMPDIR="$OUT/tmp" \
+            XDG_RUNTIME_DIR="$OUT/runtime" \
+            PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            AUDIT_TRACE_EVENTS="$TRACE_EVENTS" \
+            "$OUT/inner.sh" "$OUT" "$BIN" "$MODE" "$PORT" "$HOST" "$TIMEOUT" "$SCENARIO" "$SKILL_DIR" "$COMMAND" "$D_MAC" "$C_MAC"
     RUN_STATUS=$?
 fi
+
+stop_capture "$OUT/pcap/daemon.pcap"
 
 if [[ -f "$OUT/daemon/runtime.json" ]]; then
     python3 - "$OUT/meta.json" "$OUT/daemon/runtime.json" <<'PY'
@@ -394,16 +736,41 @@ fi
 
 if [[ ! -d "$OUT/strace" ]] || ! compgen -G "$OUT/strace/daemon.*" >/dev/null; then
     echo "error: no strace logs were produced (bwrap/strace failed; status=$RUN_STATUS)" >&2
+    echo "       see $OUT/daemon/stderr.log" >&2
+    tail -n 40 "$OUT/daemon/stderr.log" >&2 || true
     exit 2
 fi
 
-echo "[analyze] parsing strace, ss, /proc/net, and mock logs"
+echo "[analyze] parsing strace, pcap, sinkhole, D-Bus, build, and mock logs"
 python3 "$SKILL_DIR/scripts/analyze_dynamic_logs.py" "$OUT" \
+    --profile "$MODE" \
     --expected-host "$HOST" --expected-port "$PORT" \
+    --unix-glob "$OUT/dbus/session.sock" \
+    --unix-glob "$OUT/runtime/*" \
     --json "$OUT/report.json" --markdown "$OUT/report.md"
 ANALYZE_STATUS=$?
 
+if [[ "$RUN_GNOME" -eq 1 ]]; then
+    echo "[gnome] running the nested GNOME Shell extension audit"
+    GNOME_STATUS=0
+    GNOME_ARGS=(--repo "$REPO" --out "$OUT/gnome" --timeout "$TIMEOUT")
+    if [[ "$ALLOW_UNMONITORED_SYSTEM_BUS" -eq 1 ]]; then
+        GNOME_ARGS+=(--allow-unmonitored-system-bus)
+    fi
+    "$SCRIPT_DIR/run_gnome_extension_audit.sh" "${GNOME_ARGS[@]}" || GNOME_STATUS=$?
+    if [[ "$GNOME_STATUS" -eq 1 ]]; then
+        echo "[gnome] findings reported in $OUT/gnome/report.md"
+        [[ "$ANALYZE_STATUS" -eq 0 ]] && ANALYZE_STATUS=1
+    elif [[ "$GNOME_STATUS" -ne 0 ]]; then
+        echo "error: GNOME extension audit failed to run; see $OUT/gnome" >&2
+        ANALYZE_STATUS=2
+    fi
+fi
+
 echo "[done] evidence: $OUT"
 echo "[done] report: $OUT/report.md  json: $OUT/report.json"
+if [[ "$RUN_GNOME" -eq 1 ]]; then
+    echo "[done] GNOME report: $OUT/gnome/report.md"
+fi
 echo "[note] evidence is kept for review; remove $OUT manually when finished"
 exit "$ANALYZE_STATUS"

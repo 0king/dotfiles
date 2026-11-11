@@ -82,10 +82,12 @@ prove the absence of all network traffic:
    `$DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` can name a TCP bus address; zbus and
    Gio would honor it. That is an operator/environment choice, not code in this
    tree.
-5. **Runtime trace is opt-in.** The static baseline does not claim a runtime
-   trace. `run_dynamic_network_audit.sh` provides a rootless `strace`/`ss`
-   trace when explicitly run with an isolated network namespace; its coverage
-   is limited to exercised paths.
+5. **Runtime trace is opt-in and privileged.** The static baseline does not
+   claim a runtime trace. `run_dynamic_network_audit.sh` runs the target in a
+   veth-isolated network namespace with mandatory `tcpdump`, DNS/TCP sinkholes,
+   D-Bus monitors, and `strace` when explicitly requested; its coverage is
+   limited to exercised paths and it fails closed without root/`sudo` or
+   `tcpdump`.
 
 ## Runtime IP network
 
@@ -269,36 +271,64 @@ new checkout.
 
 ## Runtime verification notes
 
-The default harness is rootless `bwrap --unshare-net` + `strace -ff` with a
-private session bus and a loopback mock kanata server:
+The harness requires root/`sudo` and `tcpdump`. It creates a daemon namespace
+and a capture namespace joined by a veth pair, with no NAT and no route to the
+real network:
 
 ```bash
 ~/.config/ai/skills/audit-kanata-switcher-threat/scripts/run_dynamic_network_audit.sh \
   --repo <repo> --out /tmp/opencode/ks-dynamic --timeout 15
+
+# Extension audit in a nested headless Shell:
+~/.config/ai/skills/audit-kanata-switcher-threat/scripts/run_dynamic_network_audit.sh \
+  --repo <repo> --out /tmp/opencode/ks-dynamic --timeout 15 --gnome-extension
 ```
 
-1. The namespace has only `lo` (`127.0.0.0/8`, `::1`). There is no route to a
-   remote network, so a non-loopback attempt is captured by `connect()` even
-   when it fails.
-2. `strace` traces `%network`, `%process`, `openat`, `memfd_create`,
+1. The daemon namespace has a default route only to the capture namespace. The
+   capture namespace has no forwarding and no default route, so packets cannot
+   leave the veth pair.
+2. `tcpdump` on the capture-side veth records every packet. Any packet sourced
+   by the daemon MAC/IP is target egress, including DNS queries and failed
+   connection attempts.
+3. DNS and TCP sinkholes on the capture side make the network look usable and
+   log every query, connection, and payload preview to JSONL. Per-namespace
+   `resolv.conf` files point at the sinkhole, so a host resolver stub cannot
+   swallow queries.
+4. `strace` traces `%network`, `%process`, `openat`, `memfd_create`,
    `io_uring_*`, `bpf`, module load, `ptrace`, namespace, keyring, and mount
-   syscalls for the daemon and every child.
-3. `ss` and `/proc/net/{tcp,tcp6,udp,udp6,packet,netlink,unix,raw,raw6}` are
+   syscalls for the daemon and every child, plus `sendmmsg`/`recvmmsg`/
+   `sendfile`/`splice` when supported.
+5. `ss` and `/proc/net/{tcp,tcp6,udp,udp6,packet,netlink,unix,raw,raw6}` are
    snapshotted while the daemon runs; this catches listeners and sockets that a
    syscall-only trace might miss.
-4. Expect exactly the configured kanata TCP connection; everything else should
+6. The private session bus is monitored with `dbus-monitor`; the system bus is
+   monitored as root when present. Sensitive destinations, sensitive methods,
+   and URLs sent in method calls are findings even though D-Bus runs over a
+   Unix socket.
+7. `cargo fetch` is traced on the host network; `cargo build --offline` is
+   traced inside the veth namespace with its own pcap. Any IP activity during
+   the offline build is critical.
+8. Expect exactly the configured kanata TCP connection; everything else should
    be `AF_UNIX` (D-Bus/Wayland/X11) or local file/exec activity. The mock
    kanata listener itself is expected and is not attributed to the daemon.
-5. `--scenario host-desktop` is opt-in and binds the real session bus/display
+9. `--scenario host-desktop` is opt-in and binds the real session bus/display
    into the netns. Do not use it on an untrusted checkout; it can drive the
    live desktop.
-6. Run `scripts/selftest_dynamic.sh` after changing the harness. It must detect
-   non-loopback TCP, UDP/DNS, `AF_PACKET`, an IP listener, and a child-process
-   connect.
+10. Run `scripts/selftest_dynamic.sh` after changing the harness. The synthetic
+    layer (`--synthetic-only`) needs no root; the harness layer runs probes
+    through the real veth+tcpdump+bwrap path and needs root.
 
-The optional privileged layer is packet capture (`tcpdump`/`bpftrace`) around
-the same harness. It is not required and must be reported separately; the
-default run does not claim packet-level capture.
+The GNOME sub-audit installs the extension as a private system extension,
+sets `allow-extension-installation false` to suppress the
+`extensions.gnome.org` update check, disables other system mode extensions, and
+starts the nested Shell under `env -i`. This removes host IBus/keyring/SSH
+leaks and core-Shell update traffic. `memfd_create` is a note in that profile
+because Mutter/Mesa/GLib/PulseAudio use it; `DYN-MEMFD-EXEC` (execution from a
+memfd) remains critical.
+
+There is no separate optional packet-capture layer: capture is part of the
+harness, and a run without it is not a privileged dynamic audit. If root or
+`tcpdump` is unavailable, report the dynamic layer as not performed.
 
 ## Dependency surface
 

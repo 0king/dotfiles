@@ -282,6 +282,188 @@
       "notes": "Reads/writes the SNI visibility preference via the standard dconf CLI."
     }
   ],
+  "expected_exec_gnome": [
+    {
+      "command": "gnome-shell",
+      "notes": "Target compositor under audit."
+    },
+    {
+      "command": "gjs",
+      "notes": "GNOME Shell JS runtime and D-Bus activated scripts."
+    },
+    {
+      "command": "dbus-daemon",
+      "notes": "Private session bus and activation."
+    },
+    {
+      "command": "dbus-monitor",
+      "notes": "Audit monitor, not the extension."
+    },
+    {
+      "command": "at-spi-bus-launcher",
+      "notes": "Accessibility bus activated by the Shell."
+    },
+    {
+      "command": "at-spi2-registryd",
+      "notes": "Accessibility registry activated by the Shell."
+    },
+    {
+      "command": "gnome-shell-calendar-server",
+      "notes": "Calendar D-Bus service activated by the Shell."
+    },
+    {
+      "command": "goa-daemon",
+      "notes": "GNOME Online Accounts service activated by the Shell."
+    },
+    {
+      "command": "evolution-calendar-factory",
+      "notes": "Evolution data server activated by the Shell."
+    },
+    {
+      "command": "evolution-addressbook-factory",
+      "notes": "Evolution data server activated by the Shell."
+    },
+    {
+      "command": "xdg-desktop-portal",
+      "notes": "Portal frontend activated by the Shell."
+    },
+    {
+      "command": "xdg-desktop-portal-*",
+      "notes": "Portal backends activated by the Shell."
+    },
+    {
+      "command": "xdg-document-portal",
+      "notes": "Document portal activated by the Shell."
+    },
+    {
+      "command": "xdg-permission-store",
+      "notes": "Permission store activated by the Shell."
+    },
+    {
+      "command": "gvfsd",
+      "notes": "GVFS daemon activated by the Shell."
+    },
+    {
+      "command": "gvfsd-*",
+      "notes": "GVFS backends activated by the Shell."
+    },
+    {
+      "command": "gvfs-*",
+      "notes": "GVFS volume monitors activated by gvfsd."
+    },
+    {
+      "command": "dconf-service",
+      "notes": "GSettings/dconf service; the keyfile backend normally avoids it."
+    },
+    {
+      "command": "gnome-shell-portal-helper",
+      "notes": "Shell portal access helper."
+    },
+    {
+      "command": "ibus-*",
+      "notes": "IBus input-method daemon and engines started by the Shell."
+    },
+    {
+      "command": "gnome-keyring-daemon",
+      "notes": "Keyring service activated by the Shell."
+    },
+    {
+      "command": "gcr-ssh-agent",
+      "notes": "SSH agent activated by the keyring service."
+    },
+    {
+      "command": "org.gnome.Shell.Screencast",
+      "notes": "Shell screencast D-Bus service."
+    },
+    {
+      "command": "python3",
+      "notes": "Audit mock daemon."
+    },
+    {
+      "command": "gdbus",
+      "notes": "Audit probe."
+    },
+    {
+      "command": "gsettings",
+      "notes": "Audit pre-enable step."
+    },
+    {
+      "command": "glib-compile-schemas",
+      "notes": "Audit schema compilation."
+    },
+    {
+      "command": "bash",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "sh",
+      "notes": "Audit harness and desktop helpers."
+    },
+    {
+      "command": "env",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "timeout",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "strace",
+      "notes": "Audit tracer."
+    },
+    {
+      "command": "cat",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "grep",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "sed",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "head",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "sort",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "cp",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "stat",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "date",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "sha256sum",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "pgrep",
+      "notes": "Audit harness."
+    },
+    {
+      "command": "ss",
+      "notes": "Audit snapshot."
+    },
+    {
+      "command": "ip",
+      "notes": "Audit network namespace setup."
+    },
+    {
+      "command": "setpriv",
+      "notes": "Audit privilege drop."
+    }
+  ],
   "expected_fs_writes": [
     {
       "id": "build.rs-fs-copy",
@@ -457,6 +639,26 @@
       "notes": "Single workflow, permissions: contents: read, no pull_request_target, no secrets. Action is ref-pinned, not SHA-pinned."
     }
   ],
+  "build_time_network": {
+    "allowed_hosts": [
+      "crates.io",
+      "index.crates.io",
+      "static.crates.io",
+      "github.com",
+      "codeload.github.com",
+      "objects.githubusercontent.com"
+    ],
+    "allowed_ports": [
+      53,
+      80,
+      443
+    ],
+    "notes": [
+      "cargo fetch --locked is traced on the host network; only registry/GitHub hosts and DNS are expected.",
+      "cargo build --release --locked --offline is traced inside the veth namespace; any IP socket there is a critical finding.",
+      "The build pcap must exist and must contain no packet sourced by the daemon netns."
+    ]
+  },
   "expected_dependencies": {
     "lock_sha256": "cf415dcef67e07e262412a460e116a235f210d092d76c702d30c8326b6ac85e1",
     "package_count": 212,
@@ -580,13 +782,21 @@
       "/run/user/*/bus",
       "/run/user/*/wayland-*",
       "/run/user/*/.wayland-*",
+      "/run/user/*/pipewire-*",
+      "/run/user/*/pulse/*",
+      "/run/user/*/at-spi/*",
+      "/run/pipewire/*",
+      "/run/pipewire-*",
+      "/run/pulse/*",
+      "/var/run/pulse/*",
+      "/run/nscd/socket",
+      "/var/run/nscd/socket",
       "/tmp/dbus-*",
       "@/tmp/dbus-*",
       "/tmp/.X11-unix/X*",
       "@/tmp/.X11-unix/X*",
       "/run/dbus/system_bus_socket",
-      "/var/run/dbus/system_bus_socket",
-      "/dev/log"
+      "/var/run/dbus/system_bus_socket"
     ],
     "expected_tcp": [
       {
@@ -633,7 +843,90 @@
       "UDP, raw, AF_PACKET, DNS, and IP listeners are forbidden even on loopback.",
       "AF_NETLINK is local kernel IPC and is reported as informational, not IP egress.",
       "The mock kanata listener on the configured port is expected and is not attributed to the daemon."
-    ]
+    ],
+    "dbus": {
+      "allowed_destinations": [
+        "org.freedesktop.DBus",
+        "org.freedesktop.login1",
+        "org.gnome.Shell",
+        "org.gnome.Shell.Extensions",
+        "com.github.kanata.Switcher",
+        "com.github.kanata.Switcher.instances.audit",
+        "com.github.kanata.Switcher.extensions.GNOME"
+      ],
+      "sensitive_destinations": [
+        "org.freedesktop.portal.",
+        "org.freedesktop.systemd1",
+        "org.freedesktop.NetworkManager",
+        "org.freedesktop.resolve1",
+        "org.freedesktop.Avahi",
+        "org.freedesktop.ModemManager1",
+        "org.freedesktop.Telepathy",
+        "org.freedesktop.Secret",
+        "org.freedesktop.UDisks2",
+        "org.freedesktop.UPower",
+        "org.bluez",
+        "org.gnome.OnlineAccounts",
+        "org.gnome.evolution.",
+        "org.kde.KWin",
+        "org.kde.kwin.",
+        "org.gnome.Shell",
+        "org.gnome.Shell.Extensions"
+      ],
+      "read_only_methods": {
+        "org.gnome.Shell": [
+          "Get",
+          "GetAll",
+          "GetExtensionInfo",
+          "ListExtensions",
+          "GetExtensionState"
+        ],
+        "org.gnome.Shell.Extensions": [
+          "Get",
+          "GetAll",
+          "GetExtensionInfo",
+          "ListExtensions"
+        ]
+      },
+      "sensitive_methods": [
+        "OpenURI",
+        "Launch",
+        "Spawn",
+        "StartTransientUnit",
+        "StartUnit",
+        "StopUnit",
+        "RestartUnit",
+        "Reload",
+        "PowerOff",
+        "Reboot",
+        "Suspend",
+        "Hibernate",
+        "HybridSleep",
+        "SetLinkUp",
+        "ActivateConnection",
+        "AddAndActivateConnection",
+        "ResolveHostname",
+        "SetDNS",
+        "SetDefaultRoute",
+        "UpdateActivationEnvironment",
+        "Eval",
+        "Call"
+      ],
+      "logind_allowed_methods": [
+        "GetSession",
+        "GetSessionByPID",
+        "GetUser",
+        "GetUserByPID",
+        "Get",
+        "GetAll"
+      ],
+      "notes": [
+        "A cooperating local service can turn an allowed Unix socket into remote egress, so destinations and methods matter.",
+        "org.gnome.Shell GetExtensionInfo is a reviewed read-only probe used by the daemon's extension detection.",
+        "Any portal, systemd, NetworkManager, resolve1, secret-service, or KWin method is sensitive by default.",
+        "The private session bus is monitored with dbus-monitor; the system bus is monitored as root."
+      ]
+    }
   },
   "expected_dynamic": {
     "default_scenario": "baseline",
@@ -660,6 +953,49 @@
     "notes": [
       "The baseline pins the source commit and lockfile, not a machine-specific binary hash.",
       "A supplied --binary artifact has unverified provenance and must be reported as such."
+    ]
+  },
+  "gnome_extension": {
+    "uuid": "kanata-switcher@7mind.io",
+    "settings_schema": "org.gnome.shell.extensions.kanata-switcher",
+    "allowed_imports": [
+      "gi://Gio",
+      "gi://GLib",
+      "gi://St",
+      "gi://Clutter",
+      "gi://Gtk",
+      "gi://Adw"
+    ],
+    "allowed_dbus_destinations": [
+      "org.freedesktop.DBus",
+      "com.github.kanata.Switcher",
+      "com.github.kanata.Switcher.instances",
+      "com.github.kanata.Switcher.extensions.GNOME"
+    ],
+    "allowed_dbus_interfaces": [
+      "com.github.kanata.Switcher",
+      "com.github.kanata.Switcher.extensions.GNOME"
+    ],
+    "expected_settings_keys": [
+      "show-top-bar-icon",
+      "show-focus-layer-only"
+    ],
+    "file_hashes": {
+      "daemon-state.js": "9575fb438afcfe04b941c299ebbc51cfb4e0de33ce9a2336cf30d55306e922c7",
+      "dbus.js": "8c39816e6011982e679d81d6c9ed26f022a687020c6ef2624674d7bc9a1459b6",
+      "extension.js": "4674f0ec7f9c6103dfabae02e691a6332407a8ac738d055cf14e5786bdd0a4ed",
+      "extension-multiplex.js": "9f99973ac5873a14da6530d69d288e540f288631f7412cf4ba0b6197048d2e3a",
+      "focus.js": "a5e81f25ac9de282e37e23abb786201ffb81f30a309173a42f673d3d19237e53",
+      "format.js": "24623879edb82a09b09f4344d91df47d5737dce8b51bf65365ec1842ea68e7ed",
+      "prefs.js": "887d1fd5e35a6fa423df68044bc5bc631ef13afa51d1eba49dcddbbb5876d001",
+      "metadata.json": "ad4848f361ea1d21d837b7b50ca2ec452d0c516c8b3d325bddf1b7b3ea88b6af",
+      "schemas/org.gnome.shell.extensions.kanata-switcher.gschema.xml": "05ce1210ca527cdbf0643d3b43cc5145b59b7e70cc222d5e81ebb4413bc0681d"
+    },
+    "notes": [
+      "The extension has no network APIs, no process execution, and no file or clipboard access in the audited revision.",
+      "The extension uses the session bus only: org.freedesktop.DBus for name enumeration and com.github.kanata.Switcher.instances.* for daemon proxies.",
+      "The extension exports GetFocus/FocusChanged at /com/github/kanata/Switcher/extensions/GNOME.",
+      "file_hashes are informational drift markers, not a security boundary."
     ]
   },
   "accepted_findings": [

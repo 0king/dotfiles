@@ -173,15 +173,29 @@ byte-reproducible, so the baseline pins invariants, not one machine's hash.
 
 ### 11. Dynamic network surface
 
-**Trust:** isolated netns, rootless capture, explicit approval.
+**Trust:** isolated netns + veth, mandatory privileged capture, explicit
+approval.
 
-The dynamic harness runs the binary with only loopback, a private session bus,
-and a mock kanata server, then traces every network/process syscall and
-snapshots `ss`/`/proc/net`. It treats any UDP, DNS, raw/AF_PACKET socket, IP
-listener, non-loopback connect (including a failed attempt), undocumented Unix
-socket, or child-process IP I/O as a finding. `--host-desktop` is a different
-trust boundary: it binds the real bus/display into the netns and can drive the
-live desktop, so it is opt-in and not used on an untrusted checkout.
+The dynamic harness runs the binary as the invoking user inside a dedicated
+network namespace connected by a veth pair to a capture namespace. There is no
+NAT and no route to the real network. `tcpdump` on the capture-side veth is
+mandatory; DNS/TCP sinkholes log every query, connection, and payload preview;
+the private session bus and system bus are monitored with `dbus-monitor`; and
+`strace` traces every network/process/sensitive syscall from the target and its
+children. `ss`/`/proc/net` snapshots corroborate the trace. The source build is
+traced twice: `cargo fetch` on the host network and `cargo build --offline`
+inside the veth namespace with its own pcap.
+
+Any UDP, DNS, raw/AF_PACKET socket, IP listener, non-loopback connect (including
+a failed attempt), target-sourced packet on the veth, undocumented Unix socket,
+or child-process IP I/O is a finding. `--host-desktop` is a different trust
+boundary: it binds the real bus/display into the netns and can drive the live
+desktop, so it is opt-in and not used on an untrusted checkout.
+
+The bundled GNOME extension is audited separately: statically, and by running
+it in a nested headless GNOME Shell under a private session bus, with a mock
+daemon that proves the extension loads and calls the expected interface. This
+does not touch the host's extension state or live session.
 
 ## Abuse cases to check in a diff
 
@@ -243,10 +257,19 @@ live desktop, so it is opt-in and not used on an untrusted checkout.
   runtime observation when the stakes justify it.
 - Dependency sources not present in the local Cargo cache are inventoried but
   not deeply scanned. `cargo fetch --locked` is required for the full pass.
-- The dynamic harness sees the paths that were exercised, not every branch. A
-  clean trace is evidence, not proof; static review owns unexercised code.
-- The default harness does not perform privileged packet capture. `tcpdump`/
-  `bpftrace` evidence is a separate, opt-in layer.
+- The dynamic harness requires root/`sudo` and `tcpdump`; without them it fails
+  closed rather than producing a syscall-only result. A host that cannot grant
+  privileged namespaces/capture has no privileged dynamic evidence.
+- The harness sees the paths that were exercised, not every branch. A clean
+  trace is evidence, not proof; static review owns unexercised code.
+- `tcpdump` sees veth traffic, not traffic that stays on loopback inside the
+  daemon namespace; loopback is covered by `strace`, `ss`, and `/proc/net`.
+- The DNS/TCP sinkhole is not the real Internet. A payload that requires a
+  valid TLS certificate or a specific application response may stop earlier
+  than it would on the real network, but the attempt is still captured.
+- The GNOME audit runs in a nested headless Shell, not the user's live session;
+  behavior that depends on real windows, portals, or session services may not
+  be exercised.
 - `--host-desktop` binds the real session bus/display and can drive the live
   desktop; it is not equivalent to the isolated default run.
 
@@ -254,7 +277,7 @@ live desktop, so it is opt-in and not used on an untrusted checkout.
 
 | Severity | Examples |
 |----------|----------|
-| Critical | remote fetch-and-exec, decode-and-exec, hidden payload in an asset, active malicious git hook, replaced release artifact, non-crates.io/git/path dependency with no checksum, cached crate checksum mismatch, AF_PACKET/raw socket, non-loopback IP listener, embedded ELF/PE in the release binary |
-| High | new remote host/outbound sink, listener on `0.0.0.0`, new exec sink with untrusted args, `pull_request_target` with secrets, unpinned Nix fetch, remote `--host` introduced silently, new network-capable/build-script dependency, lockfile/direct-dependency drift, binary overlay/unexpected NEEDED/remote URL, dynamic non-loopback/UDP/DNS/child IP I/O |
-| Medium | ref-pinned CI action, missing CI permissions, non-direct dependency/build-file drift, unauthenticated same-user D-Bus control, GNOME auto-install default, KWin `/tmp` writes, unquoted systemd args, new proc-macro/native dependency, undocumented Unix socket, memfd/io_uring/keyring/mount syscall |
+| Critical | remote fetch-and-exec, decode-and-exec, hidden payload in an asset, active malicious git hook, replaced release artifact, non-crates.io/git/path dependency with no checksum, cached crate checksum mismatch, AF_PACKET/raw socket, non-loopback IP listener, embedded ELF/PE in the release binary, target-sourced packet on the veth, payload to the TCP sinkhole, IP activity during the offline build, sensitive D-Bus method |
+| High | new remote host/outbound sink, listener on `0.0.0.0`, new exec sink with untrusted args, `pull_request_target` with secrets, unpinned Nix fetch, remote `--host` introduced silently, new network-capable/build-script dependency, lockfile/direct-dependency drift, binary overlay/unexpected NEEDED/remote URL, dynamic non-loopback/UDP/DNS/child IP I/O, DNS/TCP sinkhole contact, sensitive D-Bus destination, D-Bus URL in a method call, GNOME extension load failure, Shell-reported not enabled, or unexercised daemon interface |
+| Medium | ref-pinned CI action, missing CI permissions, non-direct dependency/build-file drift, unauthenticated same-user D-Bus control, GNOME auto-install default, KWin `/tmp` writes, unquoted systemd args, new proc-macro/native dependency, undocumented Unix socket, `memfd_create`/`io_uring`/keyring/mount syscall (the GNOME Shell's `memfd_create` is a note; `DYN-MEMFD-EXEC` is critical), undocumented D-Bus destination, system-bus eavesdrop fallback, build-log URL |
 | Low | documentation URLs, expected D-Bus/Unix IPC, expected helper execution, explicit autostart feature, valid images, build-id/rustc-version changes, expected libc networking symbols |
