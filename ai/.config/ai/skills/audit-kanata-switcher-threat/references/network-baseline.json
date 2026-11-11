@@ -1,12 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "repo": "github.com/7mind/kanata-switcher",
   "repo_package": "kanata-switcher",
   "audited_commit": "69578672fce32ac5b69aed393f6981d4fbad3999",
   "audited_commit_short": "6957867",
   "audited_tag": "v1.2.0",
   "audited_date": "2026-11-10",
-  "reviewed_scope": "Static review of the checked-out tree at v1.2.0: Rust sources, build.rs, GNOME extension JS, shell scripts, Nix flake/modules, CI workflow, git metadata, Cargo manifest/lockfile, and committed assets. No runtime execution.",
+  "reviewed_scope": "Static review of the checked-out tree at v1.2.0: Rust sources, build.rs, GNOME extension JS, shell scripts, Nix flake/modules, CI workflow, git metadata, Cargo manifest/lockfile, and committed assets. Dependency, release-binary, and dynamic sections define the intended follow-up checks; no runtime execution is claimed by this baseline snapshot.",
   "expected_network": [
     {
       "id": "gnome-session-bus",
@@ -442,7 +442,7 @@
       "id": "cargo-registry",
       "trigger": "cargo build/test with a cold cache",
       "endpoint": "crates.io / static.crates.io (HTTPS)",
-      "notes": "Versions are pinned with = in Cargo.toml and Cargo.lock has 212 crates.io-only packages (no git sources)."
+      "notes": "Versions are pinned with = in Cargo.toml and Cargo.lock has 212 packages including the root crate (211 external, crates.io-only, no git sources)."
     },
     {
       "id": "nix-flake-inputs",
@@ -457,6 +457,211 @@
       "notes": "Single workflow, permissions: contents: read, no pull_request_target, no secrets. Action is ref-pinned, not SHA-pinned."
     }
   ],
+  "expected_dependencies": {
+    "lock_sha256": "cf415dcef67e07e262412a460e116a235f210d092d76c702d30c8326b6ac85e1",
+    "package_count": 212,
+    "source_classes": {
+      "crates.io": 211,
+      "root": 1
+    },
+    "direct_crates": [
+      "tokio =1.49.0",
+      "serde =1.0.228",
+      "serde_json =1.0.149",
+      "regex =1.12.2",
+      "zbus =5.13.2",
+      "clap =4.5.54",
+      "dirs =5.0.1",
+      "tempfile =3.24.0",
+      "libc =0.2.180",
+      "futures-util =0.3.31",
+      "wayland-client =0.31.12",
+      "wayland-protocols-wlr =0.3.10",
+      "wayland-backend =0.3.12",
+      "wayland-scanner =0.31.8",
+      "x11rb =0.13.2",
+      "ksni =0.2.2",
+      "noto-sans-mono-bitmap =0.3.2",
+      "uuid =1.20.0"
+    ],
+    "dev_crates": [
+      "proptest =1.9.0",
+      "tokio-test =0.4.5",
+      "wayland-server =0.31.11",
+      "wayland-protocols-wlr =0.3.10"
+    ],
+    "build_dependencies": [],
+    "network_capable_crates": [
+      "async-io",
+      "dbus",
+      "dbus-codegen",
+      "ksni",
+      "libc",
+      "libdbus-sys",
+      "mio",
+      "polling",
+      "socket2",
+      "tokio",
+      "wayland-backend",
+      "wayland-client",
+      "wayland-scanner",
+      "x11rb",
+      "x11rb-protocol",
+      "zbus"
+    ],
+    "build_script_crates": [],
+    "proc_macro_crates": [],
+    "native_crates": [],
+    "notes": [
+      "network_capable_crates is the reviewed allowlist; a new crate in this class is High until explained. dbus-codegen and x11rb-protocol are codegen/protocol crates and do not open sockets themselves.",
+      "build_script_crates, proc_macro_crates, and native_crates are intentionally empty until a cargo-fetched deep pass populates them; an empty list means every observed crate is a finding, not that the class is allowed.",
+      "Cargo.lock at v1.2.0 has no git, path, or non-crates.io sources."
+    ]
+  },
+  "expected_binary": {
+    "allowed_needed_prefixes": [
+      "libc.so",
+      "libm.so",
+      "libgcc_s.so",
+      "libpthread.so",
+      "libdl.so",
+      "librt.so",
+      "ld-linux",
+      "libdbus-1.so",
+      "libwayland-client.so",
+      "libwayland-cursor.so",
+      "libwayland-egl.so",
+      "libxkbcommon.so",
+      "libX11.so",
+      "libxcb.so"
+    ],
+    "required_needed_prefixes": [
+      "libc.so"
+    ],
+    "allowed_url_patterns": [
+      "^https://docs\\.rs/",
+      "^https://crates\\.io/",
+      "^https://github\\.com/rust-lang/",
+      "^https://github\\.com/7mind/kanata-switcher",
+      "^https://www\\.w3\\.org/",
+      "^https://www\\.freedesktop\\.org/"
+    ],
+    "allowed_ip_literals": [
+      "127.0.0.1"
+    ],
+    "allowed_dangerous_symbols": [
+      "accept",
+      "bind",
+      "connect",
+      "dlopen",
+      "dlsym",
+      "execve",
+      "fork",
+      "getaddrinfo",
+      "listen",
+      "recvfrom",
+      "sendto",
+      "socket"
+    ],
+    "max_size_bytes": 52428800,
+    "overlay_max_bytes": 0,
+    "notes": [
+      "Build IDs, rustc comments, and byte hashes vary across toolchains; they are reported but not pinned.",
+      "allowed_needed_prefixes is a reviewed allowlist, not a claim that every library is always present.",
+      "A new NEEDED library, overlay, embedded payload, remote URL, or size above the limit is a finding."
+    ]
+  },
+  "dynamic_policy": {
+    "loopback_cidrs": [
+      "127.0.0.0/8",
+      "::1/128"
+    ],
+    "allowed_unix_socket_globs": [
+      "/run/user/*/bus",
+      "/run/user/*/wayland-*",
+      "/run/user/*/.wayland-*",
+      "/tmp/dbus-*",
+      "@/tmp/dbus-*",
+      "/tmp/.X11-unix/X*",
+      "@/tmp/.X11-unix/X*",
+      "/run/dbus/system_bus_socket",
+      "/var/run/dbus/system_bus_socket",
+      "/dev/log"
+    ],
+    "expected_tcp": [
+      {
+        "host": "127.0.0.1",
+        "port": 10000,
+        "protocol": "tcp",
+        "purpose": "kanata newline-delimited JSON control connection"
+      }
+    ],
+    "forbidden": [
+      "udp",
+      "raw",
+      "af_packet",
+      "ip_listener",
+      "dns",
+      "non_loopback",
+      "undocumented_unix",
+      "child_ip_network"
+    ],
+    "trace_syscalls": [
+      "%network",
+      "%process",
+      "openat",
+      "open",
+      "memfd_create",
+      "io_uring_setup",
+      "io_uring_enter",
+      "io_uring_register",
+      "bpf",
+      "init_module",
+      "finit_module",
+      "ptrace",
+      "unshare",
+      "setns",
+      "keyctl",
+      "add_key",
+      "request_key",
+      "mount",
+      "pivot_root",
+      "chroot"
+    ],
+    "notes": [
+      "Any connection other than loopback is a finding, including failed attempts.",
+      "UDP, raw, AF_PACKET, DNS, and IP listeners are forbidden even on loopback.",
+      "AF_NETLINK is local kernel IPC and is reported as informational, not IP egress.",
+      "The mock kanata listener on the configured port is expected and is not attributed to the daemon."
+    ]
+  },
+  "expected_dynamic": {
+    "default_scenario": "baseline",
+    "expected_connect_min": 1,
+    "expected_connect_max": 1,
+    "informational_syscalls": [
+      "AF_NETLINK",
+      "socketpair"
+    ],
+    "fail_on": "medium",
+    "notes": [
+      "The daemon must connect to the mock kanata endpoint and must not listen, use UDP, or contact DNS.",
+      "GNOME helper execution is expected only when extension install is enabled; the default harness passes --no-install-gnome-extension.",
+      "Run selftest_dynamic.sh after changing the harness or analyzer."
+    ]
+  },
+  "build_provenance": {
+    "source": "git archive of audited_commit",
+    "fetch_command": "cargo fetch --locked",
+    "build_command": "cargo build --release --locked --offline",
+    "rustc": "1.97.1",
+    "cargo": "1.97.1",
+    "binary_sha256": null,
+    "notes": [
+      "The baseline pins the source commit and lockfile, not a machine-specific binary hash.",
+      "A supplied --binary artifact has unverified provenance and must be reported as such."
+    ]
+  },
   "accepted_findings": [
     {
       "rule": "CI-ACTION-UNPINNED",

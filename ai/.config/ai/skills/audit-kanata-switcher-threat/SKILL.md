@@ -4,24 +4,32 @@ description: >-
   Audit the kanata-switcher repository (Rust + Nix + GNOME Shell extension +
   GitHub Actions daemon for focus-based kanata layer switching) for hidden
   malware, backdoors, persistence, risky process execution, and supply-chain
-  threats, and produce a complete inventory of every network request or local
-  IPC connection it can make. Use when the user asks to audit this repo, asks
-  "is kanata-switcher safe", asks what network connections it makes, wants a
-  threat model or pre-install review, or asks to re-check a newer checkout or
-  PR against the pinned clean baseline.
+  threats, including Cargo dependency execution, release-binary tampering, and
+  a rootless dynamic network trace, and produce a complete inventory of every
+  network request or local IPC connection it can make. Use when the user asks
+  to audit this repo, asks "is kanata-switcher safe", asks what network
+  connections it makes, wants a threat model or pre-install review, or asks
+  to re-check a newer checkout or PR against the pinned clean baseline.
 ---
 
 # kanata-switcher Threat & Network Audit
 
-Repo-specific audit workflow. It combines a static scanner, a pinned network /
-execution / filesystem baseline, and a manual review pass. The goal is to
-detect *changes* that introduce hidden behavior, not to re-litigate the
-documented features of the application.
+Repo-specific audit workflow. It combines a static scanner, a Cargo
+supply-chain audit, release-binary analysis, a pinned network / execution /
+filesystem baseline, a rootless dynamic network harness, and a manual review
+pass. The goal is to detect *changes* that introduce hidden behavior, not to
+re-litigate the documented features of the application.
 
 **Default target:** `/media/d_drive/dev/local-builds/kanata-switcher`
 **Audited baseline:** commit `6957867` (`69578672fce32ac5b69aed393f6981d4fbad3999`), tag `v1.2.0`, 2026-11-10
 **Baseline does not auto-trust newer commits.** Re-run the scanner and review
 every diff after this commit before calling a checkout clean.
+
+**Default workflow:** static source scan → Cargo dependency audit → release
+binary analysis → baseline comparison → manual review. Dynamic execution is
+the final confirmation, not the first step, and needs explicit permission plus
+an isolated network namespace. The dynamic harness is rootless by default and
+does not install the GNOME extension or touch a live desktop session.
 
 ## What this repo is
 
@@ -44,7 +52,8 @@ The audit answers two independent questions:
 
 - Confirm the path. If it is not the path above, ask before scanning.
 - Confirm whether the user wants **static review only** (default) or also
-  **runtime verification**. Never execute an untrusted checkout, package, or
+  **runtime verification**. The full workflow is static + dependencies +
+  binary; runtime is opt-in. Never execute an untrusted checkout, package, or
   release binary, and never install its GNOME extension, without explicit
   permission and an isolated environment.
 - Note whether dependencies and CI/Nix files are in scope. They are part of the
@@ -109,7 +118,88 @@ recall-biased and can produce false positives. The baseline has an
 `accepted_findings` list for reviewed, intentional findings; the scanner
 removes those from the severity counts and reports them separately.
 
-## Step 3 — Verify the network inventory against the baseline
+## Step 3 — Audit the Cargo dependency graph
+
+The daemon is mostly third-party code. A clean `src/` does not prove a clean
+binary, so inventory every locked crate and inspect the crates that can execute
+code at build time or open sockets at runtime.
+
+```bash
+SKILL=~/.config/ai/skills/audit-kanata-switcher-threat
+python3 "$SKILL/scripts/scan_cargo_deps.py" <repo> \
+  --json /tmp/opencode/kanata-switcher-deps.json --verbose
+```
+
+Run `cargo fetch --locked` first if the local registry cache is cold; the
+script reads crate sources from `$CARGO_HOME/registry/src` and reports every
+crate it could not inspect. "Not cached" is not "clean". The script is
+stdlib-only, does not execute the repository, and checks:
+
+- every `Cargo.lock` package has a crates.io source and a 64-hex SHA-256
+  checksum; git/path/other registries are findings;
+- cached `.crate` archives match the lockfile checksum when present;
+- direct/dev/build dependency pins are still `=` and match
+  `expected_dependencies` in the baseline;
+- `[patch]`/`[replace]` and `.cargo/config.toml` source replacement;
+- build scripts (`build.rs`) for downloaders, HTTP clients, sockets, shell
+  execution, remote URLs, and out-of-crate `include_bytes!`/`include_str!`;
+- proc-macro crates, crates with `links =`, `cc`/`pkg-config`/`bindgen`/
+  `cmake`/`nasm` build dependencies;
+- crates with network-capable APIs (HTTP/TLS/DNS/SSH/DB/queue/socket).
+
+Triage: a new network-capable crate, a new build script, a non-crates.io
+source, a missing checksum, or a lockfile hash change is at least **High** until
+the diff is understood. A new proc-macro or native `links` crate is **Medium**
+unless it also has network/build-script risk.
+
+| Rule | Meaning |
+|------|---------|
+| `DEP-LOCK-DRIFT` / `DEP-COUNT-DRIFT` | lockfile hash or package count changed |
+| `DEP-DIRECT-DRIFT` / `DEP-DEV-DRIFT` | manifest direct/dev set differs from baseline |
+| `DEP-LOCK-NO-SOURCE` / `DEP-LOCK-NONREGISTRY` / `DEP-LOCK-NO-CHECKSUM` / `DEP-LOCK-BAD-CHECKSUM` | source or checksum integrity |
+| `DEP-CACHE-CHECKSUM-MISMATCH` | cached `.crate` archive does not match the lockfile |
+| `DEP-UNEXPECTED-NETWORK-CRATE` / `DEP-UNEXPECTED-BUILD-SCRIPT` | new network-capable or build-script crate |
+| `DEP-UNEXPECTED-PROC-MACRO` / `DEP-UNEXPECTED-NATIVE` | new proc-macro or native-linking crate |
+| `DEP-BUILD-SCRIPT-RISK` | build script downloads, opens a socket, runs a shell, or embeds outside the crate |
+| `DEP-MANIFEST-UNPINNED` / `DEP-MANIFEST-OVERRIDE` | unpinned dependency or `[patch]`/`[replace]` |
+| `DEP-CARGO-SOURCE-REPLACEMENT` / `DEP-CARGO-PATCH` | `.cargo/config.toml` redirects crate sources |
+
+## Step 4 — Analyze the release binary
+
+Build the artifact from a clean `git archive` of the audited commit, not from a
+dirty working tree. The dynamic harness does this automatically; for a
+standalone pass:
+
+```bash
+git -C <repo> archive --format=tar <commit> | tar -x -C /tmp/opencode/ks-src
+CARGO_TARGET_DIR=/tmp/opencode/ks-target cargo build --release --locked \
+  --manifest-path /tmp/opencode/ks-src/Cargo.toml
+python3 "$SKILL/scripts/analyze_release_binary.py" \
+  /tmp/opencode/ks-target/release/kanata-switcher \
+  --json /tmp/opencode/kanata-switcher-binary.json --markdown /tmp/opencode/kanata-switcher-binary.md
+```
+
+If the user supplies a release artifact, use `--binary` and state that its
+provenance is unverified. The analyzer reads the ELF only (no execution) and
+checks:
+
+- writable+executable `PT_LOAD` segments, `DT_TEXTREL`, `RPATH`/`RUNPATH`;
+- bytes after the last segment/section (overlay) and embedded ELF/PE/ZIP/gzip/
+  script/Mach-O signatures;
+- high-entropy sections and stripped/debug state;
+- `NEEDED` shared libraries and dangerous imported symbols (`system`, `popen`,
+  `execve`, `socket`, `connect`, `dlopen`, `ptrace`, `memfd_create`, `bpf`, …);
+- printable ASCII/UTF-16 strings for remote URLs, IPs, domains, telemetry
+  keywords, webhooks, wallet/key material, and shell commands;
+- build provenance (`rustc` comment, GNU build-id) and baseline size/library/
+  overlay limits.
+
+A release binary is not byte-reproducible across machines. Do **not** require
+a matching SHA-256 by default; compare invariants (`expected_binary`). A changed
+build-id alone is not a finding. An unexpected `NEEDED` library, overlay,
+embedded payload, remote URL, or size blow-up is.
+
+## Step 5 — Verify the network inventory against the baseline
 
 The expected runtime surface is deliberately small. Confirm each item is still
 present, still local, and still gated the same way:
@@ -151,7 +241,7 @@ loopback, but `--host` / the Nix `kanataHost` option can point it at another
 machine. Treat a non-loopback value as a deliberate operator choice, not
 malware, but verify who can set it.
 
-## Step 4 — Manual repo-specific review
+## Step 6 — Manual repo-specific review
 
 Do not rely on the scanner alone. Check these in the actual checkout:
 
@@ -169,7 +259,7 @@ Do not rely on the scanner alone. Check these in the actual checkout:
 | **KDE backend** | `src/daemon/backends/kde/` writes generated KWin JavaScript to unguessable `/tmp/kanata-switcher-kwin-{uid}-{uuid}.js`, loads it via `org.kde.KWin` D-Bus, and removes it on cleanup. Check that the script still contains only `callDBus` focus reporting and that the path keeps uid + UUID. |
 | **Wayland / X11** | `src/daemon/backends/wayland/mod.rs` connects to the compositor socket derived from `$XDG_RUNTIME_DIR`/`WAYLAND_DISPLAY`; `x11.rs` uses `x11rb::connect`. A remote `$DISPLAY` would use TCP, but that is an explicit operator choice. |
 | **SNI / tray** | `src/daemon/sni/` uses `ksni` on the session bus and shells out to `dconf` for the focus-only key. Args are fixed; no user data reaches the command line. |
-| **Dependencies** | `Cargo.toml` pins every direct dependency with `=`. Compare additions against the baseline; be suspicious of HTTP clients, telemetry SDKs, gRPC/WebSocket, crypto wallets, or new `build.rs` behavior. `Cargo.lock` has 212 crates.io-only packages and no git/path sources at baseline. |
+| **Dependencies** | `Cargo.toml` pins every direct dependency with `=`. Compare additions against the baseline; be suspicious of HTTP clients, telemetry SDKs, gRPC/WebSocket, crypto wallets, or new `build.rs` behavior. `Cargo.lock` has 212 packages including the root crate (211 external, all crates.io) and no git/path sources at baseline. |
 | **CI** | Only `.github/workflows/ci.yml`: `7mind/github-env@minimal`, `permissions: contents: read`, no `pull_request_target`, no secrets, no release publish. The action is ref-pinned, not SHA-pinned — a known medium supply-chain risk, accepted in the baseline but worth reporting. |
 | **Nix** | `flake.lock` pins `nixpkgs`, `flake-utils`, `crane`, and `rust-overlay` with `rev` + `narHash`; `tests/flake.lock` pins `home-manager` plus a path input to `..`. No `fetchurl`/`fetchgit`/`--impure`/extra substituters. The module's `ExecStart = lib.concatStringsSep " " ...` does not quote args; low-risk hardening note accepted in the baseline. |
 | **Shell scripts** | `build.sh`/`run.sh` are `cargo build/run` wrappers; `install-gnome-shell-ext.sh` runs `glib-compile-schemas` and `gnome-extensions` on the local extension; `devops/release.sh` and `update-libraries.sh` mutate versions/lockfile only. No `curl \| bash`. |
@@ -188,51 +278,103 @@ rg -n 'fetchurl|fetchgit|builtins\.fetch|--impure|substituters|postInstall|insta
 rg -n 'curl|wget|base64|eval|chmod|/bin/sh|powershell|nc |ncat' .github devops qa *.sh
 ```
 
-## Step 5 — Optional runtime verification
+## Step 7 — Dynamic network verification (opt-in)
 
-Only with explicit user approval, in an isolated VM/container or network
-namespace, with no secrets mounted and egress blocked or captured. Static
-review is usually enough. Runtime verification is for confirming a suspicious
-diff or validating the inventory.
-
-Linux example:
+Only with explicit user approval. The harness runs the binary in a rootless
+network namespace with no route except loopback, captures every network and
+process syscall from the daemon and its children, and compares the result with
+the pinned policy. It never installs the GNOME extension and never touches a
+live desktop session unless `--host-desktop` is explicitly selected.
 
 ```bash
-# Build first (do not run an untrusted prebuilt binary).
-cargo build --release
-
-# Capture every network syscall from the daemon and its children.
-strace -ff -e trace=network,execve,openat -o /tmp/opencode/ks-runtime.log -- \
-  ./target/release/kanata-switcher --quiet-focus -p 10000
-
-# From another terminal, inspect sockets owned by the process tree.
-ss -ltnp | grep -E '10000'
-ss -lunp
-lsof -p <pid> -a -i
+SKILL=~/.config/ai/skills/audit-kanata-switcher-threat
+"$SKILL/scripts/run_dynamic_network_audit.sh" \
+  --repo <repo> --out /tmp/opencode/ks-dynamic --timeout 15
 ```
 
-Trigger each path and re-check:
+What the harness does:
 
-1. Start with a mock kanata TCP server on `127.0.0.1:10000`: exactly one
-   outbound TCP connection to that port; no listener, no UDP, no external DNS.
-2. Switch focus in GNOME/KDE/Wayland/X11: only D-Bus/Unix-socket traffic plus
-   the existing kanata connection.
-3. GNOME first run: `gnome-extensions` and `gsettings` child processes, and the
-   extension installed under the user's extension directory. No network fetch.
-4. KDE first run: a `/tmp/kanata-switcher-kwin-*.js` file appears and is
-   removed at cleanup; `org.kde.KWin` D-Bus calls only.
-5. `--pause`, `--unpause`, `--restart`: D-Bus calls to the existing daemon; no
-   new IP sockets.
-6. `--install-autostart` / `--uninstall-autostart`: one local `.desktop` file
-   write/remove; no network.
-7. Do not run `--install-gnome-extension` against a live Shell on an untrusted
-   checkout without a disposable VM; it installs code into GNOME Shell.
+1. Resolves the audited commit and exports a clean tree with `git archive` into
+   the output directory. A dirty working tree is recorded but not executed.
+2. Runs `cargo fetch --locked` (network is allowed only for this fetch) and
+   `cargo build --release --locked --offline` into an isolated target dir.
+3. Starts `mock_kanata.py` on `127.0.0.1:<port>` inside the namespace.
+4. Runs `bwrap --unshare-net --unshare-pid --unshare-ipc --unshare-uts` with
+   `--ro-bind / /`, a private `/tmp`, a private `HOME`/`XDG_RUNTIME_DIR`, and
+   only the output directory writable. The namespace has only `lo`.
+5. Runs the daemon under `strace -ff -ttt -s 512 -v` tracing `%network`,
+   `%process`, `openat`, `open`, `memfd_create`, `io_uring_*`, `bpf`,
+   `init_module`, `finit_module`, `ptrace`, `unshare`, `setns`, `keyctl`,
+   `add_key`, `request_key`, `mount`, `pivot_root`, and `chroot`.
+6. Takes `ss -tanp`, `ss -uanp`, `ss -lxnp`, and `/proc/net/{tcp,tcp6,udp,
+   udp6,packet,netlink,unix,raw,raw6}` snapshots while the daemon runs, and
+   calls `GetStatus` over the private session bus.
+7. Parses the evidence with `analyze_dynamic_logs.py` and writes
+   `report.json` / `report.md` plus the raw logs.
 
-Expected: only the configured kanata endpoint (default `127.0.0.1:10000`) for
-IP traffic, and local D-Bus/Unix sockets for desktop integration. If you see
-anything else, map it to a process/file/line and treat it as a finding.
+Scenarios:
 
-## Step 6 — Triage and report
+- `--scenario baseline` (default): private session bus, `XDG_CURRENT_DESKTOP=
+  GNOME`, no GNOME extension install, SNI enabled. This exercises the documented
+  desktop IPC without a real desktop.
+- `--scenario minimal`: no desktop environment variables and `--no-indicator`;
+  the daemon connects to kanata and exits. Useful for a low-noise baseline.
+- `--scenario host-desktop`: opt-in; binds the real session bus, `$DISPLAY`,
+  `$WAYLAND_DISPLAY`, and `$XDG_RUNTIME_DIR` into the isolated netns. Use only
+  when the user explicitly wants real focus events. It can drive the live
+  desktop; do not enable it on an untrusted checkout.
+- `--binary PATH`: audit a supplied artifact; provenance is then unverified.
+- `--command 'CMD'`: run an arbitrary probe under the same isolation; used by
+  `selftest_dynamic.sh`. It skips the daemon/mock expectations.
+
+Expected result: exactly the configured kanata TCP endpoint (default
+`127.0.0.1:10000`) over IP, plus documented local D-Bus/Wayland/X11 Unix
+sockets. No UDP, no raw/AF_PACKET socket, no IP listener, no DNS resolver
+contact, no non-loopback connect (including failed attempts), and no
+undocumented Unix socket. The analyzer is strict: a failed `connect()` is still
+a finding.
+
+Common rules and what they mean:
+
+| Rule | Meaning |
+|------|---------|
+| `DYN-NONLOOPBACK-CONNECT` | connect/send to an address outside `127.0.0.0/8`, `::1`, or IPv4-mapped loopback. High even if it failed. |
+| `DYN-LOOPBACK-UNEXPECTED` | loopback traffic to a port other than the configured kanata port. |
+| `DYN-UDP` / `DYN-DNS` | any UDP socket/traffic, or port 53. The baseline has no UDP. |
+| `DYN-AF-PACKET` / `DYN-RAW-SOCKET` | layer-2 or raw socket. Critical. |
+| `DYN-IP-BIND` / `DYN-LISTEN` / `DYN-SS-LISTENER` / `DYN-PROCNET-LISTENER` | inbound IP surface. The daemon must not listen. |
+| `DYN-UNIX-UNEXPECTED` / `DYN-UNIX-LISTENER` | undocumented Unix socket or a daemon-created Unix listener. |
+| `DYN-NETLINK` | local kernel IPC, informational; not IP egress. |
+| `DYN-SUSPICIOUS-SYSCALL` | `bpf`, module load, `ptrace`, namespace change, `memfd_create`, `io_uring`, keyring, mount. |
+| `DYN-CHILD-IP-NETWORK` | a child process, not the main daemon, performed IP I/O. |
+| `DYN-NETWORK-TOOL-EXEC` / `DYN-SHELL-EXEC` | `curl`/`wget`/`ssh`/`nc` or `sh -c` execution. |
+| `DYN-KANATA-MISSING` / `DYN-KANATA-NO-CONNECT` | the expected kanata connection never appeared in daemon mode. |
+| `DYN-KANATA-TOO-FEW-CONNECTS` / `DYN-KANATA-TOO-MANY-CONNECTS` | connection count outside the baseline range. |
+
+Optional privileged corroboration (not required, needs root): run `tcpdump -i
+any -nn -s0 -w capture.pcap` or a `bpftrace` syscall/`kprobe` script around the
+same harness, then compare the pcap with the strace endpoints. Record that this
+was done separately; the default harness is rootless and does not claim packet
+capture.
+
+Negative-control self-test (run after changing the harness or analyzer):
+
+```bash
+"$SKILL/scripts/selftest_dynamic.sh"
+```
+
+It must detect non-loopback TCP, UDP/DNS, `AF_PACKET`, an IP listener, and a
+child-process connect, and must report a clean no-op as clean. A self-test that
+does not fail on the controls means the analyzer is broken, not that the target
+is clean.
+
+Manual path coverage when the harness cannot run: start a mock kanata server,
+then trigger focus changes, GNOME/KDE backend startup, pause/unpause/restart,
+and autostart install/uninstall. Re-check `ss -ltnp`, `ss -lunp`, and
+`/proc/<pid>/net/*`. Do not run `--install-gnome-extension` against a live Shell
+on an untrusted checkout; it installs code into GNOME Shell.
+
+## Step 8 — Triage and report
 
 Use this structure:
 
@@ -251,6 +393,24 @@ checkout", "baseline drift at X").
 | Direction | Protocol | Endpoint | Gate | Data | Assessment |
 |-----------|----------|----------|------|------|------------|
 (fill from scanner + manual verification; include "none" for absent protocols)
+
+## Supply chain
+- Cargo.lock SHA-256, package count, crates.io-only Y/N, checksums missing Y/N.
+- New/direct/build dependencies vs baseline; build scripts; proc-macro/native
+  crates; network-capable crates; cached-source coverage.
+- `.cargo/config.toml`, patches/replacements, CI/Nix pinning.
+
+## Release binary
+- Path, SHA-256, size, build-id, rustc comment, stripped/debug.
+- NEEDED libraries vs baseline; W^X segments; textrel; overlay; embedded
+  payloads; high-entropy sections.
+- Remote URL/IP/domain strings and suspicious keywords; provenance limits.
+
+## Dynamic network trace
+- Scenario, namespace, timeout, commit/binary, harness output path.
+- IP endpoints observed (expected kanata + anything else); UDP/raw/listeners.
+- Unix sockets observed; execs; suspicious syscalls; child-process network.
+- Analyzer result: clean / findings; self-test status.
 
 ## Findings
 
@@ -275,9 +435,13 @@ List unexpected/changed/missing sinks and accepted findings; state whether the
 pinned baseline still applies.
 
 ## Limits of this audit
-Static/heuristic, not a sandbox or proof; no CVE/dependency-vulnerability scan;
-runtime not performed unless stated; `--include-deps` state; GNOME Shell/KWin/
-desktop-environment behavior and compiler/runtime behavior are out of scope.
+Static/heuristic plus a rootless syscall trace, not a proof; no CVE/dependency-
+vulnerability scan; dynamic run not performed unless stated; dependency sources
+not cached are not deeply scanned; `--include-deps` state; GNOME Shell/KWin/
+desktop-environment behavior, compiler/runtime behavior, and privileged packet
+capture are out of scope unless explicitly recorded. A dynamic trace sees the
+paths that were exercised, not every branch; static review still owns unexercised
+code. `--host-desktop` is not the default and changes the trust boundary.
 ```
 
 ### Severity rubric for this repo
@@ -285,15 +449,23 @@ desktop-environment behavior and compiler/runtime behavior are out of scope.
 - **Critical** — remote fetch-and-execute, decode-then-execute, hidden payload
   in an image/asset, hardcoded credential with an exfil path, release artifact
   replaced, active malicious git hook, new code that installs a remote GNOME
-  extension or runs downloaded code.
+  extension or runs downloaded code; a non-crates.io/git/path dependency with
+  no checksum; a cached `.crate` checksum mismatch; `AF_PACKET`/raw socket or
+  an IP listener on a non-loopback address; an embedded ELF/PE payload in the
+  release binary.
 - **High** — new remote host or outbound sink not in baseline; a listener
   changed to `0.0.0.0`; new exec sink; shell execution with data from the
   kanata peer or config; `pull_request_target` with secrets/PR code; unpinned
-  Nix fetch without a hash; remote `--host` silently introduced.
-- **Medium** — ref-pinned GitHub Actions; missing `permissions:`; dependency or
-  build-file drift; local D-Bus control methods with no authentication; GNOME
+  Nix fetch without a hash; remote `--host` silently introduced; new
+  network-capable dependency or build script; lockfile/direct-dependency drift;
+  binary overlay, unexpected `NEEDED` library, or unexpected remote URL;
+  dynamic non-loopback connect (even failed), UDP/DNS, or child-process IP I/O.
+- **Medium** — ref-pinned GitHub Actions; missing `permissions:`; non-direct
+  dependency or build-file drift after review; local D-Bus control methods with no authentication; GNOME
   auto-install enabled by default; KWin script writes under `/tmp`; unquoted
-  systemd `ExecStart` args.
+  systemd `ExecStart` args; new proc-macro/native dependency; undocumented Unix
+  socket; `memfd_create`/`io_uring`/keyring/mount syscall; suspicious binary
+  string or dangerous imported symbol not in baseline.
 - **Low** — documentation URLs, expected D-Bus/Unix IPC, expected
   `gnome-extensions`/`gsettings`/`dconf` helper execution, expected autostart
   feature, valid committed screenshots.
@@ -327,6 +499,25 @@ their content, source, or destination changes unexpectedly.
   workflow or unit changes.
 - The `NIX-EXEC-ARGS-UNQUOTED` hits are a low-risk hardening note about
   operator-supplied Nix strings, not remote code execution.
+- `DYN-NETLINK` / `AF_NETLINK` is local kernel IPC (address/route enumeration),
+  not IP egress. `socketpair(AF_UNIX)` is internal IPC, not a socket path.
+- The mock kanata listener on `127.0.0.1:<port>` appears in `ss` and
+  `/proc/net/tcp`; it is the harness, not the daemon. The analyzer allows a
+  loopback listener on the configured mock port and reports every other one.
+- `libdbus-1.so`, `libwayland-client.so`, and `libc.so` in `NEEDED` are expected
+  because `ksni`/`dbus` and `wayland-client` link them. A new library is the
+  finding, not the presence of these.
+- `socket`/`connect`/`bind` in the dynamic symbol table are expected libc
+  imports for the kanata client and D-Bus; compare against
+  `expected_binary.allowed_dangerous_symbols` before treating them as findings.
+- Docs/crates.io/GitHub URLs embedded by Rust dependencies are not runtime
+  fetches. The binary baseline allows the known documentation prefixes; a URL
+  outside those prefixes is still a finding.
+- Build-id, `.comment` rustc version, and byte size vary across machines and
+  toolchains. Only baseline `max_size_bytes`, `NEEDED` libraries, overlay, and
+  allowed URL patterns are invariants by default.
+- `DYN-UNEXPECTED-EXEC` is intentionally skipped in `--command` mode because the
+  probe itself is launched through `bash -c`; daemon mode still checks execs.
 
 ## Re-baselining procedure
 
@@ -337,23 +528,47 @@ Only after reviewing the diff:
 2. Update `audited_commit`, `audited_commit_short`, `audited_tag`, and
    `audited_date` in `references/network-baseline.json`.
 3. Regenerate `expected_network`, `expected_exec`, `expected_fs_writes`,
-   `direct_crates`, and `hashes` from the reviewed tree. Keep the descriptive
-   `notes` fields and the `expected_non_ip_ipc` / `expected_build_time_network`
-   sections current.
-4. Add a written `reason` to `accepted_findings` for every intentional finding
+   `expected_non_ip_ipc`, `expected_build_time_network`, the top-level
+   `direct_crates`/`dev_crates` used by the static scanner, and `hashes` from
+   the reviewed tree. Keep the descriptive `notes` fields current.
+4. Update `expected_dependencies` (lock SHA-256, package count, direct/dev
+   lists, network-capable, build-script, proc-macro, and native crate lists)
+   from the reviewed `scan_cargo_deps.py --json` output. Do not add a crate
+   merely to silence a finding; write down why it is trusted.
+5. Update `expected_binary` (allowed/required `NEEDED` prefixes, allowed URL
+   patterns, allowed dangerous symbols, max size, overlay limit) from a binary
+   built from the reviewed commit. Do not pin a machine-specific SHA-256 as a
+   trust anchor.
+6. Update `dynamic_policy` / `expected_dynamic` (expected TCP endpoint, allowed
+   Unix globs, forbidden families, trace syscalls) and run the harness plus
+   `selftest_dynamic.sh`. The baseline is only valid if the controls still fail.
+7. Add a written `reason` to `accepted_findings` for every intentional finding
    you choose to suppress. Never suppress an unexplained critical/high finding.
-5. Re-run with `--verbose` until the baseline has zero unexpected/changed/
-   missing entries and only accepted findings remain.
-6. Update `references/network-surfaces.md` and `references/threat-model.md` if
-   the data flow or trust boundaries changed.
+8. Re-run the static, dependency, and binary scanners with `--verbose` until
+   the baseline has zero unexpected/changed/missing entries and only accepted
+   findings remain. Re-run the dynamic harness and `selftest_dynamic.sh` if
+   runtime scope was included.
+9. Update `references/network-surfaces.md`, `references/threat-model.md`,
+   `references/dynamic-analysis.md`, and `references/release-binary-analysis.md`
+   if the data flow or trust boundaries changed.
 
 ## Reference files
 
 - `references/network-baseline.json` — pinned expected network/IPC, exec,
-  filesystem-write, crate, URL, and file-hash inventory, with accepted findings
-  and reasons.
+  filesystem-write, crate, URL, file-hash, dependency, binary, and dynamic
+  policy inventory, with accepted findings and reasons.
 - `references/network-surfaces.md` — detailed protocol/data-flow map and
   runtime-verification notes.
 - `references/threat-model.md` — trust boundaries, attack surfaces, and
   repo-specific abuse cases.
-- `scripts/scan_kanata_switcher.py` — the static scanner used above.
+- `references/dynamic-analysis.md` — harness design, isolation model, trace
+  coverage, rule semantics, privileged capture, and limits.
+- `references/release-binary-analysis.md` — ELF checks, baseline invariants,
+  provenance, and false positives.
+- `scripts/scan_kanata_switcher.py` — the static source scanner.
+- `scripts/scan_cargo_deps.py` — Cargo.lock/manifest/cache supply-chain audit.
+- `scripts/analyze_release_binary.py` — offline ELF/strings/payload analyzer.
+- `scripts/run_dynamic_network_audit.sh` — rootless bwrap+strace harness.
+- `scripts/analyze_dynamic_logs.py` — strace/ss/procnet/mock log analyzer.
+- `scripts/mock_kanata.py` — loopback-only kanata protocol mock.
+- `scripts/selftest_dynamic.sh` — negative controls for the dynamic analyzer.

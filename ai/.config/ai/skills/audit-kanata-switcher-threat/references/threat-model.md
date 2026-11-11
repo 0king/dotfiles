@@ -134,8 +134,8 @@ from kanata/config/network data are the review trigger.
 **Trust:** pinned inputs, reviewed diffs.
 
 - `Cargo.toml` pins direct dependencies with `=`.
-- `Cargo.lock` at baseline has 212 crates.io-only packages and no git/path
-  sources.
+- `Cargo.lock` at baseline has 212 packages including the root crate (211
+  external, all crates.io) and no git/path sources.
 - `flake.lock` and `tests/flake.lock` pin GitHub inputs with `rev` + `narHash`;
   `tests/flake.lock` also has a path input to `..`.
 - The only CI workflow uses `7mind/github-env@minimal`, has
@@ -144,6 +144,44 @@ from kanata/config/network data are the review trigger.
   accepted medium supply-chain risk.
 - `build.rs` copies the bundled GNOME extension/schema into `OUT_DIR` and runs
   `glib-compile-schemas`. It does not fetch network data.
+
+### 9. Dependency execution surface
+
+**Trust:** crates.io checksums, reviewed lockfile, local registry cache.
+
+A dependency can act at three points: in `build.rs` (build machine), in a
+proc-macro (compile time, inside rustc), or at runtime. The dependency audit
+therefore inventories every locked crate, verifies crates.io sources and
+SHA-256 checksums, verifies cached `.crate` archives when present, and
+deep-scans build scripts, proc-macro crates, native `links` crates, and
+network-capable crates. A new build script that downloads, opens a socket, runs
+a shell, or embeds a file from outside its crate is a direct supply-chain
+finding. A new network-capable crate is a runtime-surface finding even if the
+first-party code never calls it.
+
+### 10. Release artifact surface
+
+**Trust:** clean build from the audited commit.
+
+The release binary can diverge from source through a compromised build script,
+linker input, appended payload, or replaced artifact. The binary audit checks
+ELF structure (W^X segments, textrel, RPATH/RUNPATH), overlays and embedded
+ELF/PE/ZIP/gzip/script payloads, high-entropy sections, `NEEDED` libraries,
+dangerous imported symbols, and printable remote URLs/IPs/domains/telemetry
+strings. A supplied `--binary` has unverified provenance. A rebuild is not
+byte-reproducible, so the baseline pins invariants, not one machine's hash.
+
+### 11. Dynamic network surface
+
+**Trust:** isolated netns, rootless capture, explicit approval.
+
+The dynamic harness runs the binary with only loopback, a private session bus,
+and a mock kanata server, then traces every network/process syscall and
+snapshots `ss`/`/proc/net`. It treats any UDP, DNS, raw/AF_PACKET socket, IP
+listener, non-loopback connect (including a failed attempt), undocumented Unix
+socket, or child-process IP I/O as a finding. `--host-desktop` is a different
+trust boundary: it binds the real bus/display into the netns and can drive the
+live desktop, so it is opt-in and not used on an untrusted checkout.
 
 ## Abuse cases to check in a diff
 
@@ -164,6 +202,14 @@ from kanata/config/network data are the review trigger.
 7. **Local abuse:** a new unauthenticated D-Bus method that takes a command,
    path, URL, or arbitrary bytes; KDE script injection; a KWin/GNOME helper
    writing to a predictable path.
+8. **Build-time execution:** a new `build.rs` that downloads, shells out,
+   opens a socket, or embeds an out-of-crate binary; a proc-macro or native
+   `links` crate that did not exist at baseline.
+9. **Artifact tampering:** appended overlay, embedded ELF/PE, unexpected
+   `NEEDED` library, remote URL string, or size blow-up in the release binary.
+10. **Runtime egress:** dynamic evidence of UDP/DNS, raw/AF_PACKET, an IP
+    listener, a non-loopback connect (even failed), a child-process connect, or
+    an undocumented Unix socket.
 
 ## What is *not* a finding by itself
 
@@ -195,12 +241,20 @@ from kanata/config/network data are the review trigger.
 - Static analysis cannot prove the absence of malicious behavior in
   dependencies or in the Rust/desktop stack; use `cargo audit`/Nix tooling and
   runtime observation when the stakes justify it.
+- Dependency sources not present in the local Cargo cache are inventoried but
+  not deeply scanned. `cargo fetch --locked` is required for the full pass.
+- The dynamic harness sees the paths that were exercised, not every branch. A
+  clean trace is evidence, not proof; static review owns unexercised code.
+- The default harness does not perform privileged packet capture. `tcpdump`/
+  `bpftrace` evidence is a separate, opt-in layer.
+- `--host-desktop` binds the real session bus/display and can drive the live
+  desktop; it is not equivalent to the isolated default run.
 
 ## Severity mapping for this repo
 
 | Severity | Examples |
 |----------|----------|
-| Critical | remote fetch-and-exec, decode-and-exec, hidden payload in an asset, active malicious git hook, replaced release artifact |
-| High | new remote host/outbound sink, listener on `0.0.0.0`, new exec sink with untrusted args, `pull_request_target` with secrets, unpinned Nix fetch, remote `--host` introduced silently |
-| Medium | ref-pinned CI action, missing CI permissions, dependency/build-file drift, unauthenticated same-user D-Bus control, GNOME auto-install default, KWin `/tmp` writes, unquoted systemd args |
-| Low | documentation URLs, expected D-Bus/Unix IPC, expected helper execution, explicit autostart feature, valid images |
+| Critical | remote fetch-and-exec, decode-and-exec, hidden payload in an asset, active malicious git hook, replaced release artifact, non-crates.io/git/path dependency with no checksum, cached crate checksum mismatch, AF_PACKET/raw socket, non-loopback IP listener, embedded ELF/PE in the release binary |
+| High | new remote host/outbound sink, listener on `0.0.0.0`, new exec sink with untrusted args, `pull_request_target` with secrets, unpinned Nix fetch, remote `--host` introduced silently, new network-capable/build-script dependency, lockfile/direct-dependency drift, binary overlay/unexpected NEEDED/remote URL, dynamic non-loopback/UDP/DNS/child IP I/O |
+| Medium | ref-pinned CI action, missing CI permissions, non-direct dependency/build-file drift, unauthenticated same-user D-Bus control, GNOME auto-install default, KWin `/tmp` writes, unquoted systemd args, new proc-macro/native dependency, undocumented Unix socket, memfd/io_uring/keyring/mount syscall |
+| Low | documentation URLs, expected D-Bus/Unix IPC, expected helper execution, explicit autostart feature, valid images, build-id/rustc-version changes, expected libc networking symbols |

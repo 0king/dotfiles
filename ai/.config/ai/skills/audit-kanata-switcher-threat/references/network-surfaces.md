@@ -2,7 +2,9 @@
 
 Snapshot: `6957867` (`69578672fce32ac5b69aed393f6981d4fbad3999`), tag `v1.2.0`,
 2026-11-10. This is a static map of every network and IPC path found in the
-tree. It is not a runtime trace.
+tree. It is not itself a runtime trace; `scripts/run_dynamic_network_audit.sh`
+produces the dynamic evidence and `references/dynamic-analysis.md` defines its
+policy.
 
 ## Executive answer
 
@@ -65,11 +67,12 @@ shows up as an unexpected finding unless it is added to the accepted baseline.
 This is a static review of this checkout, not a packet capture. It does **not**
 prove the absence of all network traffic:
 
-1. **Transitive dependency source was not audited.** `Cargo.lock` contains no
-   HTTP/TLS/DNS/SSH/WebSocket/gRPC/database/queue crate, but a full
-   `cargo tree --locked` could not run offline in this environment (`ksni` was
-   missing from the local index). A dependency can implement a protocol without
-   a recognizable crate name.
+1. **Transitive dependency source is only deep-scanned when cached.**
+   `Cargo.lock` contains no HTTP/TLS/DNS/SSH/WebSocket/gRPC/database/queue
+   crate, but the deep pass in `scan_cargo_deps.py` reads crate sources from the
+   local Cargo registry. Crates not present in `$CARGO_HOME` are inventoried
+   from the lockfile but reported as not scanned. Run `cargo fetch --locked`
+   first for a complete pass.
 2. **External helper binaries are not audited.** `gnome-extensions`,
    `gsettings`, `dconf`, and `glib-compile-schemas` are trusted local desktop
    tools; they use D-Bus/GSettings, but their own code is outside this repo.
@@ -79,8 +82,10 @@ prove the absence of all network traffic:
    `$DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` can name a TCP bus address; zbus and
    Gio would honor it. That is an operator/environment choice, not code in this
    tree.
-5. **No runtime trace was performed.** Packet capture/`strace` verification is
-   listed below and requires explicit approval plus an isolated environment.
+5. **Runtime trace is opt-in.** The static baseline does not claim a runtime
+   trace. `run_dynamic_network_audit.sh` provides a rootless `strace`/`ss`
+   trace when explicitly run with an isolated network namespace; its coverage
+   is limited to exercised paths.
 
 ## Runtime IP network
 
@@ -254,7 +259,7 @@ These are not runtime daemon surfaces, but they matter for supply-chain review:
 
 | Trigger | Endpoint | Integrity |
 |---------|----------|-----------|
-| `cargo build` with cold cache | crates.io / static.crates.io over HTTPS | `Cargo.lock`, direct deps pinned with `=`; 212 crates.io-only packages, no git sources |
+| `cargo build` with cold cache | crates.io / static.crates.io over HTTPS | `Cargo.lock`, direct deps pinned with `=`; 212 packages including the root crate (211 external, all crates.io), no git sources |
 | `nix build` / `nix develop` | GitHub inputs pinned by `flake.lock`; `cache.nixos.org` | `rev` + `narHash` in `flake.lock` and `tests/flake.lock` |
 | GitHub Actions | `7mind/github-env@minimal`, GitHub API, Nix cache | single workflow, `contents: read`, no secrets, no `pull_request_target`; action is ref-pinned, not SHA-pinned |
 
@@ -264,19 +269,65 @@ new checkout.
 
 ## Runtime verification notes
 
-If runtime verification is approved:
+The default harness is rootless `bwrap --unshare-net` + `strace -ff` with a
+private session bus and a loopback mock kanata server:
 
-1. Use a disposable user/VM or a network namespace. Do not install the GNOME
-   extension into a live shell on an untrusted checkout.
-2. Run the daemon with a mock kanata server on loopback and capture
-   `strace -ff -e trace=network,execve`.
-3. Expect exactly one outbound TCP connection to the configured kanata
-   endpoint; everything else should be `AF_UNIX` (D-Bus/Wayland/X11) or local
-   file/exec activity.
-4. Exercise pause/unpause/restart, GNOME/KDE/Wayland/X11 focus changes,
-   autostart install/remove, and (in a disposable VM) GNOME extension install.
-5. Confirm no listener appears on `0.0.0.0`, no UDP socket, no external DNS
-   query, and no HTTP/TLS handshake.
+```bash
+~/.config/ai/skills/audit-kanata-switcher-threat/scripts/run_dynamic_network_audit.sh \
+  --repo <repo> --out /tmp/opencode/ks-dynamic --timeout 15
+```
+
+1. The namespace has only `lo` (`127.0.0.0/8`, `::1`). There is no route to a
+   remote network, so a non-loopback attempt is captured by `connect()` even
+   when it fails.
+2. `strace` traces `%network`, `%process`, `openat`, `memfd_create`,
+   `io_uring_*`, `bpf`, module load, `ptrace`, namespace, keyring, and mount
+   syscalls for the daemon and every child.
+3. `ss` and `/proc/net/{tcp,tcp6,udp,udp6,packet,netlink,unix,raw,raw6}` are
+   snapshotted while the daemon runs; this catches listeners and sockets that a
+   syscall-only trace might miss.
+4. Expect exactly the configured kanata TCP connection; everything else should
+   be `AF_UNIX` (D-Bus/Wayland/X11) or local file/exec activity. The mock
+   kanata listener itself is expected and is not attributed to the daemon.
+5. `--scenario host-desktop` is opt-in and binds the real session bus/display
+   into the netns. Do not use it on an untrusted checkout; it can drive the
+   live desktop.
+6. Run `scripts/selftest_dynamic.sh` after changing the harness. It must detect
+   non-loopback TCP, UDP/DNS, `AF_PACKET`, an IP listener, and a child-process
+   connect.
+
+The optional privileged layer is packet capture (`tcpdump`/`bpftrace`) around
+the same harness. It is not required and must be reported separately; the
+default run does not claim packet-level capture.
+
+## Dependency surface
+
+At v1.2.0 the lockfile has 212 packages including the root crate (211
+external, all crates.io) with SHA-256 checksums; there are no git, path, or
+alternative-registry sources. The direct pins are
+`=`-pinned. The reviewed network/IPC-capable crates are `tokio`, `mio`,
+`socket2`, `libc`, `async-io`, `polling`, `dbus`, `libdbus-sys`, `ksni`,
+`zbus`, `wayland-client`, `wayland-backend`, `wayland-scanner`, `x11rb`, and
+the codegen/protocol crates `dbus-codegen` and `x11rb-protocol`.
+`dbus`/`ksni` reach the session/system bus through `libdbus-1`; Wayland uses
+`libwayland-client`; `x11rb` is a pure-Rust X11 client by default.
+
+Build scripts are the other execution boundary. `scan_cargo_deps.py` lists
+every `build.rs`, proc-macro crate, and native `links` crate, and flags
+downloaders, HTTP clients, sockets, shell execution, remote URLs, and
+out-of-crate `include_bytes!`/`include_str!`. Run `cargo fetch --locked` first;
+crates not present in the local registry cache are reported as not scanned.
+
+## Release-binary surface
+
+`analyze_release_binary.py` audits the actual ELF artifact: `NEEDED` libraries,
+writable+executable segments, `DT_TEXTREL`, overlays, embedded payloads,
+high-entropy sections, imported dangerous symbols, and printable URLs/IPs/
+domains/telemetry strings. The expected `NEEDED` set is `libc` plus the
+desktop IPC libraries (`libdbus-1`, `libwayland-client`, and their support
+libraries) when linked dynamically. A new library, overlay, embedded ELF/PE,
+remote URL, or size blow-up is a finding. Build IDs and rustc comments are
+reported but not pinned; a rebuild is not byte-reproducible.
 
 ## What would change this answer
 
@@ -294,4 +345,10 @@ Treat any of these as a new review event:
 - a new shell/exec sink with user, config, or network-controlled arguments;
 - a new write to shell rc, systemd, cron, SSH, or system-wide paths;
 - a CI action that runs PR code with secrets or publishes releases;
-- a Nix fetch without a hash or an added substituter.
+- a Nix fetch without a hash or an added substituter;
+- a dynamic trace showing any UDP/DNS, raw/AF_PACKET socket, IP listener,
+  non-loopback connect (including a failed one), or undocumented Unix socket;
+- a release binary with a new `NEEDED` library, overlay, embedded payload, or
+  remote URL;
+- a new lockfile source, missing checksum, or network-capable/build-script
+  dependency that is not in `expected_dependencies`.
