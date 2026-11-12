@@ -56,6 +56,7 @@ The harness requires:
 | `setpriv` | drop from root to the invoking uid/gid inside the namespace |
 | `bwrap` | pid/ipc/uts/mount isolation without unsharing the network namespace |
 | `strace` | syscall attribution for the target and every child/thread |
+| `bpftrace` | optional kprobe-based network syscall tracing; `tcpdump-only` fallback when unavailable |
 | `dbus-monitor` / `dbus-daemon` | session and system bus evidence |
 | `ss` | socket-table snapshots |
 | `python3` | sinkholes, mocks, analyzer |
@@ -67,7 +68,8 @@ Preflight behavior:
 - If `sudo -n true` works, the harness uses `sudo -n`.
 - Otherwise, with a TTY it runs `sudo -v` once. Without a TTY it exits 2.
 - `--check` performs the same root/tool preflight and prints versions, then
-  exits 0. It does **not** bypass the root requirement.
+  exits 0. It does **not** bypass the root requirement. `--check` also reports
+  `bpftrace` availability and the selected `capture_method`.
 - A missing or empty pcap (fewer than 24 bytes, the libpcap file header) is a
   harness error, not a clean result.
 - A missing sinkhole log, session monitor log, or expected system monitor log is
@@ -75,6 +77,11 @@ Preflight behavior:
 
 `--allow-unmonitored-system-bus` is the only override. Use it only on a host
 that genuinely has no system bus, and record the exception in the report.
+
+On Ubuntu, `bpftrace` requires a kernel with BTF (5.8+) and
+`/sys/kernel/btf/vmlinux`; required packages are `bpftrace`, `tcpdump`,
+`iproute2`, `strace`, and `bwrap`. An AppArmor profile (if enforced) must permit
+`tcpdump`, `ip netns`, `bpftrace`, `strace`, and `bwrap` for the audit harness.
 
 ## Isolation topology
 
@@ -176,6 +183,36 @@ Rules:
 A clean pcap contains only capture-side traffic (DNS answers, TCP sinkhole
 responses, ARP from the capture side) or no packets at all. The analyzer notes
 the packet count.
+
+### eBPF/bpftrace and loopback capture
+
+When `bpftrace` is available (and permitted by `perf_event_paranoid`), the
+harness additionally runs a bpftrace one-liner inside the daemon namespace
+tracing network syscalls, writing `net/ebpf-trace.log`:
+
+- `kprobe:tcp_connect`, `kprobe:tcp_v4_connect`, `kprobe:tcp_v6_connect`
+  (PID, comm, family, address, port, return);
+- `kprobe:udp_sendmsg`, `kprobe:udpv6_sendmsg` (UDP sends);
+- `kprobe:raw_sendto` (raw socket sends).
+
+`meta.json` records `bpftrace_available` and `capture_method` (`ebpf+tcpdump`
+when bpftrace runs, `tcpdump-only` otherwise). If bpftrace cannot attach, the
+harness logs a warning and continues with tcpdump-only capture; it never fails
+closed on bpftrace.
+
+A second `tcpdump -i lo` runs inside the daemon namespace, writing
+`pcap/daemon-loopback.pcap`. This captures traffic that stays on loopback and
+is therefore invisible to the veth-side tcpdump. Loopback packets are not
+attributed by daemon MAC/IP (they use the `lo` interface), so the loopback pcap
+does not produce false positives for the expected kanata connection; it is
+corroborating evidence parsed by the existing pcap parser.
+
+The analyzer parses `net/ebpf-trace.log` and maps events to the existing rules:
+non-loopback connect → `DYN-NONLOOPBACK-CONNECT`, loopback connect beyond the
+expected kanata endpoint → `DYN-LOOPBACK-UNEXPECTED`, UDP send → `DYN-UDP`,
+raw socket send → `DYN-RAW-SOCKET`, port 53 → `DYN-DNS`. An informational
+`DYN-EBPF-LOOPBACK` note is added when loopback traffic beyond the expected
+endpoint is observed (via bpftrace or loopback pcap).
 
 ## DNS and TCP sinkholes
 
@@ -394,6 +431,33 @@ executable plus the `bash -c` wrapper the harness uses to launch it. A shell
 spawned later by the probe is still `DYN-SHELL-EXEC`. Daemon mode still checks
 every exec.
 
+## Fault injection (`--fault-inject`)
+
+`--fault-inject` is opt-in and off by default. When set, the harness runs three
+sequential sub-scenarios, each with an independent network namespace and
+separate capture logs under `<out>/fault-inject/<scenario>/`:
+
+| Scenario | Host:port | Purpose |
+|----------|-----------|---------|
+| `kanata-kill-restart` | `127.0.0.1:10000` | Start mock kanata, let the daemon connect, kill the mock, wait 3s, restart it on the same port; observe reconnect target and any non-kanata endpoints. |
+| `network-blackhole` | `127.0.0.1:10000` | Remove the default route from the daemon namespace so kanata is unreachable; observe whether the daemon falls back to DNS, secondary hosts, raw sockets, or non-loopback connects. |
+| `remote-host` | `192.0.2.1:9` | Run the daemon against TEST-NET-1 (non-routable); `DYN-NONLOOPBACK-CONNECT` must fire and no data may exfiltrate. |
+
+Each scenario gets a fresh netns (or reset within one) to avoid route-state
+leakage, separate pcap/sinkhole/strace/bpftrace logs, and a separate analyzer
+invocation. The default timeout is 3600s (1 hour) for the combined run and 8s per
+scenario (`--scenario-timeout` overrides the per-scenario value).
+
+The daemon is restarted automatically if it exits before the timeout expires.
+This ensures tcpdump, mock kanata, and the session bus remain alive for the
+full duration so any network behavior — including reconnect attempts — is
+captured. Each restart gets its own strace log file
+(`strace/daemon.restart.<elapsed_seconds>`).
+
+Findings from all scenarios are merged (deduplicated by rule+detail); any
+finding at/above `--fail-on` fails the combined run (exit 1). A harness error
+in any scenario is exit 2.
+
 ## GNOME extension audit
 
 `scripts/run_gnome_extension_audit.sh` is a separate privileged harness. It:
@@ -546,7 +610,9 @@ controls were not executed.
   a valid TLS certificate or a specific HTTP response may stop earlier than it
   would on the real network. The attempt is still captured.
 - `tcpdump` sees packets on the veth, not traffic that stays on loopback inside
-  the daemon namespace. Loopback is covered by strace, `ss`, and `/proc/net`.
+  the daemon namespace. Loopback is covered by bpftrace kprobes, `tcpdump -i lo`
+  inside the daemon namespace (`pcap/daemon-loopback.pcap`), `strace`, `ss`,
+  and `/proc/net`.
 - The mock server is not kanata; protocol differences can change behavior. It
   implements the subset used by the integration tests.
 - A supplied `--binary` may have unverified provenance even if the trace is

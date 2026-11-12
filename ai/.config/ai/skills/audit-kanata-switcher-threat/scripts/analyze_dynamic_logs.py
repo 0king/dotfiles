@@ -37,6 +37,7 @@ import ipaddress
 import json
 import re
 import shlex
+import struct
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -154,6 +155,9 @@ DEFAULT_LOGIND_ALLOWED_METHODS = [
 
 URL_RE = re.compile(r"\b(?:https?|ftps?|sftp|ssh|ws|wss|telnet|gopher)://[^\s\"'<>]+", re.IGNORECASE)
 DNS_QUESTION_RE = re.compile(r"\b(?:A|AAAA|HTTPS|CNAME|PTR|MX|TXT|SRV)\?\s+(?P<name>[A-Za-z0-9_.-]+)\.?")
+EBPF_LINE_RE = re.compile(
+    r"^(?P<pid>\d+),(?P<comm>[^,]+),(?P<family>\d+),(?P<addr>[0-9a-fA-Fx]+),(?P<port>[0-9a-fA-Fx]+),(?P<call>[^,]+),(?P<ret>-?\d+)$"
+)
 SENDMMSG_RE = re.compile(r"\b(?P<call>sendmmsg|recvmmsg)\((?P<fd>\d+)")
 SENDFILE_RE = re.compile(r"\b(?P<call>sendfile)\((?P<out>\d+),\s*(?P<in>\d+)")
 SPLICE_RE = re.compile(r"\bsplice\((?P<in>\d+),[^,]*,\s*(?P<out>\d+)")
@@ -1256,6 +1260,102 @@ def dedupe(report: Report) -> None:
     report.findings = unique
 
 
+def _ipv4_from_hex(addr_hex: str) -> str:
+    try:
+        val = int(addr_hex, 16)
+    except ValueError:
+        return ""
+    try:
+        return str(ipaddress.IPv4Address(struct.pack(">I", val & 0xFFFFFFFF)))
+    except (OSError, ValueError):
+        return ""
+
+
+def parse_ebpf_trace(path: Path, report: Report, expected_host: str, expected_port: int) -> None:
+    """Parse bpftrace kprobe text output and map events to existing DYN rules.
+
+    Expected line format (emitted by the harness bpftrace one-liner):
+        pid,comm,family,addr_hex,port_hex,call,ret
+    """
+    if not path.is_file():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        report.notes.append(f"could not read {path}: {exc}")
+        return
+    loopback_beyond_kanata = False
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        m = EBPF_LINE_RE.match(line)
+        if not m:
+            report.notes.append(f"unparseable ebpf trace line: {line[:160]}")
+            continue
+        pid = int(m.group("pid"))
+        family = int(m.group("family"))
+        addr_hex = m.group("addr")
+        port_hex = m.group("port")
+        call = m.group("call")
+        ret = m.group("ret")
+        address = ""
+        port = None
+        if family == 2:
+            address = _ipv4_from_hex(addr_hex)
+            try:
+                port = int(port_hex, 16)
+            except ValueError:
+                port = None
+        elif family == 10:
+            address = "ipv6"
+        loopback = is_loopback(address) if address else False
+        expected = address in {expected_host, "127.0.0.1", "::1"} and port == expected_port
+        family_name = "AF_INET" if family == 2 else ("AF_INET6" if family == 10 else "AF_UNKNOWN")
+        report.events.append(Event(
+            kind="connect", family=family_name, address=address, port=port,
+            result=ret, pid=pid, file=path.name, raw=line,
+        ))
+        if call in ("udp_sendmsg", "udpv6_sendmsg"):
+            if port == 53:
+                report.add("DYN-DNS", "high", f"ebpf udp send to DNS endpoint {address}:{port}", pid, path.name)
+            report.add("DYN-UDP", "high", f"ebpf udp send to {address}:{port}", pid, path.name)
+        elif call == "raw_sendto":
+            report.add("DYN-RAW-SOCKET", "critical", f"ebpf raw sendto to {address}:{port}", pid, path.name)
+        elif call in ("tcp_connect", "tcp_v4_connect", "tcp_v6_connect"):
+            if not loopback:
+                report.add("DYN-NONLOOPBACK-CONNECT", "high", f"ebpf connect to non-loopback {address}:{port} (ret={ret})", pid, path.name)
+            elif not expected:
+                loopback_beyond_kanata = True
+                report.add("DYN-LOOPBACK-UNEXPECTED", "high", f"ebpf connect to loopback {address}:{port}; expected {expected_host}:{expected_port}", pid, path.name)
+            elif ret != "0":
+                report.add("DYN-KANATA-CONNECT-FAILED", "medium", f"ebpf connect to expected endpoint failed {address}:{port} ret={ret}", pid, path.name)
+    if loopback_beyond_kanata:
+        report.notes.append("DYN-EBPF-LOOPBACK: bpftrace loopback traffic beyond expected kanata endpoint")
+
+
+def analyze_loopback_pcap(report: Report, expected_host: str, expected_port: int) -> None:
+    """Note loopback pcap traffic beyond the expected kanata endpoint."""
+    seen = False
+    for packet in report.pcap:
+        if packet.get("file") != "daemon-loopback.pcap":
+            continue
+        proto = str(packet.get("protocol") or "")
+        if proto not in ("tcp", "udp"):
+            continue
+        dst_ip = str(packet.get("dst_ip") or "")
+        dport = packet.get("dport")
+        sport = packet.get("sport")
+        if is_loopback(dst_ip) and dport != expected_port and sport != expected_port:
+            seen = True
+            report.add(
+                "DYN-EBPF-LOOPBACK", "info",
+                f"loopback pcap {proto} {dst_ip}:{dport} beyond expected {expected_host}:{expected_port}",
+            )
+    if seen:
+        report.notes.append("DYN-EBPF-LOOPBACK: loopback pcap traffic beyond expected kanata endpoint")
+
+
 def load_inputs(directory: Path, report: Report, dirs: EvidenceDirs | None = None,
                 profile: str | None = None) -> None:
     dirs = dirs or EvidenceDirs.default(directory)
@@ -1289,6 +1389,9 @@ def load_inputs(directory: Path, report: Report, dirs: EvidenceDirs | None = Non
         parse_procnet_file(path, report, str(report.meta.get("expected_host", "127.0.0.1")), int(report.meta.get("expected_port", 10000)))
     parse_pcap_dir(dirs.pcap, report)
     parse_sinkhole(dirs.sinkhole, report)
+    parse_ebpf_trace(dirs.sinkhole / "ebpf-trace.log", report,
+                     str(report.meta.get("expected_host", "127.0.0.1")),
+                     int(report.meta.get("expected_port", 10000)))
     parse_dbus_dir(dirs.dbus, report)
     parse_build(dirs.build, report, dirs.pcap)
     parse_gnome(dirs.gnome, report)
@@ -1353,6 +1456,37 @@ def write_markdown(report: Report, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def merge_reports(paths: list[Path]) -> Report:
+    """Merge findings/notes from multiple scenario report.json files into one report."""
+    merged = Report(directory=str(paths[0].parent if len(paths) > 1 else paths[0]))
+    all_findings: list[Finding] = []
+    all_notes: list[str] = []
+    meta: dict[str, Any] = {}
+    for p in paths:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            merged.notes.append(f"could not read {p}: {exc}")
+            continue
+        if isinstance(data, dict) and isinstance(data.get("meta"), dict):
+            meta.update(data["meta"])
+        for f in data.get("findings", []):
+            all_findings.append(Finding(
+                rule=str(f.get("rule", "")),
+                severity=str(f.get("severity", "info")),
+                detail=str(f.get("detail", "")),
+                pid=f.get("pid"),
+                file=str(f.get("file", "")),
+            ))
+        for n in data.get("notes", []):
+            all_notes.append(str(n))
+    merged.meta = meta
+    merged.findings = all_findings
+    merged.notes = all_notes
+    dedupe(merged)
+    return merged
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("directory", nargs="?", default=".", type=Path, help="harness output directory")
@@ -1372,6 +1506,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gnome-dir", type=Path, help="GNOME evidence directory (default: <directory>/gnome-audit)")
     parser.add_argument("--snapshots-dir", type=Path, help="ss/procnet directory (default: <directory>/snapshots)")
     parser.add_argument("--mock-dir", type=Path, help="mock daemon directory (default: <directory>/mock)")
+    parser.add_argument("--merge", nargs="+", type=Path, help="merge findings from multiple scenario report.json files into one combined report")
     parser.add_argument("--fail-on", choices=list(SEVERITY_ORDER), default=None, help="exit 1 at/above this severity (default: baseline expected_dynamic.fail_on or medium)")
     args = parser.parse_args(argv)
 
@@ -1398,6 +1533,26 @@ def main(argv: list[str] | None = None) -> int:
     else:
         report.notes.append(f"baseline not found: {baseline_path}")
 
+    def fail_on_threshold() -> int:
+        fail_on = args.fail_on or str(baseline.get("expected_dynamic", {}).get("fail_on", "medium"))
+        if fail_on not in SEVERITY_ORDER:
+            fail_on = "medium"
+        return SEVERITY_ORDER[fail_on]
+
+    if args.merge:
+        report = merge_reports(args.merge)
+        print_report(report, args.verbose)
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(json.dumps(report.as_dict(), indent=2) + "\n", encoding="utf-8")
+            print(f"json: {args.json}")
+        if args.markdown:
+            args.markdown.parent.mkdir(parents=True, exist_ok=True)
+            write_markdown(report, args.markdown)
+            print(f"markdown: {args.markdown}")
+        threshold = fail_on_threshold()
+        return 1 if any(SEVERITY_ORDER.get(f.severity, 0) >= threshold for f in report.findings) else 0
+
     host = args.expected_host or str(report.meta.get("expected_host", "127.0.0.1"))
     port = args.expected_port or int(report.meta.get("expected_port", 10000))
     globs = list(baseline.get("dynamic_policy", {}).get("allowed_unix_socket_globs", DEFAULT_UNIX_GLOBS)) + args.unix_glob
@@ -1415,6 +1570,7 @@ def main(argv: list[str] | None = None) -> int:
     analyze_execs(report, baseline, profile)
     analyze_ss(report, host, port)
     analyze_pcap(report, profile)
+    analyze_loopback_pcap(report, host, port)
     analyze_sinkhole(report, profile)
     analyze_dbus(report, baseline, profile)
     analyze_build(report, baseline)

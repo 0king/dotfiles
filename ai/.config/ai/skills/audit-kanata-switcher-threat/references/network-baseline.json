@@ -842,8 +842,46 @@
       "Any connection other than loopback is a finding, including failed attempts.",
       "UDP, raw, AF_PACKET, DNS, and IP listeners are forbidden even on loopback.",
       "AF_NETLINK is local kernel IPC and is reported as informational, not IP egress.",
-      "The mock kanata listener on the configured port is expected and is not attributed to the daemon."
+      "The mock kanata listener on the configured port is expected and is not attributed to the daemon.",
+      "Loopback visibility is provided by bpftrace kprobes plus tcpdump on `lo` inside the daemon namespace."
     ],
+    "capture_method": "ebpf+tcpdump",
+    "capture_method_fallback": "tcpdump-only",
+    "ebpf_kprobes": [
+      "tcp_connect",
+      "tcp_v4_connect",
+      "tcp_v6_connect",
+      "udp_sendmsg",
+      "udpv6_sendmsg",
+      "raw_sendto"
+    ],
+    "ebpf_output": "net/ebpf-trace.log",
+    "loopback_pcap": "pcap/daemon-loopback.pcap",
+    "fault_inject": {
+      "enabled_by": "--fault-inject",
+      "default_timeout_s": 30,
+      "scenario_timeout_s": 8,
+      "scenarios": [
+        {
+          "id": "kanata-kill-restart",
+          "host": "127.0.0.1",
+          "port": 10000,
+          "purpose": "daemon reconnects to mock kanata after kill/restart; no non-loopback connects"
+        },
+        {
+          "id": "network-blackhole",
+          "host": "127.0.0.1",
+          "port": 10000,
+          "purpose": "default route removed; daemon must not fall back to DNS, secondary hosts, raw sockets, or non-loopback connects"
+        },
+        {
+          "id": "remote-host",
+          "host": "192.0.2.1",
+          "port": 9,
+          "purpose": "TEST-NET-1 non-routable host; DYN-NONLOOPBACK-CONNECT fires, no data exfiltrates"
+        }
+      ]
+    },
     "dbus": {
       "allowed_destinations": [
         "org.freedesktop.DBus",
